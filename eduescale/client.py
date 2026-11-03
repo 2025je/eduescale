@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import TypedDict
 from xml.etree import ElementTree
 
 import requests
@@ -6,6 +7,19 @@ import requests
 
 API_URL = "https://escale.minedu.gob.pe/padron/rest"
 REQUEST_TIMEOUT = 30
+
+
+class SchoolRecord(TypedDict):
+    nombre: str
+    direccion: str
+    localidad: str
+    cp: str
+    turno: str
+    alumnos: int | None
+    secciones: int | None
+    longitud: float | None
+    latitud: float | None
+
 
 MANAGEMENT_CODES = {
     "publica": ("A1", "A2", "A3", "A4"),
@@ -27,7 +41,10 @@ class SchoolFilters:
     level: str = ""
 
 
-def _get_xml(path: str, params=None):
+def _get_xml(
+    path: str,
+    params: list[tuple[str, str]] | dict[str, str] | None = None,
+) -> ElementTree.Element:
     response = requests.get(
         f"{API_URL}/{path}",
         params=params,
@@ -38,7 +55,13 @@ def _get_xml(path: str, params=None):
     return ElementTree.fromstring(response.content)
 
 
-def _locations(path: str, params, item_tag: str, code_tag: str, name_tag: str):
+def _locations(
+    path: str,
+    params: list[tuple[str, str]] | dict[str, str] | None,
+    item_tag: str,
+    code_tag: str,
+    name_tag: str,
+) -> list[tuple[str, str]]:
     root = _get_xml(path, params)
     return [
         (item.findtext(code_tag, default="").strip(), item.findtext(name_tag, default="").strip())
@@ -47,11 +70,11 @@ def _locations(path: str, params, item_tag: str, code_tag: str, name_tag: str):
     ]
 
 
-def fetch_regions():
+def fetch_regions() -> list[tuple[str, str]]:
     return _locations("regiones", None, "region", "idRegion", "nombreRegion")
 
 
-def fetch_provinces(region_code: str):
+def fetch_provinces(region_code: str) -> list[tuple[str, str]]:
     return _locations(
         "provincias",
         {"idRegion": region_code},
@@ -61,7 +84,7 @@ def fetch_provinces(region_code: str):
     )
 
 
-def fetch_districts(province_code: str):
+def fetch_districts(province_code: str) -> list[tuple[str, str]]:
     return _locations(
         "distritos",
         {"idProvincia": province_code},
@@ -71,7 +94,9 @@ def fetch_districts(province_code: str):
     )
 
 
-def build_search_params(filters: SchoolFilters, offset: int = 0):
+def build_search_params(
+    filters: SchoolFilters, offset: int = 0
+) -> list[tuple[str, str]]:
     ubigeo = filters.district_code or filters.province_code or filters.region_code
     params = [("start", str(offset)), ("estados", "1")]
     if ubigeo:
@@ -81,24 +106,24 @@ def build_search_params(filters: SchoolFilters, offset: int = 0):
     return params
 
 
-def _text(element, path: str):
+def _text(element: ElementTree.Element, path: str) -> str:
     value = element.findtext(path, default="")
     return value.strip()
 
 
-def _integer(element, path: str):
+def _integer(element: ElementTree.Element, path: str) -> int | None:
     value = _text(element, path)
     return int(value) if value else None
 
 
-def _float(element, path: str):
+def _float(element: ElementTree.Element, path: str) -> float | None:
     value = _text(element, path)
     return float(value) if value else None
 
 
-def parse_institutions(xml: bytes):
+def parse_institutions(xml: bytes) -> list[SchoolRecord]:
     root = ElementTree.fromstring(xml)
-    records = []
+    records: list[SchoolRecord] = []
     for item in root.findall("./items"):
         records.append(
             {

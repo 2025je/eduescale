@@ -6,6 +6,7 @@ import QtQuick.Layouts
 
 ApplicationWindow {
     id: window
+    required property var controller
     width: 760
     height: 760
     minimumWidth: 560
@@ -208,7 +209,7 @@ ApplicationWindow {
         title: "Guardar padrón en Excel"
         fileMode: FileDialog.SaveFile
         nameFilters: ["Libro de Excel (*.xlsx)"]
-        currentFile: Qt.resolvedUrl("../colegios_escale.xlsx")
+        currentFile: controller.defaultOutputUrl
 
         onAccepted: controller.startScrape(
             selectedFile.toString(),

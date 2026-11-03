@@ -15,13 +15,32 @@ estilo Material.
 
 ```powershell
 uv sync
-uv run python app.py
+uv run eduescale-gui
 ```
 
 Se abrirá una ventana Material para seleccionar la ubicación, la gestión y el
 nivel educativo. La extracción se ejecuta en segundo plano para mantener la
 interfaz receptiva. Durante el proceso se muestra el total de registros, cuántos
 se han recibido y cuántas páginas se han descargado.
+
+También se puede iniciar con `uv run python app.py` por compatibilidad.
+
+## Uso como librería
+
+El paquete `eduescale` publica las funciones de consulta, filtros y parsing:
+
+```python
+from eduescale import SchoolFilters, build_search_params, fetch_regions
+
+regions = fetch_regions()
+params = build_search_params(
+    SchoolFilters(region_code="22", management="publica", level="inicial")
+)
+```
+
+La GUI está separada en una vista QML, un controlador y servicios dedicados a
+la carga de ubicaciones y al proceso Scrapy. El comando `eduescale-gui` es el
+entry point instalado para iniciar esa interfaz.
 
 ## Uso
 
