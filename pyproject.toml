@@ -1,0 +1,14 @@
+[project]
+name = "eduescale"
+version = "0.1.0"
+description = "Buscador de servicios educativos del padrón oficial de ESCALE"
+requires-python = ">=3.10"
+dependencies = [
+    "openpyxl>=3.1.5",
+    "pyside6>=6.12.0",
+    "requests>=2.32.0",
+    "scrapy>=2.19.0",
+]
+
+[tool.uv]
+package = false
