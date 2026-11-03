@@ -28,7 +28,7 @@ class ScrapeRunner(QObject):
         self._timeout_timer = QTimer(self)
         self._timeout_timer.setSingleShot(True)
         self._timeout_timer.timeout.connect(self._stop_timed_out_scrape)
-        self._working_directory = Path(__file__).resolve().parents[2]
+        self._working_directory = Path(__file__).resolve().parents[1]
         self._output_path: Path | None = None
         self._process_log = ""
         self._progress_buffers = {"stdout": "", "stderr": ""}

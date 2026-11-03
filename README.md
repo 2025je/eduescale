@@ -53,7 +53,7 @@ y un enlace para abrir las coordenadas en Google Maps.
 También puedes ejecutar el spider directamente desde la terminal:
 
 ```powershell
-uv run scrapy crawl colegios -a output=colegios_escale.xlsx -a region_code=22 -a management=publica -a level=inicial
+uv run --project . --directory eduescale scrapy crawl colegios -a output=colegios_escale.xlsx -a region_code=22 -a management=publica -a level=inicial
 ```
 
 Los filtros `region_code`, `province_code`, `district_code`, `management` y
