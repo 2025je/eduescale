@@ -20,6 +20,9 @@ class SchoolRecord(BaseModel):
     secciones: int | None
     longitud: float | None
     latitud: float | None
+    distrito: str = "Distrito no identificado"
+    provincia: str = "Provincia no identificada"
+    region: str = "Departamento no identificado"
 
 
 MANAGEMENT_CODES = {
@@ -167,6 +170,12 @@ def parse_institutions(xml: bytes) -> list[dict[str, object]]:
             secciones=_integer(item, "estadistica/tseccion"),
             longitud=_float(item, "nlongIE"),
             latitud=_float(item, "nlatIE"),
+            distrito=_text(item, "distrito/nombreDistrito")
+            or "Distrito no identificado",
+            provincia=_text(item, "distrito/provincia/nombreProvincia")
+            or "Provincia no identificada",
+            region=_text(item, "distrito/provincia/region/nombreRegion")
+            or "Departamento no identificado",
         )
         records.append(record.model_dump())
     return records

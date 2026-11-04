@@ -22,10 +22,13 @@ def test_incomplete_export_closes_openpyxl_temporary_file():
         pipeline = ExcelPipeline()
         pipeline.crawler = SimpleNamespace(spider=spider)
         pipeline.open_spider()
+        pipeline.worksheet.append(["temporary"])
         temporary_sheet = Path(pipeline.worksheet._writer.out)
+        spool_path = pipeline._spool_path
 
         with pytest.raises(RuntimeError, match="Extracción incompleta"):
             pipeline.close_spider()
 
         assert not output_path.exists()
+        assert not spool_path.exists()
         temporary_sheet.unlink()

@@ -143,5 +143,8 @@ class TestParseInstitutions:
                 "secciones": 3,
                 "longitud": -77.25584,
                 "latitud": -5.773595,
+                "distrito": "Miraflores",
+                "provincia": "Lima",
+                "region": "Lima",
             }
         ]

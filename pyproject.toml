@@ -23,6 +23,9 @@ nox = [
 lint = [
     "ruff",
 ]
+build = [
+    "pyinstaller",
+]
 test = [
     "pytest",
 ]

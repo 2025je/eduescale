@@ -13,7 +13,7 @@ from eduescale.client import (
 )
 
 PAGE_SIZE = 50
-EXCEL_MAX_DATA_ROWS = 1_048_575
+EXCEL_MAX_DATA_ROWS = 1_048_574
 PAGE_VALIDATION_RETRIES = 3
 FILTER_SETS_ADAPTER = TypeAdapter(list[SchoolFilters])
 RECORD_FIELDS = (
@@ -26,6 +26,9 @@ RECORD_FIELDS = (
     "secciones",
     "longitud",
     "latitud",
+    "distrito",
+    "provincia",
+    "region",
 )
 
 

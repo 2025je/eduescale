@@ -57,10 +57,11 @@ esa búsqueda y repite el proceso para agregar otras ubicaciones o criterios.
 Cada combinación debe tener al menos una opción de Gestión y una de Nivel
 educativo. Puedes quitar combinaciones antes de iniciar. Al pulsar
 **Descargar filtros y generar Excel**, se reúnen los resultados en el mismo
-archivo y se eliminan colegios duplicados entre las búsquedas. El archivo incluye nombre
-del colegio, dirección, localidad, centro poblado (CP), turno, alumnos,
-secciones, longitud y latitud del local educativo, y un enlace para abrir las
-coordenadas en Google Maps.
+archivo, se eliminan colegios duplicados entre las búsquedas y se organiza una
+tabla de Excel por distrito dentro de la misma hoja. Cada tabla muestra también
+su provincia y departamento. El archivo incluye nombre del colegio, dirección,
+localidad, centro poblado (CP), turno, alumnos, secciones, longitud y latitud
+del local educativo, y un enlace para abrir las coordenadas en Google Maps.
 
 También puedes ejecutar el spider directamente desde la terminal:
 
@@ -86,6 +87,19 @@ uv run --group nox nox
 
 Nox crea el entorno de pruebas con `uv`, instala el grupo `test` desde el
 `uv.lock` y ejecuta `pytest`.
+
+## Ejecutable para Windows
+
+Genera los ejecutables con PyInstaller a través de Nox:
+
+```powershell
+uv run --group nox nox -s build
+```
+
+La carpeta `dist` contendrá `eduescale-gui.exe` y `eduescale-scraper.exe`.
+Mantén ambos archivos juntos: la interfaz usa `QProcess` para iniciar el worker
+de Scrapy como proceso separado y recibir su progreso. Distribuye los dos
+ejecutables en la misma carpeta.
 
 Para comprobar lint y formato con Ruff:
 

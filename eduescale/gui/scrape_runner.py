@@ -3,7 +3,7 @@ import re
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QProcess, QTimer, Signal, Slot
+from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, QTimer, Signal, Slot
 
 from eduescale.client import SchoolFilters
 
@@ -31,6 +31,7 @@ class ScrapeRunner(QObject):
         self._timeout_timer.setSingleShot(True)
         self._timeout_timer.timeout.connect(self._stop_timed_out_scrape)
         self._working_directory = Path(__file__).resolve().parents[1]
+        self._frozen = getattr(sys, "frozen", False)
         self._output_path: Path | None = None
         self._process_log = ""
         self._progress_buffers = {"stdout": "", "stderr": ""}
@@ -58,11 +59,7 @@ class ScrapeRunner(QObject):
         self._records_received = 0
         self._pages_received = 0
         self._scrape_timed_out = False
-        self._running = True
-
-        arguments = [
-            "-m",
-            "scrapy",
+        scrapy_arguments = [
             "crawl",
             "colegios",
             "-a",
@@ -78,8 +75,34 @@ class ScrapeRunner(QObject):
             "-s",
             "LOGSTATS_INTERVAL=1",
         ]
-        self._process.setWorkingDirectory(str(self._working_directory))
-        self._process.start(sys.executable, arguments)
+        environment = QProcessEnvironment.systemEnvironment()
+        environment.insert("SCRAPY_SETTINGS_MODULE", "eduescale.scrapy_settings")
+        self._process.setProcessEnvironment(environment)
+
+        if self._frozen:
+            worker_name = (
+                "eduescale-scraper.exe"
+                if sys.platform == "win32"
+                else "eduescale-scraper"
+            )
+            worker_path = Path(sys.executable).resolve().with_name(worker_name)
+            if not worker_path.is_file():
+                self.failed.emit(
+                    "No se encontró el ejecutable de Scrapy",
+                    f"Se esperaba encontrar el worker junto a la aplicación:\n{worker_path}",
+                )
+                return
+            program = str(worker_path)
+            arguments = scrapy_arguments
+            working_directory = output_path.parent
+        else:
+            program = sys.executable
+            arguments = ["-m", "scrapy", *scrapy_arguments]
+            working_directory = self._working_directory
+
+        self._running = True
+        self._process.setWorkingDirectory(str(working_directory))
+        self._process.start(program, arguments)
         self._timeout_timer.start(SCRAPE_TIMEOUT_MS)
         self.started.emit()
 
@@ -128,9 +151,15 @@ class ScrapeRunner(QObject):
         if error == QProcess.ProcessError.FailedToStart:
             self._timeout_timer.stop()
             self._running = False
+            details = (
+                "No se pudo iniciar eduescale-scraper.exe. "
+                "Mantén el worker junto al ejecutable de la interfaz."
+                if self._frozen
+                else "Verifica que las dependencias estén instaladas con «uv sync»."
+            )
             self.failed.emit(
                 "No se pudo iniciar Scrapy",
-                "Verifica que las dependencias estén instaladas con «uv sync».",
+                details,
             )
 
     @Slot(int, QProcess.ExitStatus)
