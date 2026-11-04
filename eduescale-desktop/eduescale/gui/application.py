@@ -4,7 +4,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from PySide6.QtCore import QUrl
-from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication
+from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication, QIcon
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
 
@@ -37,6 +37,18 @@ def configure_application_font(application: QGuiApplication) -> bool:
     return True
 
 
+def configure_application_icon(application: QGuiApplication) -> bool:
+    icon_path = Path(__file__).resolve().parent / "assets" / "edutrack-logo.png"
+    icon = QIcon(str(icon_path))
+    if icon.isNull():
+        LOGGER.error("Could not load application icon from %s", icon_path)
+        return False
+
+    application.setWindowIcon(icon)
+    LOGGER.info("Using application icon from %s", icon_path)
+    return True
+
+
 def create_controller(
     location_service: LocationServicePort | None = None,
     scrape_runner: ScrapeRunnerPort | None = None,
@@ -55,6 +67,8 @@ def main(
     QQuickStyle.setStyle("Material")
     application = QGuiApplication(sys.argv)
     if not configure_application_font(application):
+        return 1
+    if not configure_application_icon(application):
         return 1
     application.setOrganizationName("2025je")
     application.setApplicationName("EduScale")

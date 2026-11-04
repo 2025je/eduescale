@@ -3,6 +3,7 @@ from PyInstaller.utils.hooks import collect_data_files
 
 datas = [
     ('eduescale/gui/qml/Main.qml', 'eduescale/gui/qml'),
+    ('eduescale/gui/assets/edutrack-logo.png', 'eduescale/gui/assets'),
     ('eduescale/gui/fonts/Roboto-Variable.ttf', 'eduescale/gui/fonts'),
     ('eduescale/gui/fonts/OFL.txt', 'eduescale/gui/fonts'),
 ]
@@ -38,6 +39,7 @@ exe = EXE(
     a.datas,
     [],
     name='eduescale-gui',
+    icon='eduescale/gui/assets/edutrack-logo.ico',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

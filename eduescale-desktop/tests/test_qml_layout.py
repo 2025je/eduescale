@@ -7,11 +7,14 @@ QML_SMOKE_SCRIPT = r"""
 import sys
 
 from PySide6.QtCore import QObject, QSettings, Signal, QUrl
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtGui import QGuiApplication, QImageReader
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
 
-from eduescale.gui.application import configure_application_font
+from eduescale.gui.application import (
+    configure_application_font,
+    configure_application_icon,
+)
 from eduescale.gui.controller import SchoolFinderController
 
 
@@ -47,6 +50,8 @@ class FakeScrapeRunner(QObject):
 QQuickStyle.setStyle("Material")
 application = QGuiApplication([])
 assert configure_application_font(application), "Roboto font could not be loaded"
+assert configure_application_icon(application), "Application icon could not be loaded"
+assert not application.windowIcon().isNull()
 settings = QSettings(sys.argv[2], QSettings.Format.IniFormat)
 controller = SchoolFinderController(
     FakeLocationService(),
@@ -72,8 +77,11 @@ action_bar = child("actionBar")
 help_text = child("searchHelpText")
 empty_state = child("emptySearchState")
 brand_title = child("brandTitle")
+brand_logo = child("brandLogo")
 combos = [child(name) for name in ("regionFilter", "provinceFilter", "districtFilter")]
 assert brand_title.property("font").family() == "Roboto"
+logo_source = brand_logo.property("source")
+assert QImageReader(logo_source.toLocalFile()).canRead()
 
 for width, height in ((560, 600), (1280, 720), (1366, 768), (1600, 900), (1920, 1080)):
     window.resize(width, height)

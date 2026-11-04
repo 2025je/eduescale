@@ -25,6 +25,7 @@ import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Spinner
@@ -399,16 +400,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun createTopPanel(): View {
-        val brandMark = TextView(this).apply {
-            text = "E"
-            textSize = 18f
-            setTypeface(null, Typeface.BOLD)
-            setTextColor(Color.WHITE)
-            gravity = Gravity.CENTER
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(Color.parseColor(PUBLIC_MARKER_COLOR))
-            }
+        val brandMark = ImageView(this).apply {
+            setImageResource(R.drawable.edutrack_logo)
+            contentDescription = "Logo de Edutrack"
+            scaleType = ImageView.ScaleType.FIT_CENTER
         }
         val titleBlock = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL

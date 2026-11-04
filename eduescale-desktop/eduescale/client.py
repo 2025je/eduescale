@@ -221,8 +221,7 @@ def parse_institutions(xml: bytes) -> list[dict[str, object]]:
             or "Departamento no identificado",
             gestion=_management(_text(item, "gestion")),
             nivel=_level(
-                _text(item, "nivelModalidad/valor")
-                or _text(item, "nivelModalidad"),
+                _text(item, "nivelModalidad/valor") or _text(item, "nivelModalidad"),
                 _text(item, "nivelModalidad/idCodigo"),
             ),
             codigo_local=_text(item, "codlocal"),

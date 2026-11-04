@@ -126,19 +126,12 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         spacing: 14
 
-                        Rectangle {
+                        Image {
+                            objectName: "brandLogo"
                             Layout.preferredWidth: 52
                             Layout.preferredHeight: 52
-                            radius: width / 2
-                            color: window.primaryColor
-
-                            Label {
-                                anchors.centerIn: parent
-                                text: "E"
-                                color: "#FFFFFF"
-                                font.pixelSize: 25
-                                font.weight: Font.Bold
-                            }
+                            source: Qt.resolvedUrl("../assets/edutrack-logo.png")
+                            fillMode: Image.PreserveAspectFit
                         }
 
                         ColumnLayout {
