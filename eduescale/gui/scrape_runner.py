@@ -1,3 +1,4 @@
+import json
 import re
 import sys
 from pathlib import Path
@@ -6,9 +7,10 @@ from PySide6.QtCore import QObject, QProcess, QTimer, Signal, Slot
 
 from eduescale.client import SchoolFilters
 
-
 SCRAPE_TOTAL_PATTERN = re.compile(r"SCRAPE_TOTAL=(\d+)")
-SCRAPE_PROGRESS_PATTERN = re.compile(r"SCRAPE_PROGRESS=(\d+)/(\d+)\s+PAGES=(\d+)")
+SCRAPE_PROGRESS_PATTERN = re.compile(
+    r"SCRAPE_PROGRESS=(\d+)/(\d+)\s+UNIQUE=(\d+)\s+PAGES=(\d+)"
+)
 SCRAPE_TIMEOUT_MS = 15 * 60 * 1000
 
 
@@ -38,7 +40,7 @@ class ScrapeRunner(QObject):
         self._scrape_timed_out = False
         self._running = False
 
-    def start(self, output_path: Path, filters: SchoolFilters):
+    def start(self, output_path: Path, filter_sets: list[SchoolFilters]):
         if self._running:
             self.failed.emit("Extracción en curso", "Ya hay una extracción activa.")
             return
@@ -66,15 +68,11 @@ class ScrapeRunner(QObject):
             "-a",
             f"output={output_path}",
             "-a",
-            f"region_code={filters.region_code}",
-            "-a",
-            f"province_code={filters.province_code}",
-            "-a",
-            f"district_code={filters.district_code}",
-            "-a",
-            f"management={filters.management}",
-            "-a",
-            f"level={filters.level}",
+            "filters_json="
+            + json.dumps(
+                [filters.model_dump(mode="json") for filters in filter_sets],
+                separators=(",", ":"),
+            ),
             "-s",
             "LOG_LEVEL=INFO",
             "-s",
@@ -104,20 +102,23 @@ class ScrapeRunner(QObject):
         total_match = SCRAPE_TOTAL_PATTERN.search(line)
         if total_match:
             self._scrape_total = int(total_match.group(1))
-            self._emit_progress(0, self._scrape_total, 0)
+            self._emit_progress(0, self._scrape_total, 0, 0)
             return
 
         progress_match = SCRAPE_PROGRESS_PATTERN.search(line)
         if progress_match:
-            received, total, pages = map(int, progress_match.groups())
+            received, total, unique, pages = map(int, progress_match.groups())
             self._scrape_total = total
-            self._emit_progress(received, total, pages)
+            self._emit_progress(received, total, unique, pages)
 
-    def _emit_progress(self, received: int, total: int, pages: int):
-        self._records_received = received
+    def _emit_progress(self, received: int, total: int, unique: int, pages: int):
+        self._records_received = unique
         self._pages_received = pages
         if total:
-            message = f"{received:,} de {total:,} registros · {pages} páginas"
+            message = (
+                f"{received:,} de {total:,} resultados · "
+                f"{unique:,} colegios únicos · {pages} páginas"
+            )
         else:
             message = "Sin registros"
         self.progressChanged.emit(received, total, pages, message)

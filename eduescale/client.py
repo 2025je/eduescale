@@ -1,15 +1,16 @@
-from dataclasses import dataclass
-from typing import TypedDict
+from typing import Literal
 from xml.etree import ElementTree
 
 import requests
-
+from pydantic import BaseModel, ConfigDict, field_validator
 
 API_URL = "https://escale.minedu.gob.pe/padron/rest"
 REQUEST_TIMEOUT = 30
 
 
-class SchoolRecord(TypedDict):
+class SchoolRecord(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     nombre: str
     direccion: str
     localidad: str
@@ -32,13 +33,32 @@ LEVEL_CODES = {
 }
 
 
-@dataclass(frozen=True)
-class SchoolFilters:
+class SchoolFilters(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     region_code: str = ""
     province_code: str = ""
     district_code: str = ""
-    management: str = ""
-    level: str = ""
+    management: tuple[Literal["publica", "privada"], ...] = ()
+    level: tuple[Literal["inicial", "primaria", "secundaria"], ...] = ()
+
+    @field_validator("management", "level", mode="before")
+    @classmethod
+    def split_selections(cls, value: object) -> object:
+        if isinstance(value, str):
+            value = value.split(",")
+        if isinstance(value, (tuple, list)):
+            return tuple(
+                item.strip() if isinstance(item, str) else item
+                for item in value
+                if not isinstance(item, str) or item.strip()
+            )
+        return value
+
+    @field_validator("management", "level")
+    @classmethod
+    def remove_duplicate_selections(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        return tuple(dict.fromkeys(value))
 
 
 def _get_xml(
@@ -64,7 +84,10 @@ def _locations(
 ) -> list[tuple[str, str]]:
     root = _get_xml(path, params)
     return [
-        (item.findtext(code_tag, default="").strip(), item.findtext(name_tag, default="").strip())
+        (
+            item.findtext(code_tag, default="").strip(),
+            item.findtext(name_tag, default="").strip(),
+        )
         for item in root.findall(f"./{item_tag}")
         if item.findtext(code_tag, default="").strip()
     ]
@@ -101,9 +124,18 @@ def build_search_params(
     params = [("start", str(offset)), ("estados", "1")]
     if ubigeo:
         params.append(("ubigeo", ubigeo))
-    params.extend(("gestiones", code) for code in MANAGEMENT_CODES.get(filters.management, ()))
-    params.extend(("niveles", code) for code in LEVEL_CODES.get(filters.level, ()))
+    params.extend(
+        ("gestiones", code)
+        for code in _selection_codes(filters.management, MANAGEMENT_CODES)
+    )
+    params.extend(
+        ("niveles", code) for code in _selection_codes(filters.level, LEVEL_CODES)
+    )
     return params
+
+
+def _selection_codes(selection, code_mapping):
+    return tuple(code for value in selection for code in code_mapping.get(value, ()))
 
 
 def _text(element: ElementTree.Element, path: str) -> str:
@@ -121,21 +153,20 @@ def _float(element: ElementTree.Element, path: str) -> float | None:
     return float(value) if value else None
 
 
-def parse_institutions(xml: bytes) -> list[SchoolRecord]:
+def parse_institutions(xml: bytes) -> list[dict[str, object]]:
     root = ElementTree.fromstring(xml)
-    records: list[SchoolRecord] = []
+    records: list[dict[str, object]] = []
     for item in root.findall("./items"):
-        records.append(
-            {
-                "nombre": _text(item, "cenEdu"),
-                "direccion": _text(item, "dirCen"),
-                "localidad": _text(item, "localidad"),
-                "cp": _text(item, "cenPob"),
-                "turno": _text(item, "turno/valor"),
-                "alumnos": _integer(item, "estadistica/talumno"),
-                "secciones": _integer(item, "estadistica/tseccion"),
-                "longitud": _float(item, "nlongIE"),
-                "latitud": _float(item, "nlatIE"),
-            }
+        record = SchoolRecord(
+            nombre=_text(item, "cenEdu"),
+            direccion=_text(item, "dirCen"),
+            localidad=_text(item, "localidad"),
+            cp=_text(item, "cenPob"),
+            turno=_text(item, "turno/valor"),
+            alumnos=_integer(item, "estadistica/talumno"),
+            secciones=_integer(item, "estadistica/tseccion"),
+            longitud=_float(item, "nlongIE"),
+            latitud=_float(item, "nlatIE"),
         )
+        records.append(record.model_dump())
     return records

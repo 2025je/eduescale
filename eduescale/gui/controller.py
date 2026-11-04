@@ -1,18 +1,19 @@
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Property, QUrl, Signal, Slot
+from pydantic import TypeAdapter, ValidationError
+from PySide6.QtCore import Property, QObject, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices
 
 from eduescale.client import SchoolFilters
 from eduescale.gui.location_service import LocationService
 from eduescale.gui.scrape_runner import ScrapeRunner
 
-
 LOCATION_PLACEHOLDERS = {
     "regions": "Todos los departamentos",
     "provinces": "Todas las provincias",
     "districts": "Todos los distritos",
 }
+FILTER_SETS_ADAPTER = TypeAdapter(list[SchoolFilters])
 
 
 class SchoolFinderController(QObject):
@@ -30,12 +31,8 @@ class SchoolFinderController(QObject):
     ):
         super().__init__(parent)
         self._regions = [{"label": "Cargando departamentos...", "code": ""}]
-        self._provinces = [
-            {"label": LOCATION_PLACEHOLDERS["provinces"], "code": ""}
-        ]
-        self._districts = [
-            {"label": LOCATION_PLACEHOLDERS["districts"], "code": ""}
-        ]
+        self._provinces = [{"label": LOCATION_PLACEHOLDERS["provinces"], "code": ""}]
+        self._districts = [{"label": LOCATION_PLACEHOLDERS["districts"], "code": ""}]
         self._regions_enabled = False
         self._provinces_enabled = False
         self._districts_enabled = False
@@ -125,9 +122,7 @@ class SchoolFinderController(QObject):
 
     @Property(str, notify=stateChanged)
     def defaultOutputUrl(self):
-        return QUrl.fromLocalFile(
-            str(Path.home() / "colegios_escale.xlsx")
-        ).toString()
+        return QUrl.fromLocalFile(str(Path.home() / "colegios_escale.xlsx")).toString()
 
     @staticmethod
     def _location_options(placeholder: str, locations):
@@ -145,9 +140,7 @@ class SchoolFinderController(QObject):
             else LOCATION_PLACEHOLDERS["provinces"],
             [],
         )
-        self._districts = self._location_options(
-            LOCATION_PLACEHOLDERS["districts"], []
-        )
+        self._districts = self._location_options(LOCATION_PLACEHOLDERS["districts"], [])
         self._provinces_enabled = bool(region_code)
         self._districts_enabled = False
         self.provincesChanged.emit()
@@ -213,17 +206,42 @@ class SchoolFinderController(QObject):
         self._status_text = f"No se pudo cargar la ubicación desde ESCALE: {message}"
         self.stateChanged.emit()
 
-    @Slot(str, str, str, str, str, str)
-    def startScrape(
-        self,
-        output_url: str,
-        region_code: str,
-        province_code: str,
-        district_code: str,
-        management: str,
-        level: str,
-    ):
+    @Slot(str, str)
+    def startScrape(self, output_url: str, filter_sets_json: str):
         if self._scrape_running:
+            return
+
+        try:
+            filter_sets = FILTER_SETS_ADAPTER.validate_json(filter_sets_json)
+        except ValidationError as error:
+            self.errorRaised.emit(
+                "Filtros no válidos",
+                str(error),
+            )
+            return
+
+        if not filter_sets:
+            self.errorRaised.emit(
+                "Filtros requeridos",
+                "Agrega al menos una combinación de filtros.",
+            )
+            return
+
+        invalid_filter_sets = []
+        for index, filters in enumerate(filter_sets, start=1):
+            missing = []
+            if not filters.management:
+                missing.append("Gestión")
+            if not filters.level:
+                missing.append("Nivel educativo")
+            if missing:
+                invalid_filter_sets.append(f"Filtro {index}: {', '.join(missing)}")
+        if invalid_filter_sets:
+            self.errorRaised.emit(
+                "Selección requerida",
+                "Cada combinación debe incluir al menos una opción en Gestión "
+                "y Nivel educativo. " + "; ".join(invalid_filter_sets),
+            )
             return
 
         selected_url = QUrl(output_url)
@@ -251,14 +269,7 @@ class SchoolFinderController(QObject):
         self._status_text = "Consultando el total de registros en ESCALE..."
         self.stateChanged.emit()
 
-        filters = SchoolFilters(
-            region_code=region_code,
-            province_code=province_code,
-            district_code=district_code,
-            management=management,
-            level=level,
-        )
-        self._scrape_runner.start(self._output_path, filters)
+        self._scrape_runner.start(self._output_path, filter_sets)
 
     @Slot()
     def _scrape_started(self):
@@ -301,9 +312,7 @@ class SchoolFinderController(QObject):
     @Slot()
     def openOutputFolder(self):
         if self._output_path:
-            QDesktopServices.openUrl(
-                QUrl.fromLocalFile(str(self._output_path.parent))
-            )
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._output_path.parent)))
 
     @Slot()
     def shutdown(self):

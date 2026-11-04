@@ -18,23 +18,29 @@ uv sync
 uv run eduescale-gui
 ```
 
-Se abrirá una ventana Material para seleccionar la ubicación, la gestión y el
-nivel educativo. La extracción se ejecuta en segundo plano para mantener la
-interfaz receptiva. Durante el proceso se muestra el total de registros, cuántos
-se han recibido y cuántas páginas se han descargado.
+Se abrirá una ventana Material para crear combinaciones de ubicación, gestión y
+nivel educativo. Puedes agregar varias combinaciones antes de iniciar la
+extracción; se descargan y reúnen en una sola hoja Excel. Los colegios repetidos
+entre combinaciones se exportan una sola vez. La extracción se ejecuta en
+segundo plano para mantener la interfaz receptiva.
 
 También se puede iniciar con `uv run python app.py` por compatibilidad.
 
 ## Uso como librería
 
-El paquete `eduescale` publica las funciones de consulta, filtros y parsing:
+El paquete `eduescale` publica las funciones de consulta, filtros y parsing.
+Pydantic valida los modelos de filtros y registros:
 
 ```python
 from eduescale import SchoolFilters, build_search_params, fetch_regions
 
 regions = fetch_regions()
 params = build_search_params(
-    SchoolFilters(region_code="22", management="publica", level="inicial")
+    SchoolFilters(
+        region_code="22",
+        management=("publica",),
+        level=("inicial",),
+    )
 )
 ```
 
@@ -44,21 +50,28 @@ entry point instalado para iniciar esa interfaz.
 
 ## Uso
 
-Selecciona, si lo deseas, departamento, provincia y distrito; gestión pública o
-privada; y nivel inicial, primaria o secundaria. Pulsa **Scrapear y generar
-Excel**. El archivo incluye nombre del colegio, dirección, localidad, centro
-poblado (CP), turno, alumnos, secciones, longitud y latitud del local educativo,
-y un enlace para abrir las coordenadas en Google Maps.
+Selecciona, si lo deseas, departamento, provincia y distrito; una o ambas
+opciones de gestión pública/privada; y uno o varios niveles entre inicial,
+primaria y secundaria. Pulsa **Agregar combinación de filtros** para guardar
+esa búsqueda y repite el proceso para agregar otras ubicaciones o criterios.
+Cada combinación debe tener al menos una opción de Gestión y una de Nivel
+educativo. Puedes quitar combinaciones antes de iniciar. Al pulsar
+**Descargar filtros y generar Excel**, se reúnen los resultados en el mismo
+archivo y se eliminan colegios duplicados entre las búsquedas. El archivo incluye nombre
+del colegio, dirección, localidad, centro poblado (CP), turno, alumnos,
+secciones, longitud y latitud del local educativo, y un enlace para abrir las
+coordenadas en Google Maps.
 
 También puedes ejecutar el spider directamente desde la terminal:
 
 ```powershell
-uv run --project . --directory eduescale scrapy crawl colegios -a output=colegios_escale.xlsx -a region_code=22 -a management=publica -a level=inicial
+uv run --project . --directory eduescale scrapy crawl colegios -a output=colegios_escale.xlsx -a region_code=22 -a management=publica,privada -a level=inicial,primaria
 ```
 
 Los filtros `region_code`, `province_code`, `district_code`, `management` y
 `level` son opcionales. Los valores para gestión son `publica` y `privada`; los
-valores para nivel son `inicial`, `primaria` y `secundaria`.
+valores para nivel son `inicial`, `primaria` y `secundaria`. Para combinar
+valores en la terminal, sepáralos con comas.
 
 La app consulta los servicios activos, como en la configuración predeterminada
 del buscador de ESCALE. La ubicación corresponde al local donde se brinda el
@@ -68,5 +81,20 @@ el reactor asyncio y consulta el servicio en páginas de 50 registros.
 ## Pruebas
 
 ```powershell
-uv run python -m unittest discover -s tests
+uv run --group nox nox
+```
+
+Nox crea el entorno de pruebas con `uv`, instala el grupo `test` desde el
+`uv.lock` y ejecuta `pytest`.
+
+Para comprobar lint y formato con Ruff:
+
+```powershell
+uv run --group nox nox -s lint
+```
+
+Para aplicar el formato Ruff:
+
+```powershell
+uv run --group nox nox -s format
 ```

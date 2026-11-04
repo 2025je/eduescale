@@ -6,7 +6,6 @@ from PySide6.QtCore import QObject, QThread, Signal, Slot
 
 from eduescale.client import fetch_districts, fetch_provinces, fetch_regions
 
-
 LocationList = list[tuple[str, str]]
 
 

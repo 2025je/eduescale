@@ -4,7 +4,6 @@ from openpyxl import Workbook
 from openpyxl.cell import WriteOnlyCell
 from scrapy.exceptions import DropItem
 
-
 HEADERS = (
     "Nombre del colegio",
     "Dirección",
@@ -38,8 +37,7 @@ def google_maps_cell(worksheet, item):
 
     cell = WriteOnlyCell(worksheet, value="Ver en Google Maps")
     cell.hyperlink = (
-        "https://www.google.com/maps/search/?api=1"
-        f"&query={latitude},{longitude}"
+        f"https://www.google.com/maps/search/?api=1&query={latitude},{longitude}"
     )
     cell.style = "Hyperlink"
     return cell
@@ -84,23 +82,29 @@ class ExcelPipeline:
         spider = self.crawler.spider
         if not spider.count_received:
             self.worksheet.close()
-            raise RuntimeError("No se pudo obtener el total de resultados desde ESCALE.")
-        if self.row_count != spider.expected_total:
+            raise RuntimeError(
+                "No se pudo obtener el total de resultados desde ESCALE."
+            )
+        if (
+            spider.items_received != spider.expected_total
+            or self.row_count != spider.unique_items_received
+        ):
             self.worksheet.close()
             message = (
                 f"Extracción incompleta: se esperaban {spider.expected_total} "
-                f"registros y se recibieron {self.row_count}; "
+                f"resultados y se recibieron {spider.items_received}; "
+                f"se exportaron {self.row_count} colegios únicos; "
                 f"páginas completas: {spider.pages_received}."
             )
             if spider.failed_pages:
                 details = "; ".join(
-                    f"offset {offset}: {reason}"
-                    for offset, reason in sorted(spider.failed_pages.items())
+                    f"filtro {filter_index + 1}, offset {offset}: {reason}"
+                    for (filter_index, offset), reason in sorted(
+                        spider.failed_pages.items()
+                    )
                 )
                 message = f"{message} Páginas fallidas: {details}"
-            raise RuntimeError(
-                message
-            )
+            raise RuntimeError(message)
         if self.row_count:
             self.worksheet.auto_filter.ref = f"A1:J{self.row_count + 1}"
         self.workbook.save(self.output_path)
