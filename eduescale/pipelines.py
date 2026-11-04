@@ -1,12 +1,14 @@
 import json
+import os
 import sqlite3
 import tempfile
 import warnings
 from pathlib import Path
 
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 from openpyxl.cell import WriteOnlyCell
 from openpyxl.styles import Font, PatternFill
+from openpyxl.utils.exceptions import WorkbookAlreadySaved
 from openpyxl.worksheet.table import Table, TableColumn, TableStyleInfo
 from scrapy.exceptions import DropItem
 
@@ -50,6 +52,13 @@ def google_maps_cell(worksheet, item):
     return cell
 
 
+def _safe_cell(worksheet, value):
+    cell = WriteOnlyCell(worksheet, value=value)
+    if isinstance(value, str) and value.startswith("="):
+        cell.data_type = "s"
+    return cell
+
+
 class ExcelPipeline:
     @classmethod
     def from_crawler(cls, crawler):
@@ -74,6 +83,7 @@ class ExcelPipeline:
         self.worksheet.column_dimensions["J"].width = 24
         self.row_count = 0
         self._sheet_row_count = 0
+        self._temporary_output_path: Path | None = None
         with tempfile.NamedTemporaryFile(
             prefix="eduescale-",
             suffix=".sqlite3",
@@ -116,43 +126,80 @@ class ExcelPipeline:
 
     def close_spider(self):
         spider = self.crawler.spider
-        if not spider.count_received:
-            self.worksheet.close()
-            self._close_spool()
-            raise RuntimeError(
-                "No se pudo obtener el total de resultados desde ESCALE."
-            )
-        if (
-            spider.items_received != spider.expected_total
-            or self.row_count != spider.unique_items_received
-        ):
-            self.worksheet.close()
-            message = (
-                f"Extracción incompleta: se esperaban {spider.expected_total} "
-                f"resultados y se recibieron {spider.items_received}; "
-                f"se exportaron {self.row_count} colegios únicos; "
-                f"páginas completas: {spider.pages_received}."
-            )
-            if spider.failed_pages:
-                details = "; ".join(
-                    f"filtro {filter_index + 1}, offset {offset}: {reason}"
-                    for (filter_index, offset), reason in sorted(
-                        spider.failed_pages.items()
-                    )
-                )
-                message = f"{message} Páginas fallidas: {details}"
-            self._close_spool()
-            raise RuntimeError(message)
-
-        saved = False
+        workbook_saved = False
         try:
+            if not spider.count_received:
+                raise RuntimeError(
+                    "No se pudo obtener el total de resultados desde ESCALE."
+                )
+            if (
+                spider.items_received != spider.expected_total
+                or self.row_count != spider.unique_items_received
+            ):
+                message = (
+                    f"Extracción incompleta: se esperaban {spider.expected_total} "
+                    f"resultados y se recibieron {spider.items_received}; "
+                    f"se exportaron {self.row_count} colegios únicos; "
+                    f"páginas completas: {spider.pages_received}."
+                )
+                if spider.failed_pages:
+                    details = "; ".join(
+                        f"filtro {filter_index + 1}, offset {offset}: {reason}"
+                        for (filter_index, offset), reason in sorted(
+                            spider.failed_pages.items()
+                        )
+                    )
+                    message = f"{message} Páginas fallidas: {details}"
+                raise RuntimeError(message)
+
             self._write_district_tables()
-            self.workbook.save(self.output_path)
-            saved = True
+            temporary_output_path = self._create_temporary_output_path()
+            self._temporary_output_path = temporary_output_path
+            self.workbook.save(temporary_output_path)
+            workbook_saved = True
+            self._validate_workbook(temporary_output_path)
+            try:
+                self._replace_output(temporary_output_path, self.output_path)
+            except PermissionError as error:
+                raise RuntimeError(
+                    "No se pudo reemplazar el Excel de destino. "
+                    "Cierra el archivo si está abierto en Excel y vuelve a intentar."
+                ) from error
         finally:
-            if not saved:
-                self.worksheet.close()
-            self._close_spool()
+            try:
+                if not workbook_saved:
+                    try:
+                        self.worksheet.close()
+                    except WorkbookAlreadySaved:
+                        pass
+            finally:
+                try:
+                    if self._temporary_output_path is not None:
+                        self._temporary_output_path.unlink(missing_ok=True)
+                finally:
+                    self._close_spool()
+
+    def _create_temporary_output_path(self):
+        with tempfile.NamedTemporaryFile(
+            prefix=".eduescale-export-",
+            suffix=".xlsx",
+            dir=self.output_path.parent,
+            delete=False,
+        ) as export_file:
+            return Path(export_file.name)
+
+    @staticmethod
+    def _validate_workbook(path):
+        workbook = load_workbook(path, read_only=True)
+        try:
+            if "Colegios" not in workbook.sheetnames:
+                raise RuntimeError("El archivo temporal no contiene la hoja Colegios.")
+        finally:
+            workbook.close()
+
+    @staticmethod
+    def _replace_output(source, destination):
+        os.replace(source, destination)
 
     def _write_district_tables(self):
         cursor = self._spool.execute(
@@ -182,7 +229,7 @@ class ExcelPipeline:
                 current_district = district_key
 
             item = json.loads(payload)
-            row = [item[field] for field in FIELDS]
+            row = [_safe_cell(self.worksheet, item[field]) for field in FIELDS]
             row.append(google_maps_cell(self.worksheet, item))
             self._append_row(row)
 
@@ -210,9 +257,8 @@ class ExcelPipeline:
             )
             + ("",) * (len(HEADERS) - 3)
         ):
-            cell = WriteOnlyCell(self.worksheet)
+            cell = _safe_cell(self.worksheet, value)
             if index < 3:
-                cell.value = value
                 cell.font = Font(bold=True, color="FFFFFF", size=12)
             cell.fill = fill
             row.append(cell)

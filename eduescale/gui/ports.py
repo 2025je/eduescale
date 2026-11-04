@@ -20,7 +20,11 @@ class ScrapeRunnerPort(Protocol):
     progressChanged: Signal
     completed: Signal
     failed: Signal
+    cancelled: Signal
+    warning: Signal
 
     def start(self, output_path: Path, filter_sets: list[SchoolFilters]) -> None: ...
+
+    def cancel(self) -> None: ...
 
     def shutdown(self) -> None: ...

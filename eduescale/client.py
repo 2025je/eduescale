@@ -1,3 +1,4 @@
+import math
 from typing import Literal
 from xml.etree import ElementTree
 
@@ -153,7 +154,12 @@ def _integer(element: ElementTree.Element, path: str) -> int | None:
 
 def _float(element: ElementTree.Element, path: str) -> float | None:
     value = _text(element, path)
-    return float(value) if value else None
+    if not value:
+        return None
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError(f"{path} debe ser un número finito.")
+    return number
 
 
 def parse_institutions(xml: bytes) -> list[dict[str, object]]:

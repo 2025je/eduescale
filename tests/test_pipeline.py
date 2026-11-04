@@ -36,7 +36,7 @@ def test_leaves_cell_blank_when_coordinates_are_missing(worksheet):
 def test_saves_one_excel_table_per_district():
     first_record = {
         "nombre": "Colegio Ejemplo",
-        "direccion": "Av. Principal",
+        "direccion": '=HYPERLINK("https://example.invalid", "clic")',
         "localidad": "Localidad",
         "cp": "Centro Poblado",
         "turno": "Mañana",
@@ -55,6 +55,7 @@ def test_saves_one_excel_table_per_district():
     }
     with tempfile.TemporaryDirectory() as temp_dir:
         output_path = Path(temp_dir) / "colegios.xlsx"
+        output_path.write_bytes(b"archivo anterior")
         spider = SimpleNamespace(
             output=str(output_path),
             count_received=True,
@@ -83,6 +84,54 @@ def test_saves_one_excel_table_per_district():
             assert worksheet["A1"].value == "Distrito: Iquitos"
             assert worksheet["A5"].value == "Distrito: Nauta"
             assert worksheet["A3"].value == "Colegio Ejemplo"
+            assert worksheet["B3"].data_type == "s"
+            assert worksheet["B3"].value.startswith("=HYPERLINK")
             assert worksheet["A7"].value == "Colegio Secundario"
         finally:
             workbook.close()
+        assert output_path.read_bytes() != b"archivo anterior"
+
+
+def test_failed_atomic_replace_preserves_existing_excel(monkeypatch):
+    record = {
+        "nombre": "Colegio Ejemplo",
+        "direccion": "Av. Principal",
+        "localidad": "Localidad",
+        "cp": "Centro Poblado",
+        "turno": "Mañana",
+        "alumnos": 10,
+        "secciones": 1,
+        "longitud": -77.2,
+        "latitud": -12.1,
+        "distrito": "Iquitos",
+        "provincia": "Maynas",
+        "region": "Loreto",
+    }
+    with tempfile.TemporaryDirectory() as temp_dir:
+        output_path = Path(temp_dir) / "colegios.xlsx"
+        output_path.write_bytes(b"archivo anterior")
+        spider = SimpleNamespace(
+            output=str(output_path),
+            count_received=True,
+            expected_total=1,
+            items_received=1,
+            unique_items_received=1,
+            pages_received=1,
+            failed_pages={},
+        )
+        pipeline = ExcelPipeline()
+        pipeline.crawler = SimpleNamespace(spider=spider)
+        pipeline.open_spider()
+        pipeline.process_item(record)
+        monkeypatch.setattr(
+            pipeline,
+            "_replace_output",
+            lambda *_args: (_ for _ in ()).throw(PermissionError("archivo en uso")),
+        )
+
+        with pytest.raises(RuntimeError, match="Cierra el archivo"):
+            pipeline.close_spider()
+
+        assert output_path.read_bytes() == b"archivo anterior"
+        assert not pipeline._temporary_output_path.exists()
+        assert not pipeline._spool_path.exists()

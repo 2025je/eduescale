@@ -18,6 +18,13 @@ a = Analysis(
     noarchive=False,
     optimize=0,
 )
+a.binaries = [
+    binary
+    for binary in a.binaries
+    if not binary[0].lower().replace('\\', '/').endswith(
+        '/plugins/designer/qwebengineview.dll'
+    )
+]
 pyz = PYZ(a.pure)
 
 exe = EXE(

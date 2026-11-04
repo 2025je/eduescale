@@ -7,8 +7,8 @@ import QtQuick.Layouts
 ApplicationWindow {
     id: window
     required property var controller
-    width: 820
-    height: 860
+    width: controller.windowWidth
+    height: controller.windowHeight
     minimumWidth: 560
     minimumHeight: 600
     visible: true
@@ -32,7 +32,10 @@ ApplicationWindow {
     Material.primary: primaryColor
     Material.accent: primaryColor
 
-    onClosing: controller.shutdown()
+    onClosing: {
+        controller.saveWindowSize(width, height)
+        controller.shutdown()
+    }
 
     ListModel {
         id: filterSetsModel
@@ -168,10 +171,12 @@ ApplicationWindow {
                     }
 
                     GridLayout {
+                        id: filterGrid
+                        objectName: "filterGrid"
                         Layout.fillWidth: true
-                        columns: 2
-                        columnSpacing: 18
-                        rowSpacing: 10
+                        columns: window.width < 720 ? 1 : 2
+                        columnSpacing: window.width < 720 ? 0 : 18
+                        rowSpacing: window.width < 720 ? 4 : 10
 
                         Label {
                             text: "Departamento"
@@ -180,6 +185,7 @@ ApplicationWindow {
                         }
                         ComboBox {
                             id: regionFilter
+                            objectName: "regionFilter"
                             Layout.fillWidth: true
                             implicitHeight: 52
                             model: controller.regions
@@ -204,6 +210,7 @@ ApplicationWindow {
                         }
                         ComboBox {
                             id: provinceFilter
+                            objectName: "provinceFilter"
                             Layout.fillWidth: true
                             implicitHeight: 52
                             model: controller.provinces
@@ -228,6 +235,7 @@ ApplicationWindow {
                         }
                         ComboBox {
                             id: districtFilter
+                            objectName: "districtFilter"
                             Layout.fillWidth: true
                             implicitHeight: 52
                             model: controller.districts
@@ -294,14 +302,16 @@ ApplicationWindow {
                                 text: "Secundaria"
                                 enabled: !controller.scrapeRunning
                             }
+                        }
 
-                            Label {
-                                Layout.fillWidth: true
-                                text: "Marca al menos una opción en Gestión y Nivel educativo para agregar esta combinación."
-                                color: window.mutedTextColor
-                                wrapMode: Text.WordWrap
-                                font.pixelSize: 12
-                            }
+                        Label {
+                            objectName: "searchHelpText"
+                            Layout.fillWidth: true
+                            Layout.columnSpan: filterGrid.columns
+                            text: "Marca al menos una opción en Gestión y Nivel educativo para agregar esta combinación."
+                            color: window.mutedTextColor
+                            wrapMode: Text.WordWrap
+                            font.pixelSize: 12
                         }
                     }
 
@@ -369,6 +379,28 @@ ApplicationWindow {
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 6
+
+                        Rectangle {
+                            objectName: "emptySearchState"
+                            Layout.fillWidth: true
+                            implicitHeight: emptySearchLabel.implicitHeight + 24
+                            visible: filterSetsModel.count === 0
+                            radius: window.controlRadius
+                            color: "#FBFAFD"
+                            border.width: 1
+                            border.color: window.borderColor
+
+                            Label {
+                                id: emptySearchLabel
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.top: parent.top
+                                anchors.margins: 12
+                                text: "Aún no agregas búsquedas. Elige los criterios y pulsa «Agregar a mis búsquedas»."
+                                color: window.mutedTextColor
+                                wrapMode: Text.WordWrap
+                            }
+                        }
 
                         Repeater {
                             model: filterSetsModel
@@ -515,7 +547,7 @@ ApplicationWindow {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        height: 100
+        height: controller.scrapeRunning ? 142 : 100
         color: "white"
         border.color: window.borderColor
         z: 1
@@ -537,34 +569,64 @@ ApplicationWindow {
                 font.pixelSize: 11
             }
 
-            Button {
-                id: scrapeButton
-                objectName: "scrapeButton"
+            RowLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                implicitHeight: 52
-                text: controller.scrapeRunning
-                    ? "Descargando datos..."
-                    : "Descargar y generar Excel"
-                highlighted: true
-                enabled: !controller.scrapeRunning && filterSetsModel.count > 0
-                Material.foreground: enabled ? "#FFFFFF" : window.primaryEmphasisColor
-                onClicked: saveDialog.open()
-                background: Rectangle {
-                    radius: window.controlRadius
-                    color: !scrapeButton.enabled
-                        ? window.primarySubtleColor
-                        : scrapeButton.pressed
-                            ? window.primaryActiveColor
-                            : scrapeButton.hovered
-                                ? window.primaryHoverColor
-                                : window.primaryColor
-                    border.width: 2
-                    border.color: scrapeButton.enabled
-                        ? window.primaryBorderColor
-                        : window.primarySubtleColor
-                    Behavior on color {
-                        ColorAnimation { duration: 120 }
+                spacing: 10
+
+                Button {
+                    id: scrapeButton
+                    objectName: "scrapeButton"
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    implicitHeight: 52
+                    text: controller.cancelRequested
+                        ? "Cancelando extracción..."
+                        : controller.scrapeRunning
+                        ? "Descargando datos..."
+                        : "Descargar y generar Excel"
+                    highlighted: true
+                    enabled: !controller.scrapeRunning && filterSetsModel.count > 0
+                    Material.foreground: enabled ? "#FFFFFF" : window.primaryEmphasisColor
+                    onClicked: saveDialog.open()
+                    background: Rectangle {
+                        radius: window.controlRadius
+                        color: !scrapeButton.enabled
+                            ? window.primarySubtleColor
+                            : scrapeButton.pressed
+                                ? window.primaryActiveColor
+                                : scrapeButton.hovered
+                                    ? window.primaryHoverColor
+                                    : window.primaryColor
+                        border.width: 2
+                        border.color: scrapeButton.enabled
+                            ? window.primaryBorderColor
+                            : window.primarySubtleColor
+                        Behavior on color {
+                            ColorAnimation { duration: 120 }
+                        }
+                    }
+                }
+
+                Button {
+                    id: cancelScrapeButton
+                    objectName: "cancelScrapeButton"
+                    Layout.preferredWidth: 120
+                    Layout.fillHeight: true
+                    visible: controller.scrapeRunning
+                    enabled: !controller.cancelRequested
+                    text: controller.cancelRequested ? "Cancelando..." : "Cancelar"
+                    onClicked: controller.cancelScrape()
+                    Material.foreground: "#B42318"
+                    background: Rectangle {
+                        radius: window.controlRadius
+                        color: cancelScrapeButton.pressed
+                            ? "#FCE8E6"
+                            : cancelScrapeButton.hovered
+                                ? "#FFF4F2"
+                                : "#FFFFFF"
+                        border.width: 1
+                        border.color: "#E6B8B3"
                     }
                 }
             }

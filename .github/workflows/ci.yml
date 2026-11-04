@@ -1,0 +1,18 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.14"
+      - name: Run tests, lint, and Windows builds
+        run: uv run --locked --group nox nox -s tests lint build
+      - name: Smoke-test scraper executable
+        run: .\dist\eduescale-scraper.exe list

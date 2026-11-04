@@ -3,7 +3,7 @@ import json
 import scrapy
 from scrapy.http import Response, TextResponse
 
-from eduescale.spiders.schools import SchoolsSpider
+from eduescale.spiders.schools import RECORD_FIELDS, SchoolsSpider
 
 
 class TestSchoolsSpiderPage:
@@ -100,6 +100,35 @@ class TestSchoolsSpiderPage:
         assert spider.items_received == 0
         assert spider.pages_received == 0
 
+    def test_invalid_numeric_field_retries_page(self):
+        spider = SchoolsSpider(output="unused.xlsx")
+        request = scrapy.Request(
+            "https://escale.minedu.gob.pe/padron/rest/instituciones?start=0",
+            meta={
+                "filter_index": 0,
+                "filter_total": 1,
+                "offset": 0,
+                "validation_retry_times": 0,
+            },
+        )
+        response = Response(
+            request.url,
+            request=request,
+            body=(
+                b"<instituciones><items><cenEdu>Colegio</cenEdu>"
+                b"<estadistica><talumno>no-numero</talumno></estadistica>"
+                b"</items></instituciones>"
+            ),
+        )
+
+        output = list(spider.parse_page(response))
+
+        assert len(output) == 1
+        assert isinstance(output[0], scrapy.Request)
+        assert output[0].meta["validation_retry_times"] == 1
+        assert spider.items_received == 0
+        assert spider.pages_received == 0
+
     def test_deduplicates_records_across_filter_sets(self):
         spider = SchoolsSpider(
             output="unused.xlsx",
@@ -131,6 +160,66 @@ class TestSchoolsSpiderPage:
             response = Response(request.url, request=request, body=xml)
             outputs.extend(spider.parse_page(response))
 
-        assert len(outputs) == 1
-        assert spider.items_received == 2
-        assert spider.unique_items_received == 1
+        try:
+            assert len(outputs) == 1
+            assert spider.items_received == 2
+            assert spider.unique_items_received == 1
+        finally:
+            spider.closed("finished")
+
+    def test_disk_deduplication_matches_tuple_equality_and_cleans_up(self):
+        spider = SchoolsSpider(output="unused.xlsx")
+        base_record = {
+            "nombre": "Colegio Ñ",
+            "direccion": "Av. Principal",
+            "localidad": "Localidad",
+            "cp": "Centro poblado",
+            "turno": "Mañana",
+            "alumnos": 10,
+            "secciones": 1,
+            "longitud": 0.0,
+            "latitud": -0.0,
+            "distrito": "Distrito",
+            "provincia": "Provincia",
+            "region": "Región",
+        }
+        changed_records = []
+        for field in RECORD_FIELDS:
+            value = base_record[field]
+            if isinstance(value, str):
+                changed_value = f"{value} 2"
+            elif isinstance(value, float):
+                changed_value = value + 1.0
+            else:
+                changed_value = value + 1
+            changed_records.append({**base_record, field: changed_value})
+        records = [
+            base_record,
+            base_record.copy(),
+            *changed_records,
+            {**base_record, "longitud": -0.0},
+            {**base_record, "alumnos": None},
+        ]
+        reference = set()
+        expected = []
+        for record in records:
+            key = tuple(record[field] for field in RECORD_FIELDS)
+            expected.append(key not in reference)
+            reference.add(key)
+
+        actual = [spider._is_new_record(record) for record in records]
+        store_path = spider._seen_store_path
+
+        try:
+            assert (
+                actual
+                == expected
+                == ([True, False] + [True] * len(RECORD_FIELDS) + [False, True])
+            )
+            assert store_path is not None
+            assert store_path.exists()
+        finally:
+            spider.closed("finished")
+
+        assert store_path is not None
+        assert not store_path.exists()

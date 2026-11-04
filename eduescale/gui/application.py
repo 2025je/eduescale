@@ -1,3 +1,4 @@
+import logging
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -11,6 +12,9 @@ from eduescale.gui.controller import SchoolFinderController
 from eduescale.gui.location_service import LocationService
 from eduescale.gui.ports import LocationServicePort, ScrapeRunnerPort
 from eduescale.gui.scrape_runner import ScrapeRunner
+from eduescale.logging_config import configure_logging
+
+LOGGER = logging.getLogger(__name__)
 
 
 def create_controller(
@@ -30,13 +34,18 @@ def main(
 ) -> int:
     QQuickStyle.setStyle("Material")
     application = QGuiApplication(sys.argv)
-    application.setApplicationName("Buscador de colegios - ESCALE")
+    application.setOrganizationName("2025je")
+    application.setApplicationName("EduScale")
+    application.setApplicationDisplayName("Buscador de colegios - ESCALE")
+    log_path = configure_logging()
+    LOGGER.info("Starting EduScale; log file: %s", log_path)
     engine = QQmlApplicationEngine()
     controller = controller_factory()
     engine.setInitialProperties({"controller": controller})
     qml_path = Path(__file__).resolve().parent / "qml" / "Main.qml"
     engine.load(QUrl.fromLocalFile(str(qml_path)))
     if not engine.rootObjects():
+        LOGGER.error("Could not load the main QML interface from %s", qml_path)
         controller.shutdown()
         return 1
     return application.exec()

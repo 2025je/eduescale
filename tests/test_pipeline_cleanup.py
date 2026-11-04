@@ -10,6 +10,7 @@ from eduescale.pipelines import ExcelPipeline
 def test_incomplete_export_closes_openpyxl_temporary_file():
     with tempfile.TemporaryDirectory() as temp_dir:
         output_path = Path(temp_dir) / "incomplete.xlsx"
+        output_path.write_bytes(b"archivo anterior")
         spider = SimpleNamespace(
             output=str(output_path),
             count_received=True,
@@ -29,6 +30,8 @@ def test_incomplete_export_closes_openpyxl_temporary_file():
         with pytest.raises(RuntimeError, match="Extracción incompleta"):
             pipeline.close_spider()
 
-        assert not output_path.exists()
+        assert output_path.read_bytes() == b"archivo anterior"
+        assert pipeline._temporary_output_path is None
+        assert not list(output_path.parent.glob(".eduescale-export-*.xlsx"))
         assert not spool_path.exists()
         temporary_sheet.unlink()

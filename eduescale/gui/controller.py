@@ -1,11 +1,14 @@
+import logging
 from pathlib import Path
 
 from pydantic import TypeAdapter, ValidationError
-from PySide6.QtCore import Property, QObject, QUrl, Signal, Slot
+from PySide6.QtCore import Property, QObject, QSettings, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices
 
 from eduescale.client import SchoolFilters
 from eduescale.gui.ports import LocationServicePort, ScrapeRunnerPort
+
+LOGGER = logging.getLogger(__name__)
 
 LOCATION_PLACEHOLDERS = {
     "regions": "Todos los departamentos",
@@ -27,8 +30,10 @@ class SchoolFinderController(QObject):
         location_service: LocationServicePort,
         scrape_runner: ScrapeRunnerPort,
         parent: QObject | None = None,
+        settings: QSettings | None = None,
     ):
         super().__init__(parent)
+        self._settings = settings if settings is not None else QSettings()
         self._regions = [{"label": "Cargando departamentos...", "code": ""}]
         self._provinces = [{"label": LOCATION_PLACEHOLDERS["provinces"], "code": ""}]
         self._districts = [{"label": LOCATION_PLACEHOLDERS["districts"], "code": ""}]
@@ -44,6 +49,7 @@ class SchoolFinderController(QObject):
         self._progress_message = ""
         self._progress_indeterminate = True
         self._scrape_running = False
+        self._cancel_requested = False
         self._open_folder_visible = False
         self._output_path: Path | None = None
 
@@ -58,7 +64,10 @@ class SchoolFinderController(QObject):
         self._scrape_runner.progressChanged.connect(self._scrape_progress)
         self._scrape_runner.completed.connect(self._scrape_completed)
         self._scrape_runner.failed.connect(self._scrape_failed)
+        self._scrape_runner.cancelled.connect(self._scrape_cancelled)
+        self._scrape_runner.warning.connect(self._scrape_warning)
         self._location_service.load("regions")
+        LOGGER.info("Requested ESCALE departments.")
 
     @Property("QVariantList", notify=regionsChanged)
     def regions(self):
@@ -113,12 +122,48 @@ class SchoolFinderController(QObject):
         return self._scrape_running
 
     @Property(bool, notify=stateChanged)
+    def cancelRequested(self):
+        return self._cancel_requested
+
+    @Property(bool, notify=stateChanged)
     def openFolderVisible(self):
         return self._open_folder_visible
 
     @Property(str, notify=stateChanged)
     def defaultOutputUrl(self):
-        return QUrl.fromLocalFile(str(Path.home() / "colegios_escale.xlsx")).toString()
+        directory = self._settings.value("export/lastDirectory", str(Path.home()))
+        try:
+            output_directory = Path(directory)
+        except (TypeError, ValueError):
+            output_directory = Path.home()
+        if not output_directory.is_dir():
+            output_directory = Path.home()
+        return QUrl.fromLocalFile(
+            str(output_directory / "colegios_escale.xlsx")
+        ).toString()
+
+    @Property(int, notify=stateChanged)
+    def windowWidth(self):
+        return self._window_dimension("window/width", 820, 560)
+
+    @Property(int, notify=stateChanged)
+    def windowHeight(self):
+        return self._window_dimension("window/height", 860, 600)
+
+    def _window_dimension(self, key: str, default: int, minimum: int) -> int:
+        try:
+            value = int(self._settings.value(key, default))
+        except (TypeError, ValueError):
+            return default
+        return max(value, minimum)
+
+    @Slot(int, int)
+    def saveWindowSize(self, width: int, height: int):
+        self._settings.setValue("window/width", max(width, 560))
+        self._settings.setValue("window/height", max(height, 600))
+        self._settings.sync()
+        if self._settings.status() != QSettings.Status.NoError:
+            LOGGER.error("No se pudo guardar el tamaño de la ventana.")
 
     @staticmethod
     def _location_options(placeholder: str, locations):
@@ -128,6 +173,7 @@ class SchoolFinderController(QObject):
 
     @Slot(str)
     def selectRegion(self, region_code: str):
+        LOGGER.info("Selected department code %s.", region_code or "(all)")
         self._selected_region_code = region_code
         self._selected_province_code = ""
         self._provinces = self._location_options(
@@ -147,6 +193,7 @@ class SchoolFinderController(QObject):
 
     @Slot(str)
     def selectProvince(self, province_code: str):
+        LOGGER.info("Selected province code %s.", province_code or "(all)")
         self._selected_province_code = province_code
         self._districts = self._location_options(
             "Cargando distritos..."
@@ -162,6 +209,12 @@ class SchoolFinderController(QObject):
 
     @Slot(str, str, object)
     def _locations_loaded(self, kind, parent_code, locations):
+        LOGGER.info(
+            "Loaded %d %s for parent code %s.",
+            len(locations),
+            kind,
+            parent_code or "(none)",
+        )
         if kind == "regions" and not parent_code:
             self._regions = self._location_options(
                 LOCATION_PLACEHOLDERS["regions"], locations
@@ -186,6 +239,12 @@ class SchoolFinderController(QObject):
 
     @Slot(str, str, str)
     def _locations_failed(self, kind, parent_code, message):
+        LOGGER.error(
+            "Failed to load %s for parent code %s: %s",
+            kind,
+            parent_code or "(none)",
+            message,
+        )
         if kind == "regions" and not parent_code:
             self._regions = [{"label": "No se pudo cargar", "code": ""}]
             self._regions_enabled = False
@@ -241,11 +300,16 @@ class SchoolFinderController(QObject):
             return
 
         selected_url = QUrl(output_url)
-        output_path = (
-            selected_url.toLocalFile()
-            if selected_url.isLocalFile()
-            else selected_url.toString()
-        )
+        if selected_url.isLocalFile():
+            output_path = selected_url.toLocalFile()
+        elif selected_url.scheme():
+            self.errorRaised.emit(
+                "Ruta no válida",
+                "Selecciona un archivo local para guardar el Excel.",
+            )
+            return
+        else:
+            output_path = selected_url.toString()
         if not output_path:
             self.errorRaised.emit(
                 "Ruta no válida", "Selecciona un archivo Excel válido."
@@ -255,6 +319,11 @@ class SchoolFinderController(QObject):
         self._output_path = Path(output_path)
         if self._output_path.suffix.lower() != ".xlsx":
             self._output_path = self._output_path.with_suffix(".xlsx")
+        self._settings.setValue("export/lastDirectory", str(self._output_path.parent))
+        self._settings.sync()
+        if self._settings.status() != QSettings.Status.NoError:
+            LOGGER.error("No se pudo guardar la carpeta de exportación.")
+        self._cancel_requested = False
         self._open_folder_visible = False
         self._scrape_running = True
         self._progress_visible = True
@@ -265,7 +334,20 @@ class SchoolFinderController(QObject):
         self._status_text = "Consultando el total de registros en ESCALE..."
         self.stateChanged.emit()
 
+        LOGGER.info(
+            "Starting extraction to %s with filters %s.",
+            self._output_path,
+            [filters.model_dump(mode="json") for filters in filter_sets],
+        )
         self._scrape_runner.start(self._output_path, filter_sets)
+
+    @Slot()
+    def cancelScrape(self):
+        if self._scrape_running and not self._cancel_requested:
+            LOGGER.info("Cancellation requested by the user.")
+            self._cancel_requested = True
+            self.stateChanged.emit()
+            self._scrape_runner.cancel()
 
     @Slot()
     def _scrape_started(self):
@@ -274,6 +356,12 @@ class SchoolFinderController(QObject):
 
     @Slot(int, int, int, str)
     def _scrape_progress(self, received, total, pages, message):
+        LOGGER.debug(
+            "Scrape progress: %d/%d results received across %d pages.",
+            received,
+            total,
+            pages,
+        )
         self._progress_value = received if total else 1
         self._progress_maximum = max(total, received, 1)
         self._progress_indeterminate = False
@@ -283,7 +371,14 @@ class SchoolFinderController(QObject):
 
     @Slot(str, int, int, int)
     def _scrape_completed(self, output_path, total, records, pages):
+        LOGGER.info(
+            "Extraction completed: %d unique records across %d pages; output=%s",
+            records,
+            pages,
+            output_path,
+        )
         self._scrape_running = False
+        self._cancel_requested = False
         self._progress_visible = True
         self._progress_indeterminate = False
         self._progress_maximum = max(total, records, 1)
@@ -297,12 +392,30 @@ class SchoolFinderController(QObject):
         self._open_folder_visible = True
         self.stateChanged.emit()
 
+    @Slot()
+    def _scrape_cancelled(self):
+        LOGGER.info("Extraction cancelled; previous output was preserved.")
+        self._scrape_running = False
+        self._cancel_requested = False
+        self._progress_visible = False
+        self._progress_indeterminate = False
+        self._progress_message = ""
+        self._status_text = "Extracción cancelada. El archivo anterior se conservó."
+        self.stateChanged.emit()
+
     @Slot(str, str)
     def _scrape_failed(self, title, details):
+        LOGGER.error("Extraction failed (%s): %s", title, details)
         self._scrape_running = False
+        self._cancel_requested = False
         self._progress_visible = False
         self._status_text = title
         self.stateChanged.emit()
+        self.errorRaised.emit(title, details)
+
+    @Slot(str, str)
+    def _scrape_warning(self, title, details):
+        LOGGER.warning("%s: %s", title, details)
         self.errorRaised.emit(title, details)
 
     @Slot()

@@ -148,3 +148,12 @@ class TestParseInstitutions:
                 "region": "Lima",
             }
         ]
+
+    @pytest.mark.parametrize("value", ["nan", "inf", "-inf"])
+    def test_rejects_non_finite_coordinates(self, value):
+        xml = (
+            f"<instituciones><items><nlongIE>{value}</nlongIE></items></instituciones>"
+        ).encode()
+
+        with pytest.raises(ValueError, match="nlongIE debe ser un número finito"):
+            parse_institutions(xml)
