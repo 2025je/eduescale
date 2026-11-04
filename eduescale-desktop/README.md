@@ -3,8 +3,8 @@
 Aplicación de escritorio en Python para extraer los servicios educativos publicados en
 el [Padrón de IIEE de ESCALE](https://escale.minedu.gob.pe/padron-de-iiee).
 La app usa Scrapy con `AsyncioSelectorReactor` para consultar la API del buscador
-oficial y crear un Excel local junto con un archivo complementario `.eduescale`
-para una app Android. La interfaz está hecha con QML y PySide6
+oficial y guardar los resultados temporalmente. Desde la interfaz puedes exportar
+los datos a Excel o a un archivo `.eduescale` para la app Android. La interfaz está hecha con QML y PySide6
 Essentials, que incluye los componentes Qt Quick usados por la app sin empaquetar
 los módulos opcionales de WebEngine y PDF. La interfaz usa Roboto, incluida con
 la licencia SIL Open Font License, y adapta a Qt Quick Controls los tokens
@@ -24,11 +24,11 @@ uv run eduescale-gui
 
 Se abrirá una ventana Material para crear combinaciones de ubicación, gestión y
 nivel educativo. Puedes agregar varias combinaciones antes de iniciar la
-extracción; se descargan y reúnen en una sola hoja Excel. Los colegios repetidos
-entre combinaciones se exportan una sola vez. La extracción se ejecuta en
+extracción; se descargan y reúnen en un conjunto temporal. Los colegios repetidos
+entre combinaciones se guardan una sola vez. La extracción se ejecuta en
 segundo plano para mantener la interfaz receptiva. Puedes cancelarla desde la
 barra inferior; los archivos anteriores se conservan si la extracción se
-cancela o falla. El Excel se valida antes de reemplazar los destinos.
+cancela o falla.
 
 También se puede iniciar con `uv run python app.py` por compatibilidad.
 
@@ -66,13 +66,21 @@ primaria y secundaria. Pulsa **Agregar combinación de filtros** para guardar
 esa búsqueda y repite el proceso para agregar otras ubicaciones o criterios.
 Cada combinación debe tener al menos una opción de Gestión y una de Nivel
 educativo. Puedes quitar combinaciones antes de iniciar. Al pulsar
-**Descargar filtros y generar Excel**, se reúnen los resultados, se eliminan
-colegios duplicados entre las búsquedas y se organizan tablas de Excel por
-distrito dentro de una hoja. El Excel contiene nombre del colegio, dirección,
-localidad, centro poblado (CP), turno, alumnos y secciones; no incluye
-coordenadas ni enlaces de Google Maps.
+**Ejecutar búsqueda**, solo se consultan y guardan temporalmente los resultados;
+no se crean archivos de exportación. Al finalizar, usa **Exportar Excel** o
+**Exportar .eduescale** para abrir un diálogo y elegir la carpeta y el nombre del
+archivo; se sugiere la última carpeta utilizada y un nombre predeterminado. Al
+confirmar, se genera únicamente el formato elegido y se abre con la aplicación
+predeterminada del sistema. El nombre sugerido incluye la fecha y hora en que
+finalizó la descarga de datos, por ejemplo
+`colegios_escale_2026-11-04_16-09-53.xlsx`; ambos formatos usan el mismo nombre
+base. Los colegios repetidos se guardan una sola vez. El
+Excel organiza tablas por distrito dentro de una hoja y contiene
+nombre del colegio, dirección, localidad, centro poblado (CP), turno, alumnos y
+secciones; no incluye coordenadas ni enlaces de Google Maps.
 
-Junto al Excel se genera un archivo del mismo nombre con extensión `.eduescale`.
+Si se exportan ambos formatos, comparten el mismo nombre base y solo cambia la
+extensión.
 El `.eduescale` es un archivo JSON UTF-8 versionado con departamento, provincia,
 distrito, los campos del Excel, el código del local y longitud/latitud, sin el
 enlace de Maps. Por ejemplo,

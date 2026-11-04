@@ -9,8 +9,9 @@ from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
 
 from eduescale.gui.controller import SchoolFinderController
+from eduescale.gui.export_runner import ExportRunner
 from eduescale.gui.location_service import LocationService
-from eduescale.gui.ports import LocationServicePort, ScrapeRunnerPort
+from eduescale.gui.ports import ExportRunnerPort, LocationServicePort, ScrapeRunnerPort
 from eduescale.gui.scrape_runner import ScrapeRunner
 from eduescale.logging_config import configure_logging
 
@@ -52,12 +53,14 @@ def configure_application_icon(application: QGuiApplication) -> bool:
 def create_controller(
     location_service: LocationServicePort | None = None,
     scrape_runner: ScrapeRunnerPort | None = None,
+    export_runner: ExportRunnerPort | None = None,
 ) -> SchoolFinderController:
     return SchoolFinderController(
         location_service=(
             LocationService() if location_service is None else location_service
         ),
         scrape_runner=ScrapeRunner() if scrape_runner is None else scrape_runner,
+        export_runner=ExportRunner() if export_runner is None else export_runner,
     )
 
 

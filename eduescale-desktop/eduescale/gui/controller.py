@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 from pathlib import Path
 
 from pydantic import TypeAdapter, ValidationError
@@ -7,7 +8,8 @@ from PySide6.QtGui import QDesktopServices
 
 from eduescale.client import SchoolFilters
 from eduescale.export_files import android_data_path
-from eduescale.gui.ports import LocationServicePort, ScrapeRunnerPort
+from eduescale.gui.export_runner import ExportRunner
+from eduescale.gui.ports import ExportRunnerPort, LocationServicePort, ScrapeRunnerPort
 
 LOGGER = logging.getLogger(__name__)
 
@@ -32,6 +34,7 @@ class SchoolFinderController(QObject):
         scrape_runner: ScrapeRunnerPort,
         parent: QObject | None = None,
         settings: QSettings | None = None,
+        export_runner: ExportRunnerPort | None = None,
     ):
         super().__init__(parent)
         self._settings = settings if settings is not None else QSettings()
@@ -51,12 +54,15 @@ class SchoolFinderController(QObject):
         self._progress_indeterminate = True
         self._scrape_running = False
         self._cancel_requested = False
-        self._open_folder_visible = False
+        self._export_running = False
+        self._exports_available = False
         self._output_path: Path | None = None
+        self._dataset_path: Path | None = None
 
         self._location_service = location_service
         self._scrape_runner = scrape_runner
-        for dependency in (location_service, scrape_runner):
+        self._export_runner = ExportRunner() if export_runner is None else export_runner
+        for dependency in (location_service, scrape_runner, self._export_runner):
             if isinstance(dependency, QObject) and dependency.parent() is None:
                 dependency.setParent(self)
         self._location_service.loaded.connect(self._locations_loaded)
@@ -67,6 +73,8 @@ class SchoolFinderController(QObject):
         self._scrape_runner.failed.connect(self._scrape_failed)
         self._scrape_runner.cancelled.connect(self._scrape_cancelled)
         self._scrape_runner.warning.connect(self._scrape_warning)
+        self._export_runner.completed.connect(self._export_completed)
+        self._export_runner.failed.connect(self._export_failed)
         self._location_service.load("regions")
         LOGGER.info("Requested ESCALE departments.")
 
@@ -127,11 +135,29 @@ class SchoolFinderController(QObject):
         return self._cancel_requested
 
     @Property(bool, notify=stateChanged)
-    def openFolderVisible(self):
-        return self._open_folder_visible
+    def exportRunning(self):
+        return self._export_running
+
+    @Property(bool, notify=stateChanged)
+    def exportsAvailable(self):
+        return self._exports_available
 
     @Property(str, notify=stateChanged)
     def defaultOutputUrl(self):
+        output_path = (
+            self._output_path
+            if self._exports_available and self._output_path is not None
+            else self._next_output_path()
+        )
+        return QUrl.fromLocalFile(str(output_path)).toString()
+
+    @Property(str, notify=stateChanged)
+    def defaultEduScaleOutputUrl(self):
+        output_url = QUrl(self.defaultOutputUrl)
+        output_path = Path(output_url.toLocalFile())
+        return QUrl.fromLocalFile(str(android_data_path(output_path))).toString()
+
+    def _next_output_path(self) -> Path:
         directory = self._settings.value("export/lastDirectory", str(Path.home()))
         try:
             output_directory = Path(directory)
@@ -139,9 +165,12 @@ class SchoolFinderController(QObject):
             output_directory = Path.home()
         if not output_directory.is_dir():
             output_directory = Path.home()
-        return QUrl.fromLocalFile(
-            str(output_directory / "colegios_escale.xlsx")
-        ).toString()
+        output_path = output_directory / "colegios_escale.xlsx"
+        suffix = 1
+        while output_path.exists() or android_data_path(output_path).exists():
+            output_path = output_directory / f"colegios_escale_{suffix}.xlsx"
+            suffix += 1
+        return output_path
 
     @Property(int, notify=stateChanged)
     def windowWidth(self):
@@ -325,7 +354,8 @@ class SchoolFinderController(QObject):
         if self._settings.status() != QSettings.Status.NoError:
             LOGGER.error("No se pudo guardar la carpeta de exportación.")
         self._cancel_requested = False
-        self._open_folder_visible = False
+        self._dataset_path = None
+        self._exports_available = False
         self._scrape_running = True
         self._progress_visible = True
         self._progress_value = 0
@@ -336,7 +366,7 @@ class SchoolFinderController(QObject):
         self.stateChanged.emit()
 
         LOGGER.info(
-            "Starting extraction to %s with filters %s.",
+            "Starting extraction for %s with filters %s.",
             self._output_path,
             [filters.model_dump(mode="json") for filters in filter_sets],
         )
@@ -371,15 +401,12 @@ class SchoolFinderController(QObject):
         self.stateChanged.emit()
 
     @Slot(str, int, int, int)
-    def _scrape_completed(self, output_path, total, records, pages):
-        android_path = android_data_path(Path(output_path))
+    def _scrape_completed(self, database_path, total, records, pages):
         LOGGER.info(
-            "Extraction completed: %d unique records across %d pages; "
-            "Excel=%s; EduScale=%s",
+            "Extraction completed: %d unique records across %d pages; data=%s",
             records,
             pages,
-            output_path,
-            android_path,
+            database_path,
         )
         self._scrape_running = False
         self._cancel_requested = False
@@ -388,12 +415,17 @@ class SchoolFinderController(QObject):
         self._progress_maximum = max(total, records, 1)
         self._progress_value = self._progress_maximum
         self._progress_message = "Completado"
-        self._output_path = Path(output_path)
-        self._status_text = (
-            f"Archivos creados: {self._output_path.name} y {android_path.name} · "
-            f"{records:,} registros en {pages} páginas."
+        self._dataset_path = Path(database_path)
+        output_directory = (
+            self._output_path.parent
+            if self._output_path is not None
+            else self._next_output_path().parent
         )
-        self._open_folder_visible = True
+        self._output_path = self._timestamped_output_path(output_directory)
+        self._status_text = (
+            f"Datos listos para exportar · {records:,} colegios en {pages} páginas."
+        )
+        self._exports_available = True
         self.stateChanged.emit()
 
     @Slot()
@@ -404,6 +436,8 @@ class SchoolFinderController(QObject):
         self._progress_visible = False
         self._progress_indeterminate = False
         self._progress_message = ""
+        self._dataset_path = None
+        self._exports_available = False
         self._status_text = (
             "Extracción cancelada. Los archivos anteriores se conservaron."
         )
@@ -413,6 +447,8 @@ class SchoolFinderController(QObject):
     def _scrape_failed(self, title, details):
         LOGGER.error("Extraction failed (%s): %s", title, details)
         self._scrape_running = False
+        self._dataset_path = None
+        self._exports_available = False
         self._cancel_requested = False
         self._progress_visible = False
         self._status_text = title
@@ -424,12 +460,126 @@ class SchoolFinderController(QObject):
         LOGGER.warning("%s: %s", title, details)
         self.errorRaised.emit(title, details)
 
-    @Slot()
-    def openOutputFolder(self):
-        if self._output_path:
-            QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._output_path.parent)))
+    @Slot(str)
+    def exportExcelFile(self, output_url: str):
+        self._start_export("excel", output_url)
+
+    @Slot(str)
+    def exportEduScaleFile(self, output_url: str):
+        self._start_export("eduescale", output_url)
+
+    @staticmethod
+    def _timestamped_output_path(directory: Path) -> Path:
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        output_path = directory / f"colegios_escale_{timestamp}.xlsx"
+        suffix = 1
+        while output_path.exists() or android_data_path(output_path).exists():
+            output_path = directory / f"colegios_escale_{timestamp}_{suffix}.xlsx"
+            suffix += 1
+        return output_path
+
+    def _start_export(self, export_type: str, output_url: str):
+        if self._export_running:
+            return
+        if not self._exports_available or self._dataset_path is None:
+            self.errorRaised.emit(
+                "Datos no disponibles",
+                "Completa una descarga antes de exportar los archivos.",
+            )
+            return
+        if self._output_path is None:
+            self.errorRaised.emit(
+                "Ruta no disponible",
+                "No se encontró una carpeta válida para guardar la exportación.",
+            )
+            return
+
+        selected_url = QUrl(output_url)
+        if not selected_url.isLocalFile():
+            self.errorRaised.emit(
+                "Ruta no válida",
+                "Selecciona un archivo local para guardar la exportación.",
+            )
+            return
+        output_path = Path(selected_url.toLocalFile())
+        if not output_path.name:
+            self.errorRaised.emit(
+                "Ruta no válida",
+                "Selecciona un nombre de archivo para la exportación.",
+            )
+            return
+        expected_suffix = ".xlsx" if export_type == "excel" else ".eduescale"
+        if output_path.suffix.lower() != expected_suffix:
+            output_path = output_path.with_suffix(expected_suffix)
+        self._output_path = output_path.with_suffix(".xlsx")
+        self._settings.setValue("export/lastDirectory", str(output_path.parent))
+        self._settings.sync()
+        if self._settings.status() != QSettings.Status.NoError:
+            LOGGER.error("No se pudo guardar la carpeta de exportación.")
+
+        self._export_running = True
+        self._progress_visible = True
+        self._progress_indeterminate = True
+        self._progress_message = (
+            "Generando archivo Excel..."
+            if export_type == "excel"
+            else "Generando archivo .eduescale..."
+        )
+        self._status_text = self._progress_message
+        self.stateChanged.emit()
+        self._export_runner.start(export_type, self._dataset_path, output_path)
+
+    @Slot(str, str)
+    def _export_completed(self, export_type: str, output_path: str):
+        self._export_running = False
+        path = Path(output_path)
+        LOGGER.info("Exported %s to %s.", export_type, path)
+        self._progress_visible = False
+        self._progress_indeterminate = False
+        self._progress_message = ""
+        self._status_text = f"Archivo creado: {path.name}"
+        self.stateChanged.emit()
+        self._open_export_file(path)
+
+    @Slot(str, str, str)
+    def _export_failed(self, export_type: str, details: str, file_name: str):
+        self._export_running = False
+        self._progress_visible = False
+        self._progress_indeterminate = False
+        self._progress_message = ""
+        export_label = "Excel" if export_type == "excel" else ".eduescale"
+        self._status_text = f"No se pudo generar {export_label}"
+        self.stateChanged.emit()
+        error_details = details
+        if file_name:
+            error_details = f"{details}\nArchivo: {file_name}"
+        LOGGER.error("Failed to export %s: %s", export_type, error_details)
+        self.errorRaised.emit(f"No se pudo exportar {export_label}", error_details)
+
+    def _open_export_file(self, path: Path | None):
+        if path is None:
+            self.errorRaised.emit(
+                "Archivo no disponible",
+                "Completa una descarga antes de abrir el archivo.",
+            )
+            return
+        if not path.is_file():
+            LOGGER.error("Exported file is missing: %s", path)
+            self.errorRaised.emit(
+                "Archivo no encontrado",
+                f"No se encontró el archivo exportado:\n{path}",
+            )
+            return
+        if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(path))):
+            LOGGER.error("Could not open exported file: %s", path)
+            self.errorRaised.emit(
+                "No se pudo abrir el archivo",
+                f"Windows no pudo abrir {path.name}. Comprueba que haya "
+                "una aplicación asociada.",
+            )
 
     @Slot()
     def shutdown(self):
+        self._export_runner.shutdown()
         self._scrape_runner.shutdown()
         self._location_service.shutdown()

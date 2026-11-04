@@ -491,7 +491,7 @@ ApplicationWindow {
 
             Label {
                 Layout.fillWidth: true
-                text: "El Excel incluirá nombre, dirección, localidad, CP, turno, alumnos y secciones. También se generará un archivo .eduescale para la app móvil."
+                text: "Después de descargar los datos, elige si deseas exportarlos a Excel o .eduescale."
                 color: window.mutedTextColor
                 wrapMode: Text.WordWrap
                 font.pixelSize: 12
@@ -533,12 +533,29 @@ ApplicationWindow {
                 color: window.mutedTextColor
             }
 
-            Button {
+            RowLayout {
+                objectName: "exportButtons"
                 Layout.fillWidth: true
-                text: "Abrir carpeta del Excel"
-                visible: controller.openFolderVisible
-                onClicked: controller.openOutputFolder()
-                Material.foreground: window.primaryColor
+                visible: controller.exportsAvailable
+                spacing: 8
+
+                Button {
+                    objectName: "downloadExcelButton"
+                    Layout.fillWidth: true
+                    text: "Exportar Excel"
+                    enabled: !controller.exportRunning
+                    onClicked: excelSaveDialog.open()
+                    Material.foreground: window.primaryColor
+                }
+
+                Button {
+                    objectName: "downloadEduScaleButton"
+                    Layout.fillWidth: true
+                    text: "Exportar .eduescale"
+                    enabled: !controller.exportRunning
+                    onClicked: eduScaleSaveDialog.open()
+                    Material.foreground: window.primaryColor
+                }
             }
 
             Item {
@@ -562,7 +579,7 @@ ApplicationWindow {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        height: controller.scrapeRunning ? 142 : 100
+        height: controller.scrapeRunning || controller.exportRunning ? 142 : 100
         color: "white"
         border.color: window.borderColor
         z: 1
@@ -598,12 +615,19 @@ ApplicationWindow {
                     text: controller.cancelRequested
                         ? "Cancelando extracción..."
                         : controller.scrapeRunning
-                        ? "Descargando datos..."
-                        : "Descargar y generar Excel"
+                        ? "Consultando datos..."
+                        : controller.exportRunning
+                        ? "Generando archivo..."
+                        : "Ejecutar búsqueda"
                     highlighted: true
-                    enabled: !controller.scrapeRunning && filterSetsModel.count > 0
+                    enabled: !controller.scrapeRunning
+                        && !controller.exportRunning
+                        && filterSetsModel.count > 0
                     Material.foreground: enabled ? "#FFFFFF" : window.primaryEmphasisColor
-                    onClicked: saveDialog.open()
+                    onClicked: controller.startScrape(
+                        controller.defaultOutputUrl,
+                        window.selectedFilterSetsJson()
+                    )
                     background: Rectangle {
                         radius: window.controlRadius
                         color: !scrapeButton.enabled
@@ -649,16 +673,25 @@ ApplicationWindow {
     }
 
     FileDialog {
-        id: saveDialog
-        title: "Guardar Excel y archivo EduScale"
+        id: excelSaveDialog
+        objectName: "excelSaveDialog"
+        title: "Exportar Excel"
         fileMode: FileDialog.SaveFile
         nameFilters: ["Libro de Excel (*.xlsx)"]
+        defaultSuffix: "xlsx"
         currentFile: controller.defaultOutputUrl
+        onAccepted: controller.exportExcelFile(selectedFile.toString())
+    }
 
-        onAccepted: controller.startScrape(
-            selectedFile.toString(),
-            window.selectedFilterSetsJson()
-        )
+    FileDialog {
+        id: eduScaleSaveDialog
+        objectName: "eduScaleSaveDialog"
+        title: "Exportar .eduescale"
+        fileMode: FileDialog.SaveFile
+        nameFilters: ["Archivo EduEscale (*.eduescale)"]
+        defaultSuffix: "eduescale"
+        currentFile: controller.defaultEduScaleOutputUrl
+        onAccepted: controller.exportEduScaleFile(selectedFile.toString())
     }
 
     Dialog {

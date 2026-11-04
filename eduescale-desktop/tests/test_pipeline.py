@@ -6,8 +6,8 @@ from types import SimpleNamespace
 import pytest
 from openpyxl import load_workbook
 
-from eduescale import export_files
 from eduescale.export_files import android_data_path
+from eduescale.exports import export_eduescale, export_excel
 from eduescale.pipelines import ExcelPipeline
 
 
@@ -35,10 +35,10 @@ def test_saves_one_excel_table_per_district():
         "distrito": "Nauta",
     }
     with tempfile.TemporaryDirectory() as temp_dir:
+        database_path = Path(temp_dir) / "colegios.sqlite3"
         output_path = Path(temp_dir) / "colegios.xlsx"
-        output_path.write_bytes(b"archivo anterior")
         spider = SimpleNamespace(
-            output=str(output_path),
+            output=str(database_path),
             count_received=True,
             expected_total=2,
             items_received=2,
@@ -52,6 +52,13 @@ def test_saves_one_excel_table_per_district():
         pipeline.process_item(first_record)
         pipeline.process_item(second_record)
         pipeline.close_spider()
+
+        assert database_path.is_file()
+        assert not output_path.exists()
+        android_path = android_data_path(output_path)
+        assert not android_path.exists()
+        export_excel(database_path, output_path)
+        export_eduescale(database_path, android_path)
 
         workbook = load_workbook(output_path)
         try:
@@ -80,8 +87,6 @@ def test_saves_one_excel_table_per_district():
             assert worksheet["A7"].value == "Colegio Secundario"
         finally:
             workbook.close()
-        assert output_path.read_bytes() != b"archivo anterior"
-        android_path = android_data_path(output_path)
         android_json = android_path.read_text(encoding="utf-8")
         assert android_json.startswith('{"formato":"eduescale"')
         document = json.loads(android_json)
@@ -127,6 +132,8 @@ def test_saves_one_excel_table_per_district():
 
 
 def test_failed_excel_replace_preserves_both_existing_exports(monkeypatch):
+    from eduescale import export_files
+
     record = {
         "nombre": "Colegio Ejemplo",
         "direccion": "Av. Principal",

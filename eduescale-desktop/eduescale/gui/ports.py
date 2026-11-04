@@ -28,3 +28,18 @@ class ScrapeRunnerPort(Protocol):
     def cancel(self) -> None: ...
 
     def shutdown(self) -> None: ...
+
+
+class ExportRunnerPort(Protocol):
+    started: Signal
+    completed: Signal
+    failed: Signal
+
+    def start(
+        self,
+        export_type: str,
+        database_path: Path,
+        output_path: Path,
+    ) -> None: ...
+
+    def shutdown(self) -> None: ...

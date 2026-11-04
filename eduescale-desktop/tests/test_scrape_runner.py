@@ -1,9 +1,8 @@
-import json
+import sqlite3
 import sys
 from pathlib import Path
 
 import pytest
-from openpyxl import Workbook, load_workbook
 from PySide6.QtCore import QCoreApplication, QProcess
 
 from eduescale.client import SchoolFilters
@@ -44,14 +43,20 @@ class FakeProcess:
             argument for argument in arguments if argument.startswith("output=")
         )
         self.output_path = Path(output_argument.removeprefix("output="))
-        workbook = Workbook()
-        workbook.create_sheet("Colegios")
-        workbook.save(self.output_path)
-        workbook.close()
-        android_data_path(self.output_path).write_text(
-            '{"formato":"eduescale","version":1,"colegios":[]}\n',
-            encoding="utf-8",
-        )
+        database = sqlite3.connect(self.output_path)
+        try:
+            database.execute(
+                """
+                CREATE TABLE records (
+                    region TEXT NOT NULL,
+                    province TEXT NOT NULL,
+                    district TEXT NOT NULL,
+                    payload TEXT NOT NULL
+                )
+                """
+            )
+        finally:
+            database.close()
 
     def readAllStandardOutput(self):
         chunk = self.stdout_chunk
@@ -68,6 +73,10 @@ class FakeProcess:
 
     def kill(self):
         self.kill_requested = True
+
+    def waitForFinished(self, _timeout):
+        self._state = QProcess.ProcessState.NotRunning
+        return True
 
 
 def _replace_process(runner):
@@ -128,15 +137,15 @@ def test_runner_bounds_process_log_and_partial_progress_buffer(application):
     assert application is not None
 
 
-def test_runner_preserves_existing_excel_until_successful_publish(
-    tmp_path, application
-):
+def test_runner_completes_scrape_without_exporting_files(tmp_path, application):
     output_path = tmp_path / "schools.xlsx"
     android_path = android_data_path(output_path)
     output_path.write_bytes(b"previous workbook")
     android_path.write_bytes(b"previous EduScale data")
     runner = ScrapeRunner()
     process = _replace_process(runner)
+    completed = []
+    runner.completed.connect(lambda *args: completed.append(args))
 
     try:
         runner.start(
@@ -151,17 +160,11 @@ def test_runner_preserves_existing_excel_until_successful_publish(
         process._state = QProcess.ProcessState.NotRunning
         runner._scrape_finished(0, QProcess.ExitStatus.NormalExit)
 
-        workbook = load_workbook(output_path, read_only=True)
-        try:
-            assert "Colegios" in workbook.sheetnames
-        finally:
-            workbook.close()
-        assert json.loads(android_path.read_text(encoding="utf-8")) == {
-            "formato": "eduescale",
-            "version": 1,
-            "colegios": [],
-        }
-        assert staging_directory is not None and not staging_directory.exists()
+        assert output_path.read_bytes() == b"previous workbook"
+        assert android_path.read_bytes() == b"previous EduScale data"
+        assert staging_directory is not None and staging_directory.is_dir()
+        assert process.output_path is not None and process.output_path.is_file()
+        assert completed == [(str(process.output_path), 0, 0, 0)]
     finally:
         runner.shutdown()
     assert application is not None
@@ -201,7 +204,7 @@ def test_runner_cancels_without_replacing_existing_excel(tmp_path, application):
     assert application is not None
 
 
-def test_runner_rejects_missing_android_file_without_replacing_exports(
+def test_runner_rejects_missing_dataset_without_replacing_exports(
     tmp_path, application
 ):
     output_path = tmp_path / "schools.xlsx"
@@ -218,12 +221,12 @@ def test_runner_rejects_missing_android_file_without_replacing_exports(
             output_path,
             [SchoolFilters(management=("publica",), level=("inicial",))],
         )
-        assert runner._staging_android_path is not None
-        runner._staging_android_path.unlink()
+        assert runner._staging_path is not None
+        runner._staging_path.unlink()
         process._state = QProcess.ProcessState.NotRunning
         runner._scrape_finished(0, QProcess.ExitStatus.NormalExit)
 
-        assert failures and failures[0][0] == "No se generaron los archivos"
+        assert failures and failures[0][0] == "No se guardaron los datos"
         assert output_path.read_bytes() == b"previous workbook"
         assert android_path.read_bytes() == b"previous EduScale data"
     finally:
