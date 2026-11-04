@@ -120,7 +120,11 @@ de Scrapy como proceso separado y recibir su progreso. Distribuye los dos
 ejecutables en la misma carpeta.
 Nox usa `eduescale-gui.spec` y `eduescale-scraper.spec` como configuración de
 empaquetado. GitHub Actions ejecuta las pruebas, Ruff, ambos builds de Windows
-y una comprobación del comando `list` del scraper en cada push y pull request.
+y una comprobación del comando `list` del scraper, los recursos QML de Material,
+los certificados incluidos y la ausencia de WebEngine innecesario en cada push
+y pull request.
+También se puede ejecutar manualmente desde GitHub Actions; ese flujo permite
+descargar ambos ejecutables como artefacto durante siete días.
 
 Para comprobar lint y formato con Ruff:
 

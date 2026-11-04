@@ -3,16 +3,51 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   windows:
     runs-on: windows-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.14"
+          enable-cache: true
       - name: Run tests, lint, and Windows builds
         run: uv run --locked --group nox nox -s tests lint build
       - name: Smoke-test scraper executable
         run: .\dist\eduescale-scraper.exe list
+      - name: Verify packaged TLS and QML resources
+        shell: pwsh
+        run: |
+          $viewer = ".\.nox\build\Scripts\pyi-archive_viewer.exe"
+          $guiContents = (& $viewer -l ".\dist\eduescale-gui.exe") -join "`n"
+          if ($LASTEXITCODE -ne 0) { throw "Could not inspect the GUI executable." }
+          if ($guiContents -notmatch "QtQuick.*Controls.*Material.*qmldir") {
+            throw "Qt Quick Controls Material resources are missing from the GUI."
+          }
+          if ($guiContents -notmatch "certifi.*cacert\.pem") {
+            throw "The GUI certificate bundle is missing."
+          }
+          if ($guiContents -match "Qt6WebEngine.*\.dll|QtWebEngineProcess\.exe") {
+            throw "Unused Qt WebEngine components were bundled into the GUI."
+          }
+          $scraperContents = (& $viewer -l ".\dist\eduescale-scraper.exe") -join "`n"
+          if ($LASTEXITCODE -ne 0) { throw "Could not inspect the scraper executable." }
+          if ($scraperContents -notmatch "certifi.*cacert\.pem") {
+            throw "The scraper certificate bundle is missing."
+          }
+      - name: Upload Windows executables
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: eduescale-windows-${{ github.sha }}
+          path: |
+            dist/eduescale-gui.exe
+            dist/eduescale-scraper.exe
+          retention-days: 7
