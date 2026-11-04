@@ -13,11 +13,24 @@ ApplicationWindow {
     minimumHeight: 600
     visible: true
     title: "Buscador de colegios - ESCALE"
-    color: "#F3F6FB"
+    color: "#F8F7FC"
+
+    readonly property color primaryColor: "#5F3DC4"
+    readonly property color primaryHoverColor: "#5134A7"
+    readonly property color primaryActiveColor: "#4C319D"
+    readonly property color primarySubtleColor: "#DFD8F3"
+    readonly property color primarySubtleHoverColor: "#C7BBEA"
+    readonly property color primaryBorderColor: "#BFB1E7"
+    readonly property color primaryEmphasisColor: "#392576"
+    readonly property color borderColor: "#E4DFEE"
+    readonly property color textColor: "#302A3D"
+    readonly property color mutedTextColor: "#6F687B"
+    readonly property int cardRadius: 24
+    readonly property int controlRadius: 18
 
     Material.theme: Material.Light
-    Material.primary: "#1E4D73"
-    Material.accent: "#148A8A"
+    Material.primary: primaryColor
+    Material.accent: primaryColor
 
     onClosing: controller.shutdown()
 
@@ -96,8 +109,11 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 padding: 24
                 background: Rectangle {
-                    radius: 18
-                    color: "#173B5E"
+                    radius: window.cardRadius
+                    gradient: Gradient {
+                        GradientStop { position: 0.0; color: window.primaryEmphasisColor }
+                        GradientStop { position: 1.0; color: window.primaryColor }
+                    }
                 }
 
                 ColumnLayout {
@@ -106,7 +122,7 @@ ApplicationWindow {
 
                     Label {
                         text: "PADRÓN EDUCATIVO · PERÚ"
-                        color: "#A9D7DE"
+                        color: window.primarySubtleColor
                         font.pixelSize: 12
                         font.weight: Font.Bold
                     }
@@ -114,7 +130,7 @@ ApplicationWindow {
                     Label {
                         Layout.fillWidth: true
                         text: "Encuentra colegios,\na tu manera."
-                        color: "white"
+                        color: "#FFFFFF"
                         font.pixelSize: 30
                         font.weight: Font.DemiBold
                         wrapMode: Text.WordWrap
@@ -123,7 +139,7 @@ ApplicationWindow {
                     Label {
                         Layout.fillWidth: true
                         text: "Combina ubicaciones y criterios; descarga todos los resultados en un solo Excel."
-                        color: "#D7E5F0"
+                        color: "#F3EFFB"
                         font.pixelSize: 14
                         wrapMode: Text.WordWrap
                     }
@@ -134,9 +150,10 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 padding: 22
                 background: Rectangle {
-                    radius: 18
+                    radius: window.cardRadius
                     color: "white"
-                    border.color: "#E1E8F0"
+                    border.width: 2
+                    border.color: window.borderColor
                 }
 
                 ColumnLayout {
@@ -145,7 +162,7 @@ ApplicationWindow {
 
                     Label {
                         text: "Configura tu búsqueda"
-                        color: "#1F2937"
+                        color: window.textColor
                         font.pixelSize: 20
                         font.weight: Font.DemiBold
                     }
@@ -158,51 +175,78 @@ ApplicationWindow {
 
                         Label {
                             text: "Departamento"
-                            color: "#475569"
+                            color: window.mutedTextColor
                             font.weight: Font.Medium
                         }
                         ComboBox {
                             id: regionFilter
                             Layout.fillWidth: true
+                            implicitHeight: 52
                             model: controller.regions
                             textRole: "label"
                             valueRole: "code"
                             enabled: controller.regionsEnabled && !controller.scrapeRunning
                             onActivated: controller.selectRegion(currentValue)
+                            background: Rectangle {
+                                radius: window.controlRadius
+                                color: regionFilter.enabled ? "#FFFFFF" : "#F4F1F8"
+                                border.width: regionFilter.activeFocus ? 2 : 1
+                                border.color: regionFilter.activeFocus
+                                    ? window.primaryColor
+                                    : window.borderColor
+                            }
                         }
 
                         Label {
                             text: "Provincia"
-                            color: "#475569"
+                            color: window.mutedTextColor
                             font.weight: Font.Medium
                         }
                         ComboBox {
                             id: provinceFilter
                             Layout.fillWidth: true
+                            implicitHeight: 52
                             model: controller.provinces
                             textRole: "label"
                             valueRole: "code"
                             enabled: controller.provincesEnabled && !controller.scrapeRunning
                             onActivated: controller.selectProvince(currentValue)
+                            background: Rectangle {
+                                radius: window.controlRadius
+                                color: provinceFilter.enabled ? "#FFFFFF" : "#F4F1F8"
+                                border.width: provinceFilter.activeFocus ? 2 : 1
+                                border.color: provinceFilter.activeFocus
+                                    ? window.primaryColor
+                                    : window.borderColor
+                            }
                         }
 
                         Label {
                             text: "Distrito"
-                            color: "#475569"
+                            color: window.mutedTextColor
                             font.weight: Font.Medium
                         }
                         ComboBox {
                             id: districtFilter
                             Layout.fillWidth: true
+                            implicitHeight: 52
                             model: controller.districts
                             textRole: "label"
                             valueRole: "code"
                             enabled: controller.districtsEnabled && !controller.scrapeRunning
+                            background: Rectangle {
+                                radius: window.controlRadius
+                                color: districtFilter.enabled ? "#FFFFFF" : "#F4F1F8"
+                                border.width: districtFilter.activeFocus ? 2 : 1
+                                border.color: districtFilter.activeFocus
+                                    ? window.primaryColor
+                                    : window.borderColor
+                            }
                         }
 
                         Label {
                             text: "Gestión"
-                            color: "#475569"
+                            color: window.mutedTextColor
                             font.weight: Font.Medium
                             Layout.alignment: Qt.AlignTop
                         }
@@ -225,7 +269,7 @@ ApplicationWindow {
 
                         Label {
                             text: "Nivel educativo"
-                            color: "#475569"
+                            color: window.mutedTextColor
                             font.weight: Font.Medium
                             Layout.alignment: Qt.AlignTop
                         }
@@ -254,7 +298,7 @@ ApplicationWindow {
                             Label {
                                 Layout.fillWidth: true
                                 text: "Marca al menos una opción en Gestión y Nivel educativo para agregar esta combinación."
-                                color: "#64748B"
+                                color: window.mutedTextColor
                                 wrapMode: Text.WordWrap
                                 font.pixelSize: 12
                             }
@@ -262,14 +306,34 @@ ApplicationWindow {
                     }
 
                     Button {
+                        id: addFilterSetButton
                         objectName: "addFilterSetButton"
                         Layout.fillWidth: true
+                        implicitHeight: 52
                         text: "Agregar a mis búsquedas"
                         highlighted: true
+                        Material.foreground: enabled ? "#FFFFFF" : window.primaryEmphasisColor
                         enabled: !controller.scrapeRunning
                             && window.selectedManagement().length > 0
                             && window.selectedLevels().length > 0
                         onClicked: window.addFilterSet()
+                        background: Rectangle {
+                            radius: window.controlRadius
+                            color: !addFilterSetButton.enabled
+                                ? window.primarySubtleColor
+                                : addFilterSetButton.pressed
+                                    ? window.primaryActiveColor
+                                    : addFilterSetButton.hovered
+                                        ? window.primaryHoverColor
+                                        : window.primaryColor
+                            border.width: 2
+                            border.color: addFilterSetButton.enabled
+                                ? window.primaryBorderColor
+                                : window.primarySubtleColor
+                            Behavior on color {
+                                ColorAnimation { duration: 120 }
+                            }
+                        }
                     }
 
                     RowLayout {
@@ -278,22 +342,24 @@ ApplicationWindow {
                         Label {
                             Layout.fillWidth: true
                             text: "Mis búsquedas"
-                            color: "#1F2937"
+                            color: window.textColor
                             font.pixelSize: 18
                             font.weight: Font.DemiBold
                         }
 
                         Rectangle {
                             implicitWidth: countLabel.implicitWidth + 20
-                            implicitHeight: 30
-                            radius: 15
-                            color: "#E6F2F3"
+                            implicitHeight: 34
+                            radius: height / 2
+                            color: window.primarySubtleColor
+                            border.width: 1
+                            border.color: window.primaryBorderColor
 
                             Label {
                                 id: countLabel
                                 anchors.centerIn: parent
                                 text: filterSetsModel.count + " filtros"
-                                color: "#14666A"
+                                color: window.primaryEmphasisColor
                                 font.pixelSize: 12
                                 font.weight: Font.DemiBold
                             }
@@ -311,9 +377,10 @@ ApplicationWindow {
                                 padding: 12
 
                                 background: Rectangle {
-                                    radius: 12
-                                    color: "#F8FAFC"
-                                    border.color: "#E5EBF2"
+                                    radius: window.controlRadius
+                                    color: "#FBFAFD"
+                                    border.width: 2
+                                    border.color: window.borderColor
                                 }
 
                                 RowLayout {
@@ -339,7 +406,7 @@ ApplicationWindow {
                                                     ? location.join(" / ")
                                                     : "Todo el Perú"
                                             }
-                                            color: "#1F2937"
+                                            color: window.textColor
                                             font.weight: Font.DemiBold
                                         }
 
@@ -348,7 +415,7 @@ ApplicationWindow {
                                             wrapMode: Text.WordWrap
                                             text: "Gestión: " + management.replace(/,/g, ", ")
                                                 + "    ·    Nivel: " + level.replace(/,/g, ", ")
-                                            color: "#64748B"
+                                            color: window.mutedTextColor
                                             font.pixelSize: 12
                                         }
                                     }
@@ -358,6 +425,14 @@ ApplicationWindow {
                                         flat: true
                                         enabled: !controller.scrapeRunning
                                         Material.foreground: "#B42318"
+                                        background: Rectangle {
+                                            radius: height / 2
+                                            color: parent.pressed
+                                                ? "#FCE8E6"
+                                                : parent.hovered
+                                                    ? "#FFF4F2"
+                                                    : "transparent"
+                                        }
                                         onClicked: filterSetsModel.remove(index)
                                     }
                                 }
@@ -370,7 +445,7 @@ ApplicationWindow {
             Label {
                 Layout.fillWidth: true
                 text: "El Excel incluirá nombre, dirección, localidad, centro poblado (CP), turno, alumnos, secciones, longitud, latitud y un enlace directo a Google Maps."
-                color: "#526173"
+                color: window.mutedTextColor
                 wrapMode: Text.WordWrap
                 font.pixelSize: 12
             }
@@ -383,7 +458,7 @@ ApplicationWindow {
                 Rectangle {
                     Layout.fillWidth: true
                     implicitHeight: 1
-                    color: "#E1E8F0"
+                    color: window.borderColor
                 }
 
                 ProgressBar {
@@ -398,7 +473,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     text: controller.progressMessage
                     horizontalAlignment: Text.AlignHCenter
-                    color: "#475569"
+                    color: window.mutedTextColor
                     wrapMode: Text.WordWrap
                 }
             }
@@ -408,7 +483,7 @@ ApplicationWindow {
                 text: controller.statusText
                 wrapMode: Text.Wrap
                 textFormat: Text.PlainText
-                color: "#475569"
+                color: window.mutedTextColor
             }
 
             Button {
@@ -416,6 +491,7 @@ ApplicationWindow {
                 text: "Abrir carpeta del Excel"
                 visible: controller.openFolderVisible
                 onClicked: controller.openOutputFolder()
+                Material.foreground: window.primaryColor
             }
 
             Item {
@@ -428,6 +504,7 @@ ApplicationWindow {
                 text: '<a href="https://escale.minedu.gob.pe/padron-de-iiee">Fuente: Padrón de IIEE de ESCALE</a>'
                 textFormat: Text.RichText
                 onLinkActivated: link => Qt.openUrlExternally(link)
+                palette.link: window.primaryColor
             }
         }
     }
@@ -440,7 +517,7 @@ ApplicationWindow {
         anchors.bottom: parent.bottom
         height: 100
         color: "white"
-        border.color: "#DCE4ED"
+        border.color: window.borderColor
         z: 1
 
         ColumnLayout {
@@ -456,20 +533,40 @@ ApplicationWindow {
                 text: filterSetsModel.count > 0
                     ? filterSetsModel.count + " combinaciones listas para exportar"
                     : "Agrega al menos una búsqueda para continuar"
-                color: "#64748B"
+                color: window.mutedTextColor
                 font.pixelSize: 11
             }
 
             Button {
+                id: scrapeButton
                 objectName: "scrapeButton"
                 Layout.fillWidth: true
                 Layout.fillHeight: true
+                implicitHeight: 52
                 text: controller.scrapeRunning
                     ? "Descargando datos..."
                     : "Descargar y generar Excel"
                 highlighted: true
                 enabled: !controller.scrapeRunning && filterSetsModel.count > 0
+                Material.foreground: enabled ? "#FFFFFF" : window.primaryEmphasisColor
                 onClicked: saveDialog.open()
+                background: Rectangle {
+                    radius: window.controlRadius
+                    color: !scrapeButton.enabled
+                        ? window.primarySubtleColor
+                        : scrapeButton.pressed
+                            ? window.primaryActiveColor
+                            : scrapeButton.hovered
+                                ? window.primaryHoverColor
+                                : window.primaryColor
+                    border.width: 2
+                    border.color: scrapeButton.enabled
+                        ? window.primaryBorderColor
+                        : window.primarySubtleColor
+                    Behavior on color {
+                        ColorAnimation { duration: 120 }
+                    }
+                }
             }
         }
     }
@@ -496,6 +593,12 @@ ApplicationWindow {
         width: Math.min(window.width - 40, 760)
         height: Math.min(window.height - 40, 560)
         standardButtons: Dialog.NoButton
+        background: Rectangle {
+            radius: window.cardRadius
+            color: "#FFFFFF"
+            border.width: 2
+            border.color: window.borderColor
+        }
 
         contentItem: ColumnLayout {
             spacing: 12
@@ -506,10 +609,19 @@ ApplicationWindow {
                 clip: true
 
                 TextArea {
+                    id: errorDetails
                     text: errorDialog.details
                     readOnly: true
                     selectByMouse: true
                     wrapMode: TextEdit.Wrap
+                    background: Rectangle {
+                        radius: window.controlRadius
+                        color: "#FBFAFD"
+                        border.width: errorDetails.activeFocus ? 2 : 1
+                        border.color: errorDetails.activeFocus
+                            ? window.primaryColor
+                            : window.borderColor
+                    }
                 }
             }
 
@@ -517,6 +629,7 @@ ApplicationWindow {
                 Layout.alignment: Qt.AlignRight
                 text: "Cerrar"
                 onClicked: errorDialog.close()
+                Material.foreground: window.primaryColor
             }
         }
     }

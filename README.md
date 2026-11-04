@@ -3,8 +3,9 @@
 Aplicación de escritorio en Python para extraer los servicios educativos publicados en
 el [Padrón de IIEE de ESCALE](https://escale.minedu.gob.pe/padron-de-iiee).
 La app usa Scrapy con `AsyncioSelectorReactor` para consultar la API del buscador
-oficial y crear un Excel local. La interfaz está hecha con QML y PySide6, con
-estilo Material.
+oficial y crear un Excel local. La interfaz está hecha con QML y PySide6. Su
+paleta y componentes adaptan los tokens visuales de
+[Material Style](https://materialstyle.github.io/) a Qt Quick Controls.
 
 ## Requisitos
 
