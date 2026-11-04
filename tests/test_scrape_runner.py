@@ -1,3 +1,4 @@
+import json
 import sys
 from pathlib import Path
 
@@ -6,6 +7,7 @@ from openpyxl import Workbook, load_workbook
 from PySide6.QtCore import QCoreApplication, QProcess
 
 from eduescale.client import SchoolFilters
+from eduescale.export_files import android_data_path
 from eduescale.gui.scrape_runner import (
     MAX_PROCESS_LOG_CHARS,
     MAX_PROGRESS_LINE_CHARS,
@@ -46,6 +48,10 @@ class FakeProcess:
         workbook.create_sheet("Colegios")
         workbook.save(self.output_path)
         workbook.close()
+        android_data_path(self.output_path).write_text(
+            '{"formato":"eduescale","version":1,"colegios":[]}\n',
+            encoding="utf-8",
+        )
 
     def readAllStandardOutput(self):
         chunk = self.stdout_chunk
@@ -126,7 +132,9 @@ def test_runner_preserves_existing_excel_until_successful_publish(
     tmp_path, application
 ):
     output_path = tmp_path / "schools.xlsx"
+    android_path = android_data_path(output_path)
     output_path.write_bytes(b"previous workbook")
+    android_path.write_bytes(b"previous EduScale data")
     runner = ScrapeRunner()
     process = _replace_process(runner)
 
@@ -137,6 +145,7 @@ def test_runner_preserves_existing_excel_until_successful_publish(
         )
         staging_directory = runner._staging_directory
         assert output_path.read_bytes() == b"previous workbook"
+        assert android_path.read_bytes() == b"previous EduScale data"
         assert process.output_path is not None and process.output_path.is_file()
 
         process._state = QProcess.ProcessState.NotRunning
@@ -147,6 +156,11 @@ def test_runner_preserves_existing_excel_until_successful_publish(
             assert "Colegios" in workbook.sheetnames
         finally:
             workbook.close()
+        assert json.loads(android_path.read_text(encoding="utf-8")) == {
+            "formato": "eduescale",
+            "version": 1,
+            "colegios": [],
+        }
         assert staging_directory is not None and not staging_directory.exists()
     finally:
         runner.shutdown()
@@ -155,7 +169,9 @@ def test_runner_preserves_existing_excel_until_successful_publish(
 
 def test_runner_cancels_without_replacing_existing_excel(tmp_path, application):
     output_path = tmp_path / "schools.xlsx"
+    android_path = android_data_path(output_path)
     output_path.write_bytes(b"previous workbook")
+    android_path.write_bytes(b"previous EduScale data")
     runner = ScrapeRunner()
     process = _replace_process(runner)
     cancelled = []
@@ -178,7 +194,38 @@ def test_runner_cancels_without_replacing_existing_excel(tmp_path, application):
 
         assert cancelled == [True]
         assert output_path.read_bytes() == b"previous workbook"
+        assert android_path.read_bytes() == b"previous EduScale data"
         assert staging_directory is not None and not staging_directory.exists()
+    finally:
+        runner.shutdown()
+    assert application is not None
+
+
+def test_runner_rejects_missing_android_file_without_replacing_exports(
+    tmp_path, application
+):
+    output_path = tmp_path / "schools.xlsx"
+    android_path = android_data_path(output_path)
+    output_path.write_bytes(b"previous workbook")
+    android_path.write_bytes(b"previous EduScale data")
+    runner = ScrapeRunner()
+    process = _replace_process(runner)
+    failures = []
+    runner.failed.connect(lambda title, details: failures.append((title, details)))
+
+    try:
+        runner.start(
+            output_path,
+            [SchoolFilters(management=("publica",), level=("inicial",))],
+        )
+        assert runner._staging_android_path is not None
+        runner._staging_android_path.unlink()
+        process._state = QProcess.ProcessState.NotRunning
+        runner._scrape_finished(0, QProcess.ExitStatus.NormalExit)
+
+        assert failures and failures[0][0] == "No se generaron los archivos"
+        assert output_path.read_bytes() == b"previous workbook"
+        assert android_path.read_bytes() == b"previous EduScale data"
     finally:
         runner.shutdown()
     assert application is not None

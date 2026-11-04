@@ -6,6 +6,7 @@ from PySide6.QtCore import Property, QObject, QSettings, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices
 
 from eduescale.client import SchoolFilters
+from eduescale.export_files import android_data_path
 from eduescale.gui.ports import LocationServicePort, ScrapeRunnerPort
 
 LOGGER = logging.getLogger(__name__)
@@ -371,11 +372,14 @@ class SchoolFinderController(QObject):
 
     @Slot(str, int, int, int)
     def _scrape_completed(self, output_path, total, records, pages):
+        android_path = android_data_path(Path(output_path))
         LOGGER.info(
-            "Extraction completed: %d unique records across %d pages; output=%s",
+            "Extraction completed: %d unique records across %d pages; "
+            "Excel=%s; EduScale=%s",
             records,
             pages,
             output_path,
+            android_path,
         )
         self._scrape_running = False
         self._cancel_requested = False
@@ -386,7 +390,7 @@ class SchoolFinderController(QObject):
         self._progress_message = "Completado"
         self._output_path = Path(output_path)
         self._status_text = (
-            f"Excel creado: {self._output_path} · "
+            f"Archivos creados: {self._output_path.name} y {android_path.name} · "
             f"{records:,} registros en {pages} páginas."
         )
         self._open_folder_visible = True
@@ -400,7 +404,9 @@ class SchoolFinderController(QObject):
         self._progress_visible = False
         self._progress_indeterminate = False
         self._progress_message = ""
-        self._status_text = "Extracción cancelada. El archivo anterior se conservó."
+        self._status_text = (
+            "Extracción cancelada. Los archivos anteriores se conservaron."
+        )
         self.stateChanged.emit()
 
     @Slot(str, str)

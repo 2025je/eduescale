@@ -3,7 +3,8 @@
 Aplicación de escritorio en Python para extraer los servicios educativos publicados en
 el [Padrón de IIEE de ESCALE](https://escale.minedu.gob.pe/padron-de-iiee).
 La app usa Scrapy con `AsyncioSelectorReactor` para consultar la API del buscador
-oficial y crear un Excel local. La interfaz está hecha con QML y PySide6
+oficial y crear un Excel local junto con un archivo complementario `.eduescale`
+para una app Android. La interfaz está hecha con QML y PySide6
 Essentials, que incluye los componentes Qt Quick usados por la app sin empaquetar
 los módulos opcionales de WebEngine y PDF. Su paleta y componentes adaptan los
 tokens visuales de [Material Style](https://materialstyle.github.io/) a Qt Quick
@@ -26,8 +27,8 @@ nivel educativo. Puedes agregar varias combinaciones antes de iniciar la
 extracción; se descargan y reúnen en una sola hoja Excel. Los colegios repetidos
 entre combinaciones se exportan una sola vez. La extracción se ejecuta en
 segundo plano para mantener la interfaz receptiva. Puedes cancelarla desde la
-barra inferior; el archivo anterior se conserva si la extracción se cancela o
-falla. El nuevo Excel se valida antes de reemplazar el destino.
+barra inferior; los archivos anteriores se conservan si la extracción se
+cancela o falla. El Excel se valida antes de reemplazar los destinos.
 
 También se puede iniciar con `uv run python app.py` por compatibilidad.
 
@@ -65,18 +66,47 @@ primaria y secundaria. Pulsa **Agregar combinación de filtros** para guardar
 esa búsqueda y repite el proceso para agregar otras ubicaciones o criterios.
 Cada combinación debe tener al menos una opción de Gestión y una de Nivel
 educativo. Puedes quitar combinaciones antes de iniciar. Al pulsar
-**Descargar filtros y generar Excel**, se reúnen los resultados en el mismo
-archivo, se eliminan colegios duplicados entre las búsquedas y se organiza una
-tabla de Excel por distrito dentro de la misma hoja. Cada tabla muestra también
-su provincia y departamento. El archivo incluye nombre del colegio, dirección,
-localidad, centro poblado (CP), turno, alumnos, secciones, longitud y latitud
-del local educativo, y un enlace para abrir las coordenadas en Google Maps.
+**Descargar filtros y generar Excel**, se reúnen los resultados, se eliminan
+colegios duplicados entre las búsquedas y se organizan tablas de Excel por
+distrito dentro de una hoja. El Excel contiene nombre del colegio, dirección,
+localidad, centro poblado (CP), turno, alumnos y secciones; no incluye
+coordenadas ni enlaces de Google Maps.
+
+Junto al Excel se genera un archivo del mismo nombre con extensión `.eduescale`.
+Su contenido es JSON UTF-8 versionado e incluye departamento, provincia,
+distrito, los campos del Excel y longitud/latitud, sin el enlace de Maps. Por
+ejemplo, `colegios_escale.xlsx` produce `colegios_escale.eduescale`:
+
+```json
+{
+  "formato": "eduescale",
+  "version": 1,
+  "colegios": [
+    {
+      "departamento": "Loreto",
+      "provincia": "Maynas",
+      "distrito": "Iquitos",
+      "nombre": "Colegio Ejemplo",
+      "direccion": "Av. Principal",
+      "localidad": "Iquitos",
+      "cp": "Centro Poblado",
+      "turno": "Mañana",
+      "alumnos": 120,
+      "secciones": 6,
+      "longitud": -73.253,
+      "latitud": -3.749
+    }
+  ]
+}
+```
 
 También puedes ejecutar el spider directamente desde la terminal:
 
 ```powershell
 uv run --project . --directory eduescale scrapy crawl colegios -a output=colegios_escale.xlsx -a region_code=22 -a management=publica,privada -a level=inicial,primaria
 ```
+
+Este comando también genera `colegios_escale.eduescale` en la misma carpeta.
 
 Los filtros `region_code`, `province_code`, `district_code`, `management` y
 `level` son opcionales. Los valores para gestión son `publica` y `privada`; los

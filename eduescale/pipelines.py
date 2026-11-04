@@ -1,5 +1,5 @@
 import json
-import os
+import logging
 import sqlite3
 import tempfile
 import warnings
@@ -8,9 +8,14 @@ from pathlib import Path
 from openpyxl import Workbook, load_workbook
 from openpyxl.cell import WriteOnlyCell
 from openpyxl.styles import Font, PatternFill
+from openpyxl.utils import get_column_letter
 from openpyxl.utils.exceptions import WorkbookAlreadySaved
 from openpyxl.worksheet.table import Table, TableColumn, TableStyleInfo
 from scrapy.exceptions import DropItem
+
+from eduescale.export_files import android_data_path, replace_export_pair
+
+LOGGER = logging.getLogger(__name__)
 
 HEADERS = (
     "Nombre del colegio",
@@ -20,12 +25,22 @@ HEADERS = (
     "Turno",
     "Alumnos",
     "Secciones",
-    "Longitud",
-    "Latitud",
-    "Google Maps",
 )
 EXCEL_MAX_ROWS = 1_048_576
-FIELDS = (
+EXCEL_FIELDS = (
+    "nombre",
+    "direccion",
+    "localidad",
+    "cp",
+    "turno",
+    "alumnos",
+    "secciones",
+)
+FIELDS = EXCEL_FIELDS + (
+    "longitud",
+    "latitud",
+)
+ANDROID_FIELDS = (
     "nombre",
     "direccion",
     "localidad",
@@ -36,20 +51,6 @@ FIELDS = (
     "longitud",
     "latitud",
 )
-
-
-def google_maps_cell(worksheet, item):
-    latitude = item.get("latitud")
-    longitude = item.get("longitud")
-    if latitude is None or longitude is None:
-        return None
-
-    cell = WriteOnlyCell(worksheet, value="Ver en Google Maps")
-    cell.hyperlink = (
-        f"https://www.google.com/maps/search/?api=1&query={latitude},{longitude}"
-    )
-    cell.style = "Hyperlink"
-    return cell
 
 
 def _safe_cell(worksheet, value):
@@ -68,6 +69,7 @@ class ExcelPipeline:
 
     def open_spider(self):
         self.output_path = Path(self.crawler.spider.output)
+        self.android_output_path = android_data_path(self.output_path)
         self.output_path.parent.mkdir(parents=True, exist_ok=True)
         self.workbook = Workbook(write_only=True)
         self.worksheet = self.workbook.create_sheet("Colegios")
@@ -78,12 +80,10 @@ class ExcelPipeline:
         self.worksheet.column_dimensions["E"].width = 20
         self.worksheet.column_dimensions["F"].width = 14
         self.worksheet.column_dimensions["G"].width = 14
-        self.worksheet.column_dimensions["H"].width = 14
-        self.worksheet.column_dimensions["I"].width = 14
-        self.worksheet.column_dimensions["J"].width = 24
         self.row_count = 0
         self._sheet_row_count = 0
         self._temporary_output_path: Path | None = None
+        self._temporary_android_path: Path | None = None
         with tempfile.NamedTemporaryFile(
             prefix="eduescale-",
             suffix=".sqlite3",
@@ -155,16 +155,26 @@ class ExcelPipeline:
             self._write_district_tables()
             temporary_output_path = self._create_temporary_output_path()
             self._temporary_output_path = temporary_output_path
+            temporary_android_path = self._create_temporary_android_path()
+            self._temporary_android_path = temporary_android_path
+            self._write_android_file(temporary_android_path)
             self.workbook.save(temporary_output_path)
             workbook_saved = True
             self._validate_workbook(temporary_output_path)
             try:
-                self._replace_output(temporary_output_path, self.output_path)
+                cleanup_warning = replace_export_pair(
+                    temporary_output_path,
+                    self.output_path,
+                    temporary_android_path,
+                    self.android_output_path,
+                )
             except PermissionError as error:
                 raise RuntimeError(
-                    "No se pudo reemplazar el Excel de destino. "
-                    "Cierra el archivo si está abierto en Excel y vuelve a intentar."
+                    "No se pudieron reemplazar los archivos de exportación. "
+                    "Cierra el archivo de Excel si está abierto y vuelve a intentar."
                 ) from error
+            if cleanup_warning:
+                LOGGER.warning("%s", cleanup_warning)
         finally:
             try:
                 if not workbook_saved:
@@ -177,7 +187,11 @@ class ExcelPipeline:
                     if self._temporary_output_path is not None:
                         self._temporary_output_path.unlink(missing_ok=True)
                 finally:
-                    self._close_spool()
+                    try:
+                        if self._temporary_android_path is not None:
+                            self._temporary_android_path.unlink(missing_ok=True)
+                    finally:
+                        self._close_spool()
 
     def _create_temporary_output_path(self):
         with tempfile.NamedTemporaryFile(
@@ -188,6 +202,49 @@ class ExcelPipeline:
         ) as export_file:
             return Path(export_file.name)
 
+    def _create_temporary_android_path(self):
+        with tempfile.NamedTemporaryFile(
+            prefix=".eduescale-export-",
+            suffix=".eduescale",
+            dir=self.output_path.parent,
+            delete=False,
+        ) as export_file:
+            return Path(export_file.name)
+
+    def _write_android_file(self, path):
+        cursor = self._spool.execute(
+            """
+            SELECT region, province, district, payload
+            FROM records
+            ORDER BY region COLLATE NOCASE,
+                     province COLLATE NOCASE,
+                     district COLLATE NOCASE,
+                     rowid
+            """
+        )
+        with path.open("w", encoding="utf-8", newline="\n") as output_file:
+            output_file.write('{"formato":"eduescale","version":1,"colegios":[')
+            first_record = True
+            for region, province, district, payload in cursor:
+                item = json.loads(payload)
+                record = {
+                    "departamento": region,
+                    "provincia": province,
+                    "distrito": district,
+                    **{field: item[field] for field in ANDROID_FIELDS},
+                }
+                if not first_record:
+                    output_file.write(",")
+                json.dump(
+                    record,
+                    output_file,
+                    ensure_ascii=False,
+                    allow_nan=False,
+                    separators=(",", ":"),
+                )
+                first_record = False
+            output_file.write("]}\n")
+
     @staticmethod
     def _validate_workbook(path):
         workbook = load_workbook(path, read_only=True)
@@ -196,10 +253,6 @@ class ExcelPipeline:
                 raise RuntimeError("El archivo temporal no contiene la hoja Colegios.")
         finally:
             workbook.close()
-
-    @staticmethod
-    def _replace_output(source, destination):
-        os.replace(source, destination)
 
     def _write_district_tables(self):
         cursor = self._spool.execute(
@@ -229,8 +282,7 @@ class ExcelPipeline:
                 current_district = district_key
 
             item = json.loads(payload)
-            row = [_safe_cell(self.worksheet, item[field]) for field in FIELDS]
-            row.append(google_maps_cell(self.worksheet, item))
+            row = [_safe_cell(self.worksheet, item[field]) for field in EXCEL_FIELDS]
             self._append_row(row)
 
         if current_district is not None:
@@ -267,7 +319,9 @@ class ExcelPipeline:
     def _add_district_table(self, table_number, start_row):
         table = Table(
             displayName=f"DistrictTable{table_number:04d}",
-            ref=f"A{start_row}:J{self._sheet_row_count}",
+            ref=(
+                f"A{start_row}:{get_column_letter(len(HEADERS))}{self._sheet_row_count}"
+            ),
         )
         table.tableColumns = [
             TableColumn(id=index, name=header)

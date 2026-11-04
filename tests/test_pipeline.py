@@ -1,36 +1,14 @@
+import json
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from openpyxl import Workbook, load_workbook
+from openpyxl import load_workbook
 
-from eduescale.pipelines import ExcelPipeline, google_maps_cell
-
-
-@pytest.fixture
-def worksheet():
-    workbook = Workbook()
-    yield workbook.active
-    workbook.close()
-
-
-def test_creates_google_maps_hyperlink_from_latitude_and_longitude(worksheet):
-    cell = google_maps_cell(
-        worksheet,
-        {"latitud": -5.773595, "longitud": -77.25584},
-    )
-
-    assert cell.value == "Ver en Google Maps"
-    assert (
-        cell.hyperlink.target
-        == "https://www.google.com/maps/search/?api=1&query=-5.773595,-77.25584"
-    )
-    assert cell.style == "Hyperlink"
-
-
-def test_leaves_cell_blank_when_coordinates_are_missing(worksheet):
-    assert google_maps_cell(worksheet, {"latitud": None, "longitud": -77.2}) is None
+from eduescale import export_files
+from eduescale.export_files import android_data_path
+from eduescale.pipelines import ExcelPipeline
 
 
 def test_saves_one_excel_table_per_district():
@@ -80,9 +58,19 @@ def test_saves_one_excel_table_per_district():
                 "DistrictTable0001",
                 "DistrictTable0002",
             ]
-            assert [table.ref for table in tables] == ["A2:J3", "A6:J7"]
+            assert [table.ref for table in tables] == ["A2:G3", "A6:G7"]
             assert worksheet["A1"].value == "Distrito: Iquitos"
             assert worksheet["A5"].value == "Distrito: Nauta"
+            assert [cell.value for cell in worksheet[2]] == [
+                "Nombre del colegio",
+                "Dirección",
+                "Localidad",
+                "CP",
+                "Turno",
+                "Alumnos",
+                "Secciones",
+            ]
+            assert worksheet.max_column == 7
             assert worksheet["A3"].value == "Colegio Ejemplo"
             assert worksheet["B3"].data_type == "s"
             assert worksheet["B3"].value.startswith("=HYPERLINK")
@@ -90,9 +78,44 @@ def test_saves_one_excel_table_per_district():
         finally:
             workbook.close()
         assert output_path.read_bytes() != b"archivo anterior"
+        android_path = android_data_path(output_path)
+        document = json.loads(android_path.read_text(encoding="utf-8"))
+        assert document["formato"] == "eduescale"
+        assert document["version"] == 1
+        assert document["colegios"] == [
+            {
+                "departamento": "Loreto",
+                "provincia": "Maynas",
+                "distrito": "Iquitos",
+                "nombre": "Colegio Ejemplo",
+                "direccion": '=HYPERLINK("https://example.invalid", "clic")',
+                "localidad": "Localidad",
+                "cp": "Centro Poblado",
+                "turno": "Mañana",
+                "alumnos": 10,
+                "secciones": 1,
+                "longitud": -77.2,
+                "latitud": -12.1,
+            },
+            {
+                "departamento": "Loreto",
+                "provincia": "Maynas",
+                "distrito": "Nauta",
+                "nombre": "Colegio Secundario",
+                "direccion": '=HYPERLINK("https://example.invalid", "clic")',
+                "localidad": "Localidad",
+                "cp": "Centro Poblado",
+                "turno": "Mañana",
+                "alumnos": 10,
+                "secciones": 1,
+                "longitud": -77.2,
+                "latitud": -12.1,
+            },
+        ]
+        assert "google maps" not in android_path.read_text(encoding="utf-8").lower()
 
 
-def test_failed_atomic_replace_preserves_existing_excel(monkeypatch):
+def test_failed_excel_replace_preserves_both_existing_exports(monkeypatch):
     record = {
         "nombre": "Colegio Ejemplo",
         "direccion": "Av. Principal",
@@ -109,7 +132,9 @@ def test_failed_atomic_replace_preserves_existing_excel(monkeypatch):
     }
     with tempfile.TemporaryDirectory() as temp_dir:
         output_path = Path(temp_dir) / "colegios.xlsx"
+        android_path = android_data_path(output_path)
         output_path.write_bytes(b"archivo anterior")
+        android_path.write_bytes(b"archivo EduScale anterior")
         spider = SimpleNamespace(
             output=str(output_path),
             count_received=True,
@@ -123,15 +148,20 @@ def test_failed_atomic_replace_preserves_existing_excel(monkeypatch):
         pipeline.crawler = SimpleNamespace(spider=spider)
         pipeline.open_spider()
         pipeline.process_item(record)
-        monkeypatch.setattr(
-            pipeline,
-            "_replace_output",
-            lambda *_args: (_ for _ in ()).throw(PermissionError("archivo en uso")),
-        )
+        original_replace = export_files.os.replace
+
+        def fail_excel_replace(source, destination):
+            if Path(destination) == output_path:
+                raise PermissionError("archivo en uso")
+            return original_replace(source, destination)
+
+        monkeypatch.setattr(export_files.os, "replace", fail_excel_replace)
 
         with pytest.raises(RuntimeError, match="Cierra el archivo"):
             pipeline.close_spider()
 
         assert output_path.read_bytes() == b"archivo anterior"
+        assert android_path.read_bytes() == b"archivo EduScale anterior"
         assert not pipeline._temporary_output_path.exists()
         assert not pipeline._spool_path.exists()
+        assert not list(Path(temp_dir).glob(".eduescale-backup-*"))

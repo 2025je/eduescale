@@ -9,6 +9,7 @@ from pathlib import Path
 from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, QTimer, Signal, Slot
 
 from eduescale.client import SchoolFilters
+from eduescale.export_files import android_data_path, replace_export_pair
 
 LOGGER = logging.getLogger(__name__)
 
@@ -48,6 +49,7 @@ class ScrapeRunner(QObject):
         self._output_path: Path | None = None
         self._staging_directory: Path | None = None
         self._staging_path: Path | None = None
+        self._staging_android_path: Path | None = None
         self._process_log = ""
         self._progress_buffers = {"stdout": "", "stderr": ""}
         self._scrape_total: int | None = None
@@ -85,6 +87,7 @@ class ScrapeRunner(QObject):
 
         staging_path = self._staging_directory / "colegios.xlsx"
         self._staging_path = staging_path
+        self._staging_android_path = android_data_path(staging_path)
         self._output_path = output_path
         self._process_log = ""
         self._progress_buffers = {"stdout": "", "stderr": ""}
@@ -280,6 +283,9 @@ class ScrapeRunner(QObject):
                     self._staging_path is not None
                     and self._staging_path.is_file()
                     and self._staging_path.stat().st_size > 0
+                    and self._staging_android_path is not None
+                    and self._staging_android_path.is_file()
+                    and self._staging_android_path.stat().st_size > 0
                 )
             except OSError as error:
                 self._fail("No se pudo validar el Excel temporal", str(error))
@@ -290,19 +296,21 @@ class ScrapeRunner(QObject):
                     details = "No se preparó un archivo temporal para la extracción."
                 else:
                     details = (
-                        "Scrapy terminó sin generar un Excel válido.\n"
-                        f"Archivo solicitado: {self._output_path}\n"
+                        "Scrapy terminó sin generar el Excel y archivo "
+                        "EduScale válidos.\n"
+                        f"Archivos solicitados: {self._output_path} y "
+                        f"{android_data_path(self._output_path)}\n"
                         f"Código de salida: {exit_code}"
                     )
-                self._fail("No se generó el Excel", details)
+                self._fail("No se generaron los archivos", details)
                 return
 
             try:
-                self._publish_staging_file()
+                cleanup_warning = self._publish_staging_files()
             except OSError as error:
                 self._fail(
-                    "No se pudo guardar el Excel",
-                    f"{error}\nCierra el archivo de destino si está abierto en Excel.",
+                    "No se pudieron guardar los archivos",
+                    f"{error}\nCierra el archivo de Excel si está abierto.",
                 )
             else:
                 cleanup_error = self._cleanup_staging()
@@ -312,16 +320,30 @@ class ScrapeRunner(QObject):
                     self._records_received,
                     self._pages_received,
                 )
+                if cleanup_warning:
+                    self.warning.emit(
+                        "Archivos creados, pero quedó un respaldo temporal",
+                        cleanup_warning,
+                    )
                 if cleanup_error:
                     self.warning.emit(
-                        "Excel creado, pero no se pudieron limpiar temporales",
+                        "Archivos creados, pero no se pudieron limpiar temporales",
                         cleanup_error,
                     )
 
-    def _publish_staging_file(self):
-        if self._staging_path is None or self._output_path is None:
-            raise RuntimeError("No hay un archivo temporal para publicar.")
-        self._staging_path.replace(self._output_path)
+    def _publish_staging_files(self):
+        if (
+            self._staging_path is None
+            or self._staging_android_path is None
+            or self._output_path is None
+        ):
+            raise RuntimeError("No hay archivos temporales para publicar.")
+        return replace_export_pair(
+            self._staging_path,
+            self._output_path,
+            self._staging_android_path,
+            android_data_path(self._output_path),
+        )
 
     def _cleanup_staging(self) -> str | None:
         if self._staging_directory is None:
@@ -334,6 +356,7 @@ class ScrapeRunner(QObject):
             return str(error)
         self._staging_directory = None
         self._staging_path = None
+        self._staging_android_path = None
         return None
 
     def _fail(self, title: str, details: str):

@@ -195,3 +195,13 @@ def test_cancel_scrape_updates_status_after_runner_confirms(controller_component
 
     assert not controller.scrapeRunning
     assert "cancelada" in controller.statusText
+
+
+def test_scrape_completed_reports_both_export_files(controller_components, tmp_path):
+    controller, _scrape_runner, _errors = controller_components
+    output_path = tmp_path / "schools.xlsx"
+
+    controller._scrape_completed(str(output_path), 2, 2, 1)
+
+    assert "schools.xlsx" in controller.statusText
+    assert "schools.eduescale" in controller.statusText

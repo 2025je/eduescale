@@ -635,7 +635,7 @@ ApplicationWindow {
 
     FileDialog {
         id: saveDialog
-        title: "Guardar padrón en Excel"
+        title: "Guardar Excel y archivo EduScale"
         fileMode: FileDialog.SaveFile
         nameFilters: ["Libro de Excel (*.xlsx)"]
         currentFile: controller.defaultOutputUrl
