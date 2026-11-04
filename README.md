@@ -46,8 +46,12 @@ params = build_search_params(
 ```
 
 La GUI está separada en una vista QML, un controlador y servicios dedicados a
-la carga de ubicaciones y al proceso Scrapy. El comando `eduescale-gui` es el
-entry point instalado para iniciar esa interfaz.
+la carga de ubicaciones y al proceso Scrapy. `application.create_controller`
+es el punto de composición: crea los servicios predeterminados y los inyecta
+al controlador; también permite reemplazarlos por implementaciones propias.
+El controlador depende de contratos de servicio, no de sus implementaciones
+concretas. El comando `eduescale-gui` es el entry point instalado para iniciar
+esa interfaz.
 
 ## Uso
 

@@ -3,6 +3,7 @@ import json
 import pytest
 from PySide6.QtCore import QCoreApplication, QObject, Signal
 
+from eduescale.gui.application import create_controller
 from eduescale.gui.controller import SchoolFinderController
 
 
@@ -10,7 +11,7 @@ class FakeLocationService(QObject):
     loaded = Signal(str, str, object)
     failed = Signal(str, str, str)
 
-    def load(self, _kind, _parent_code=""):
+    def load(self, kind, parent_code=""):
         pass
 
     def shutdown(self):
@@ -27,11 +28,23 @@ class FakeScrapeRunner(QObject):
         super().__init__()
         self.started_requests = []
 
-    def start(self, output_path, filters):
-        self.started_requests.append((output_path, filters))
+    def start(self, output_path, filter_sets):
+        self.started_requests.append((output_path, filter_sets))
 
     def shutdown(self):
         pass
+
+
+def test_create_controller_accepts_injected_services():
+    location_service = FakeLocationService()
+    scrape_runner = FakeScrapeRunner()
+    controller = create_controller(location_service, scrape_runner)
+
+    try:
+        assert controller._location_service is location_service
+        assert controller._scrape_runner is scrape_runner
+    finally:
+        controller.shutdown()
 
 
 @pytest.fixture

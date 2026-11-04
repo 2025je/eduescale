@@ -5,8 +5,7 @@ from PySide6.QtCore import Property, QObject, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices
 
 from eduescale.client import SchoolFilters
-from eduescale.gui.location_service import LocationService
-from eduescale.gui.scrape_runner import ScrapeRunner
+from eduescale.gui.ports import LocationServicePort, ScrapeRunnerPort
 
 LOCATION_PLACEHOLDERS = {
     "regions": "Todos los departamentos",
@@ -25,8 +24,8 @@ class SchoolFinderController(QObject):
 
     def __init__(
         self,
-        location_service: LocationService | None = None,
-        scrape_runner: ScrapeRunner | None = None,
+        location_service: LocationServicePort,
+        scrape_runner: ScrapeRunnerPort,
         parent: QObject | None = None,
     ):
         super().__init__(parent)
@@ -48,14 +47,11 @@ class SchoolFinderController(QObject):
         self._open_folder_visible = False
         self._output_path: Path | None = None
 
-        self._location_service = (
-            location_service
-            if location_service is not None
-            else LocationService(parent=self)
-        )
-        self._scrape_runner = (
-            scrape_runner if scrape_runner is not None else ScrapeRunner(parent=self)
-        )
+        self._location_service = location_service
+        self._scrape_runner = scrape_runner
+        for dependency in (location_service, scrape_runner):
+            if isinstance(dependency, QObject) and dependency.parent() is None:
+                dependency.setParent(self)
         self._location_service.loaded.connect(self._locations_loaded)
         self._location_service.failed.connect(self._locations_failed)
         self._scrape_runner.started.connect(self._scrape_started)

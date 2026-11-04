@@ -1,0 +1,26 @@
+from pathlib import Path
+from typing import Protocol
+
+from PySide6.QtCore import Signal
+
+from eduescale.client import SchoolFilters
+
+
+class LocationServicePort(Protocol):
+    loaded: Signal
+    failed: Signal
+
+    def load(self, kind: str, parent_code: str = "") -> None: ...
+
+    def shutdown(self) -> None: ...
+
+
+class ScrapeRunnerPort(Protocol):
+    started: Signal
+    progressChanged: Signal
+    completed: Signal
+    failed: Signal
+
+    def start(self, output_path: Path, filter_sets: list[SchoolFilters]) -> None: ...
+
+    def shutdown(self) -> None: ...

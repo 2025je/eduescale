@@ -1,4 +1,5 @@
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 from PySide6.QtCore import QUrl
@@ -7,14 +8,31 @@ from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
 
 from eduescale.gui.controller import SchoolFinderController
+from eduescale.gui.location_service import LocationService
+from eduescale.gui.ports import LocationServicePort, ScrapeRunnerPort
+from eduescale.gui.scrape_runner import ScrapeRunner
 
 
-def main() -> int:
+def create_controller(
+    location_service: LocationServicePort | None = None,
+    scrape_runner: ScrapeRunnerPort | None = None,
+) -> SchoolFinderController:
+    return SchoolFinderController(
+        location_service=(
+            LocationService() if location_service is None else location_service
+        ),
+        scrape_runner=ScrapeRunner() if scrape_runner is None else scrape_runner,
+    )
+
+
+def main(
+    controller_factory: Callable[[], SchoolFinderController] = create_controller,
+) -> int:
     QQuickStyle.setStyle("Material")
     application = QGuiApplication(sys.argv)
     application.setApplicationName("Buscador de colegios - ESCALE")
     engine = QQmlApplicationEngine()
-    controller = SchoolFinderController()
+    controller = controller_factory()
     engine.setInitialProperties({"controller": controller})
     qml_path = Path(__file__).resolve().parent / "qml" / "Main.qml"
     engine.load(QUrl.fromLocalFile(str(qml_path)))
