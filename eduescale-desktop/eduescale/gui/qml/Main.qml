@@ -12,21 +12,21 @@ ApplicationWindow {
     minimumWidth: 560
     minimumHeight: 600
     visible: true
-    title: "Buscador de colegios - ESCALE"
-    color: "#F8F7FC"
+    title: "EduEscale | Buscador de colegios"
+    color: "#F4F7F5"
 
-    readonly property color primaryColor: "#5F3DC4"
-    readonly property color primaryHoverColor: "#5134A7"
-    readonly property color primaryActiveColor: "#4C319D"
-    readonly property color primarySubtleColor: "#DFD8F3"
-    readonly property color primarySubtleHoverColor: "#C7BBEA"
-    readonly property color primaryBorderColor: "#BFB1E7"
-    readonly property color primaryEmphasisColor: "#392576"
-    readonly property color borderColor: "#E4DFEE"
-    readonly property color textColor: "#302A3D"
-    readonly property color mutedTextColor: "#6F687B"
-    readonly property int cardRadius: 24
-    readonly property int controlRadius: 18
+    readonly property color primaryColor: "#176B50"
+    readonly property color primaryHoverColor: "#145D46"
+    readonly property color primaryActiveColor: "#104B39"
+    readonly property color primarySubtleColor: "#E8F4ED"
+    readonly property color primarySubtleHoverColor: "#D5E9DC"
+    readonly property color primaryBorderColor: "#B9D7C6"
+    readonly property color primaryEmphasisColor: "#164C39"
+    readonly property color borderColor: "#E6ECE8"
+    readonly property color textColor: "#1C262B"
+    readonly property color mutedTextColor: "#65746C"
+    readonly property int cardRadius: 20
+    readonly property int controlRadius: 14
 
     Material.theme: Material.Light
     Material.primary: primaryColor
@@ -97,7 +97,7 @@ ApplicationWindow {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: actionBar.top
-        padding: 24
+        padding: 20
         clip: true
         contentWidth: availableWidth
         contentHeight: pageContent.implicitHeight
@@ -106,43 +106,65 @@ ApplicationWindow {
         ColumnLayout {
             id: pageContent
             width: filterScrollView.availableWidth
-            spacing: 18
+            spacing: 16
 
             Frame {
                 Layout.fillWidth: true
-                padding: 24
+                padding: 20
                 background: Rectangle {
                     radius: window.cardRadius
-                    gradient: Gradient {
-                        GradientStop { position: 0.0; color: window.primaryEmphasisColor }
-                        GradientStop { position: 1.0; color: window.primaryColor }
-                    }
+                    color: "#FFFFFF"
+                    border.width: 1
+                    border.color: window.borderColor
                 }
 
                 ColumnLayout {
                     anchors.fill: parent
-                    spacing: 8
+                    spacing: 12
 
-                    Label {
-                        text: "PADRÓN EDUCATIVO · PERÚ"
-                        color: window.primarySubtleColor
-                        font.pixelSize: 12
-                        font.weight: Font.Bold
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 14
+
+                        Rectangle {
+                            Layout.preferredWidth: 52
+                            Layout.preferredHeight: 52
+                            radius: width / 2
+                            color: window.primaryColor
+
+                            Label {
+                                anchors.centerIn: parent
+                                text: "E"
+                                color: "#FFFFFF"
+                                font.pixelSize: 25
+                                font.weight: Font.Bold
+                            }
+                        }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+
+                            Label {
+                                objectName: "brandTitle"
+                                text: "EduEscale"
+                                color: window.textColor
+                                font.pixelSize: 26
+                                font.weight: Font.DemiBold
+                            }
+
+                            Label {
+                                text: "Instituciones educativas del Perú"
+                                color: window.mutedTextColor
+                                font.pixelSize: 13
+                            }
+                        }
                     }
 
                     Label {
                         Layout.fillWidth: true
-                        text: "Encuentra colegios,\na tu manera."
-                        color: "#FFFFFF"
-                        font.pixelSize: 30
-                        font.weight: Font.DemiBold
-                        wrapMode: Text.WordWrap
-                    }
-
-                    Label {
-                        Layout.fillWidth: true
-                        text: "Combina ubicaciones y criterios; descarga todos los resultados en un solo Excel."
-                        color: "#F3EFFB"
+                        text: "Combina ubicaciones y criterios para encontrar colegios y exportar sus datos."
+                        color: window.mutedTextColor
                         font.pixelSize: 14
                         wrapMode: Text.WordWrap
                     }
@@ -155,7 +177,7 @@ ApplicationWindow {
                 background: Rectangle {
                     radius: window.cardRadius
                     color: "white"
-                    border.width: 2
+                    border.width: 1
                     border.color: window.borderColor
                 }
 
@@ -195,7 +217,7 @@ ApplicationWindow {
                             onActivated: controller.selectRegion(currentValue)
                             background: Rectangle {
                                 radius: window.controlRadius
-                                color: regionFilter.enabled ? "#FFFFFF" : "#F4F1F8"
+                                color: regionFilter.enabled ? "#FFFFFF" : "#F2F6F3"
                                 border.width: regionFilter.activeFocus ? 2 : 1
                                 border.color: regionFilter.activeFocus
                                     ? window.primaryColor
@@ -220,7 +242,7 @@ ApplicationWindow {
                             onActivated: controller.selectProvince(currentValue)
                             background: Rectangle {
                                 radius: window.controlRadius
-                                color: provinceFilter.enabled ? "#FFFFFF" : "#F4F1F8"
+                                color: provinceFilter.enabled ? "#FFFFFF" : "#F2F6F3"
                                 border.width: provinceFilter.activeFocus ? 2 : 1
                                 border.color: provinceFilter.activeFocus
                                     ? window.primaryColor
@@ -244,7 +266,7 @@ ApplicationWindow {
                             enabled: controller.districtsEnabled && !controller.scrapeRunning
                             background: Rectangle {
                                 radius: window.controlRadius
-                                color: districtFilter.enabled ? "#FFFFFF" : "#F4F1F8"
+                                color: districtFilter.enabled ? "#FFFFFF" : "#F2F6F3"
                                 border.width: districtFilter.activeFocus ? 2 : 1
                                 border.color: districtFilter.activeFocus
                                     ? window.primaryColor
@@ -336,7 +358,7 @@ ApplicationWindow {
                                     : addFilterSetButton.hovered
                                         ? window.primaryHoverColor
                                         : window.primaryColor
-                            border.width: 2
+                            border.width: 1
                             border.color: addFilterSetButton.enabled
                                 ? window.primaryBorderColor
                                 : window.primarySubtleColor
@@ -386,7 +408,7 @@ ApplicationWindow {
                             implicitHeight: emptySearchLabel.implicitHeight + 24
                             visible: filterSetsModel.count === 0
                             radius: window.controlRadius
-                            color: "#FBFAFD"
+                            color: "#F7FAF8"
                             border.width: 1
                             border.color: window.borderColor
 
@@ -410,8 +432,8 @@ ApplicationWindow {
 
                                 background: Rectangle {
                                     radius: window.controlRadius
-                                    color: "#FBFAFD"
-                                    border.width: 2
+                                    color: "#F7FAF8"
+                                    border.width: 1
                                     border.color: window.borderColor
                                 }
 
@@ -476,7 +498,7 @@ ApplicationWindow {
 
             Label {
                 Layout.fillWidth: true
-                text: "El Excel incluirá nombre, dirección, localidad, centro poblado (CP), turno, alumnos, secciones, longitud, latitud y un enlace directo a Google Maps."
+                text: "El Excel incluirá nombre, dirección, localidad, CP, turno, alumnos y secciones. También se generará un archivo .eduescale para la app móvil."
                 color: window.mutedTextColor
                 wrapMode: Text.WordWrap
                 font.pixelSize: 12
@@ -598,7 +620,7 @@ ApplicationWindow {
                                 : scrapeButton.hovered
                                     ? window.primaryHoverColor
                                     : window.primaryColor
-                        border.width: 2
+                        border.width: 1
                         border.color: scrapeButton.enabled
                             ? window.primaryBorderColor
                             : window.primarySubtleColor
@@ -658,7 +680,7 @@ ApplicationWindow {
         background: Rectangle {
             radius: window.cardRadius
             color: "#FFFFFF"
-            border.width: 2
+            border.width: 1
             border.color: window.borderColor
         }
 
@@ -678,7 +700,7 @@ ApplicationWindow {
                     wrapMode: TextEdit.Wrap
                     background: Rectangle {
                         radius: window.controlRadius
-                        color: "#FBFAFD"
+                        color: "#F7FAF8"
                         border.width: errorDetails.activeFocus ? 2 : 1
                         border.color: errorDetails.activeFocus
                             ? window.primaryColor

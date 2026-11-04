@@ -1,4 +1,5 @@
 import math
+import unicodedata
 from typing import Literal
 from xml.etree import ElementTree
 
@@ -24,6 +25,9 @@ class SchoolRecord(BaseModel):
     distrito: str = "Distrito no identificado"
     provincia: str = "Provincia no identificada"
     region: str = "Departamento no identificado"
+    gestion: Literal["publica", "privada"] | None = None
+    nivel: Literal["inicial", "primaria", "secundaria"] | None = None
+    codigo_local: str = ""
 
 
 MANAGEMENT_CODES = {
@@ -162,6 +166,39 @@ def _float(element: ElementTree.Element, path: str) -> float | None:
     return number
 
 
+def _normalized_label(value: str) -> str:
+    return (
+        unicodedata.normalize("NFKD", value)
+        .encode("ascii", "ignore")
+        .decode("ascii")
+        .casefold()
+    )
+
+
+def _management(value: str) -> Literal["publica", "privada"] | None:
+    normalized = _normalized_label(value)
+    if "public" in normalized:
+        return "publica"
+    if "privad" in normalized:
+        return "privada"
+    return None
+
+
+def _level(
+    value: str,
+    code: str = "",
+) -> Literal["inicial", "primaria", "secundaria"] | None:
+    normalized = _normalized_label(value)
+    for level in ("inicial", "primaria", "secundaria"):
+        if level in normalized:
+            return level
+    normalized_code = code.strip().upper()
+    for level, codes in LEVEL_CODES.items():
+        if normalized_code in codes:
+            return level
+    return None
+
+
 def parse_institutions(xml: bytes) -> list[dict[str, object]]:
     root = ElementTree.fromstring(xml)
     records: list[dict[str, object]] = []
@@ -182,6 +219,13 @@ def parse_institutions(xml: bytes) -> list[dict[str, object]]:
             or "Provincia no identificada",
             region=_text(item, "distrito/provincia/region/nombreRegion")
             or "Departamento no identificado",
+            gestion=_management(_text(item, "gestion")),
+            nivel=_level(
+                _text(item, "nivelModalidad/valor")
+                or _text(item, "nivelModalidad"),
+                _text(item, "nivelModalidad/idCodigo"),
+            ),
+            codigo_local=_text(item, "codlocal"),
         )
         records.append(record.model_dump())
     return records

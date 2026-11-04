@@ -48,6 +48,9 @@ ANDROID_FIELDS = (
     "turno",
     "alumnos",
     "secciones",
+    "gestion",
+    "nivel",
+    "codigo_local",
     "longitud",
     "latitud",
 )
@@ -231,7 +234,7 @@ class ExcelPipeline:
                     "departamento": region,
                     "provincia": province,
                     "distrito": district,
-                    **{field: item[field] for field in ANDROID_FIELDS},
+                    **{field: item.get(field) for field in ANDROID_FIELDS},
                 }
                 if not first_record:
                     output_file.write(",")

@@ -11,6 +11,7 @@ from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
 
+from eduescale.gui.application import configure_application_font
 from eduescale.gui.controller import SchoolFinderController
 
 
@@ -45,6 +46,7 @@ class FakeScrapeRunner(QObject):
 
 QQuickStyle.setStyle("Material")
 application = QGuiApplication([])
+assert configure_application_font(application), "Roboto font could not be loaded"
 settings = QSettings(sys.argv[2], QSettings.Format.IniFormat)
 controller = SchoolFinderController(
     FakeLocationService(),
@@ -69,7 +71,9 @@ scroll_view = child("filterScrollView")
 action_bar = child("actionBar")
 help_text = child("searchHelpText")
 empty_state = child("emptySearchState")
+brand_title = child("brandTitle")
 combos = [child(name) for name in ("regionFilter", "provinceFilter", "districtFilter")]
+assert brand_title.property("font").family() == "Roboto"
 
 for width, height in ((560, 600), (1280, 720), (1366, 768), (1600, 900), (1920, 1080)):
     window.resize(width, height)

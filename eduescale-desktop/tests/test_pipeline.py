@@ -20,6 +20,9 @@ def test_saves_one_excel_table_per_district():
         "turno": "Mañana",
         "alumnos": 10,
         "secciones": 1,
+        "gestion": "publica",
+        "nivel": "inicial",
+        "codigo_local": "000123",
         "longitud": -77.2,
         "latitud": -12.1,
         "distrito": "Iquitos",
@@ -79,7 +82,9 @@ def test_saves_one_excel_table_per_district():
             workbook.close()
         assert output_path.read_bytes() != b"archivo anterior"
         android_path = android_data_path(output_path)
-        document = json.loads(android_path.read_text(encoding="utf-8"))
+        android_json = android_path.read_text(encoding="utf-8")
+        assert android_json.startswith('{"formato":"eduescale"')
+        document = json.loads(android_json)
         assert document["formato"] == "eduescale"
         assert document["version"] == 1
         assert document["colegios"] == [
@@ -94,6 +99,9 @@ def test_saves_one_excel_table_per_district():
                 "turno": "Mañana",
                 "alumnos": 10,
                 "secciones": 1,
+                "gestion": "publica",
+                "nivel": "inicial",
+                "codigo_local": "000123",
                 "longitud": -77.2,
                 "latitud": -12.1,
             },
@@ -108,11 +116,14 @@ def test_saves_one_excel_table_per_district():
                 "turno": "Mañana",
                 "alumnos": 10,
                 "secciones": 1,
+                "gestion": "publica",
+                "nivel": "inicial",
+                "codigo_local": "000123",
                 "longitud": -77.2,
                 "latitud": -12.1,
             },
         ]
-        assert "google maps" not in android_path.read_text(encoding="utf-8").lower()
+        assert "google maps" not in android_json.lower()
 
 
 def test_failed_excel_replace_preserves_both_existing_exports(monkeypatch):

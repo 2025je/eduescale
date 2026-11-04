@@ -18,12 +18,16 @@ jobs:
         with:
           python-version: "3.14"
           enable-cache: true
+          cache-dependency-glob: "eduescale-desktop/uv.lock"
       - name: Run tests, lint, and Windows builds
         run: uv run --locked --group nox nox -s tests lint build
+        working-directory: eduescale-desktop
       - name: Smoke-test scraper executable
         run: .\dist\eduescale-scraper.exe list
+        working-directory: eduescale-desktop
       - name: Verify packaged TLS and QML resources
         shell: pwsh
+        working-directory: eduescale-desktop
         run: |
           $viewer = ".\.nox\build\Scripts\pyi-archive_viewer.exe"
           $guiContents = (& $viewer -l ".\dist\eduescale-gui.exe") -join "`n"
@@ -48,6 +52,6 @@ jobs:
         with:
           name: eduescale-windows-${{ github.sha }}
           path: |
-            dist/eduescale-gui.exe
-            dist/eduescale-scraper.exe
+            eduescale-desktop/dist/eduescale-gui.exe
+            eduescale-desktop/dist/eduescale-scraper.exe
           retention-days: 7

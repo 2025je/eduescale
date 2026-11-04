@@ -1,7 +1,11 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_data_files
 
-datas = [('eduescale/gui/qml/Main.qml', 'eduescale/gui/qml')]
+datas = [
+    ('eduescale/gui/qml/Main.qml', 'eduescale/gui/qml'),
+    ('eduescale/gui/fonts/Roboto-Variable.ttf', 'eduescale/gui/fonts'),
+    ('eduescale/gui/fonts/OFL.txt', 'eduescale/gui/fonts'),
+]
 datas += collect_data_files('PySide6')
 
 

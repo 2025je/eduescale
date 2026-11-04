@@ -182,6 +182,9 @@ class TestSchoolsSpiderPage:
             "distrito": "Distrito",
             "provincia": "Provincia",
             "region": "Región",
+            "gestion": "publica",
+            "nivel": "secundaria",
+            "codigo_local": "000123",
         }
         changed_records = []
         for field in RECORD_FIELDS:

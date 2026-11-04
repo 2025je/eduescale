@@ -125,6 +125,11 @@ class TestParseInstitutions:
             <turno><valor>Mañana</valor></turno>
             <estadistica><talumno>42</talumno><tseccion>3</tseccion></estadistica>
             <nlongIE>-77.25584</nlongIE><nlatIE>-5.773595</nlatIE>
+            <gestion>Pública de gestión directa</gestion>
+            <nivelModalidad>
+              <idCodigo>B0</idCodigo><orden>0</orden><valor>Primaria</valor>
+            </nivelModalidad>
+            <codlocal>000123</codlocal>
             <distrito><nombreDistrito>Miraflores</nombreDistrito>
               <provincia><nombreProvincia>Lima</nombreProvincia>
                 <region><nombreRegion>Lima</nombreRegion></region>
@@ -146,8 +151,53 @@ class TestParseInstitutions:
                 "distrito": "Miraflores",
                 "provincia": "Lima",
                 "region": "Lima",
+                "gestion": "publica",
+                "nivel": "primaria",
+                "codigo_local": "000123",
             }
         ]
+
+    @pytest.mark.parametrize(
+        ("management", "modality", "expected_management", "expected_level"),
+        [
+            ("Privada", "A2Inicial - Jardín", "privada", "inicial"),
+            ("Pública", "F0Secundaria", "publica", "secundaria"),
+        ],
+    )
+    def test_classifies_school_management_and_level(
+        self, management, modality, expected_management, expected_level
+    ):
+        xml = (
+            "<instituciones><items>"
+            f"<gestion>{management}</gestion>"
+            f"<nivelModalidad>{modality}</nivelModalidad>"
+            "</items></instituciones>"
+        ).encode()
+
+        record = parse_institutions(xml)[0]
+
+        assert record["gestion"] == expected_management
+        assert record["nivel"] == expected_level
+
+    def test_reads_nested_level_and_code_from_escale_xml(self):
+        xml = b"""<instituciones><items>
+            <nivelModalidad>
+              <idCodigo>B0</idCodigo><orden>0</orden><valor>Primaria</valor>
+            </nivelModalidad>
+        </items></instituciones>"""
+
+        record = parse_institutions(xml)[0]
+
+        assert record["nivel"] == "primaria"
+
+    def test_classifies_level_by_code_when_value_is_missing(self):
+        xml = b"""<instituciones><items>
+            <nivelModalidad><idCodigo>F0</idCodigo></nivelModalidad>
+        </items></instituciones>"""
+
+        record = parse_institutions(xml)[0]
+
+        assert record["nivel"] == "secundaria"
 
     @pytest.mark.parametrize("value", ["nan", "inf", "-inf"])
     def test_rejects_non_finite_coordinates(self, value):

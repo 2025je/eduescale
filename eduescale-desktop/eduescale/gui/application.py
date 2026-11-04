@@ -4,7 +4,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from PySide6.QtCore import QUrl
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
 
@@ -15,6 +15,26 @@ from eduescale.gui.scrape_runner import ScrapeRunner
 from eduescale.logging_config import configure_logging
 
 LOGGER = logging.getLogger(__name__)
+
+
+def configure_application_font(application: QGuiApplication) -> bool:
+    font_path = Path(__file__).resolve().parent / "fonts" / "Roboto-Variable.ttf"
+    font_id = QFontDatabase.addApplicationFont(str(font_path))
+    if font_id < 0:
+        LOGGER.error("Could not load Roboto font from %s", font_path)
+        return False
+
+    font_families = QFontDatabase.applicationFontFamilies(font_id)
+    if "Roboto" not in font_families:
+        LOGGER.error(
+            "Roboto font file registered unexpected families: %s",
+            font_families,
+        )
+        return False
+
+    application.setFont(QFont("Roboto"))
+    LOGGER.info("Using Roboto font from %s", font_path)
+    return True
 
 
 def create_controller(
@@ -34,6 +54,8 @@ def main(
 ) -> int:
     QQuickStyle.setStyle("Material")
     application = QGuiApplication(sys.argv)
+    if not configure_application_font(application):
+        return 1
     application.setOrganizationName("2025je")
     application.setApplicationName("EduScale")
     application.setApplicationDisplayName("Buscador de colegios - ESCALE")

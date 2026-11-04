@@ -1,0 +1,9 @@
+.git
+.gradle
+.idea
+**/.gradle
+**/.idea
+**/build
+**/dist
+**/local.properties
+**/*.iml
