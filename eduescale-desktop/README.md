@@ -146,6 +146,8 @@ registro y usa una base SQLite temporal para evitar que el conjunto de claves
 crezca en memoria; se elimina al cerrar el spider.
 El formulario se apila en una columna cuando la ventana mide menos de 720 px;
 el contenido sigue siendo desplazable en ventanas pequeñas.
+Las consultas directas de ubicación reintentan errores temporales de red y
+respuestas HTTP recuperables con backoff acotado y respetan `Retry-After`.
 La aplicación recuerda el tamaño de la ventana y la última carpeta de exportación
 en las preferencias locales. En Windows, los logs rotativos se guardan en
 `%LOCALAPPDATA%\EduScale\logs` (5 MiB por archivo y tres respaldos).
@@ -173,14 +175,14 @@ Mantén ambos archivos juntos: la interfaz usa `QProcess` para iniciar el worker
 de Scrapy como proceso separado y recibir su progreso. Distribuye los dos
 ejecutables en la misma carpeta.
 Nox usa `eduescale-gui.spec` y `eduescale-scraper.spec` como configuración de
-empaquetado. GitHub Actions ejecuta las pruebas, Ruff, ambos builds de Windows
-y una comprobación del comando `list` del scraper, los recursos QML de Material,
+empaquetado. GitHub Actions ejecuta las pruebas, Ruff, mypy, ambos builds de
+Windows y una comprobación del comando `list` del scraper, los recursos QML de Material,
 los certificados incluidos y la ausencia de WebEngine innecesario en cada push
 y pull request.
 También se puede ejecutar manualmente desde GitHub Actions; ese flujo permite
 descargar ambos ejecutables como artefacto durante siete días.
 
-Para comprobar lint y formato con Ruff:
+Para comprobar lint, formato y tipos con Ruff y mypy:
 
 ```powershell
 uv run --group nox nox -s lint

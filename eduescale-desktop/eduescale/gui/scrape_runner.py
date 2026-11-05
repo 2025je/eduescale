@@ -6,7 +6,15 @@ import sys
 import tempfile
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, QTimer, Signal, Slot
+from PySide6.QtCore import (
+    QByteArray,
+    QObject,
+    QProcess,
+    QProcessEnvironment,
+    QTimer,
+    Signal,
+    Slot,
+)
 
 from eduescale.client import SchoolFilters
 
@@ -20,6 +28,14 @@ SCRAPE_TIMEOUT_MS = 15 * 60 * 1000
 PROCESS_TERMINATE_GRACE_MS = 3000
 MAX_PROCESS_LOG_CHARS = 64 * 1024
 MAX_PROGRESS_LINE_CHARS = 8 * 1024
+
+
+def _process_output_bytes(value: object) -> bytes:
+    if isinstance(value, bytes):
+        return value
+    if isinstance(value, QByteArray):
+        return bytes(value.data())
+    raise TypeError(f"Unsupported process output type: {type(value).__name__}")
 
 
 class ScrapeRunner(QObject):
@@ -153,8 +169,8 @@ class ScrapeRunner(QObject):
     @Slot()
     def _read_process_output(self):
         streams = (
-            ("stdout", bytes(self._process.readAllStandardOutput())),
-            ("stderr", bytes(self._process.readAllStandardError())),
+            ("stdout", _process_output_bytes(self._process.readAllStandardOutput())),
+            ("stderr", _process_output_bytes(self._process.readAllStandardError())),
         )
         for stream_name, chunk in streams:
             text = chunk.decode(errors="replace")

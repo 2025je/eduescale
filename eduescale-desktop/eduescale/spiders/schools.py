@@ -86,7 +86,7 @@ class SchoolsSpider(scrapy.Spider):
         self.pages_received = 0
         self.failed_pages = {}
         self.count_received = False
-        self.filter_totals = [None] * len(self.filters)
+        self.filter_totals = [0] * len(self.filters)
         self._count_responses = 0
         self._seen_store: sqlite3.Connection | None = None
         self._seen_store_path: Path | None = None

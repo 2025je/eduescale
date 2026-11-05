@@ -78,15 +78,15 @@ class SchoolFinderController(QObject):
         self._location_service.load("regions")
         LOGGER.info("Requested ESCALE departments.")
 
-    @Property("QVariantList", notify=regionsChanged)
+    @Property(list, notify=regionsChanged)
     def regions(self):
         return self._regions
 
-    @Property("QVariantList", notify=provincesChanged)
+    @Property(list, notify=provincesChanged)
     def provinces(self):
         return self._provinces
 
-    @Property("QVariantList", notify=districtsChanged)
+    @Property(list, notify=districtsChanged)
     def districts(self):
         return self._districts
 
@@ -144,25 +144,27 @@ class SchoolFinderController(QObject):
 
     @Property(str, notify=stateChanged)
     def defaultOutputUrl(self):
-        output_path = (
+        return QUrl.fromLocalFile(str(self._default_output_path())).toString()
+
+    def _default_output_path(self) -> Path:
+        return (
             self._output_path
             if self._exports_available and self._output_path is not None
             else self._next_output_path()
         )
-        return QUrl.fromLocalFile(str(output_path)).toString()
 
     @Property(str, notify=stateChanged)
     def defaultEduScaleOutputUrl(self):
-        output_url = QUrl(self.defaultOutputUrl)
-        output_path = Path(output_url.toLocalFile())
-        return QUrl.fromLocalFile(str(android_data_path(output_path))).toString()
+        return QUrl.fromLocalFile(
+            str(android_data_path(self._default_output_path()))
+        ).toString()
 
     def _next_output_path(self) -> Path:
         directory = self._settings.value("export/lastDirectory", str(Path.home()))
-        try:
-            output_directory = Path(directory)
-        except (TypeError, ValueError):
+        if not isinstance(directory, str):
             output_directory = Path.home()
+        else:
+            output_directory = Path(directory)
         if not output_directory.is_dir():
             output_directory = Path.home()
         output_path = output_directory / "colegios_escale.xlsx"
@@ -181,11 +183,14 @@ class SchoolFinderController(QObject):
         return self._window_dimension("window/height", 860, 600)
 
     def _window_dimension(self, key: str, default: int, minimum: int) -> int:
+        value = self._settings.value(key, default)
+        if not isinstance(value, (str, int, float)):
+            return default
         try:
-            value = int(self._settings.value(key, default))
+            dimension = int(value)
         except (TypeError, ValueError):
             return default
-        return max(value, minimum)
+        return max(dimension, minimum)
 
     @Slot(int, int)
     def saveWindowSize(self, width: int, height: int):

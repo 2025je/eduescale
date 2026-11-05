@@ -4,7 +4,9 @@ import os
 import sqlite3
 import tempfile
 from pathlib import Path
+from typing import Protocol, cast
 
+from scrapy.crawler import Crawler
 from scrapy.exceptions import DropItem
 
 from eduescale.export_files import android_data_path, replace_export_pair
@@ -25,7 +27,19 @@ FIELDS = (
 )
 
 
+class _SchoolSpiderState(Protocol):
+    output: str | Path
+    count_received: bool
+    items_received: int
+    expected_total: int
+    unique_items_received: int
+    pages_received: int
+    failed_pages: dict[tuple[int, int], str]
+
+
 class ExcelPipeline:
+    crawler: Crawler
+
     @classmethod
     def from_crawler(cls, crawler):
         pipeline = cls()
@@ -33,7 +47,7 @@ class ExcelPipeline:
         return pipeline
 
     def open_spider(self):
-        self.output_path = Path(self.crawler.spider.output)
+        self.output_path = Path(self._school_spider().output)
         self.android_output_path = android_data_path(self.output_path)
         self.output_path.parent.mkdir(parents=True, exist_ok=True)
         self._temporary_output_path: Path | None = None
@@ -44,9 +58,11 @@ class ExcelPipeline:
             dir=self.output_path.parent,
             delete=False,
         ) as spool_file:
-            self._spool_path: Path | None = Path(spool_file.name)
-        self._spool = sqlite3.connect(self._spool_path)
-        self._spool.execute(
+            spool_path = Path(spool_file.name)
+            self._spool_path: Path | None = spool_path
+        spool = sqlite3.connect(spool_path)
+        self._spool: sqlite3.Connection | None = spool
+        spool.execute(
             """
             CREATE TABLE records (
                 region TEXT NOT NULL,
@@ -59,12 +75,15 @@ class ExcelPipeline:
         self.row_count = 0
 
     def process_item(self, item):
+        spool = self._spool
+        if spool is None:
+            raise RuntimeError("La base temporal de la extracción no está abierta.")
         try:
             for field in FIELDS:
                 item[field]
         except KeyError as error:
             raise DropItem(f"Falta el campo requerido para Excel: {error}") from error
-        self._spool.execute(
+        spool.execute(
             """
             INSERT INTO records (region, province, district, payload)
             VALUES (?, ?, ?, ?)
@@ -80,8 +99,12 @@ class ExcelPipeline:
         return item
 
     def close_spider(self):
-        spider = self.crawler.spider
+        spider = self._school_spider()
+        spool = self._spool
+        spool_path = self._spool_path
         try:
+            if spool is None or spool_path is None:
+                raise RuntimeError("La base temporal de la extracción no está abierta.")
             if not spider.count_received:
                 raise RuntimeError(
                     "No se pudo obtener el total de resultados desde ESCALE."
@@ -106,17 +129,17 @@ class ExcelPipeline:
                     message = f"{message} Páginas fallidas: {details}"
                 raise RuntimeError(message)
 
-            self._spool.commit()
+            spool.commit()
             if self.output_path.suffix.lower() == ".sqlite3":
                 self._close_spool()
-                os.replace(self._spool_path, self.output_path)
+                os.replace(spool_path, self.output_path)
                 self._spool_path = None
                 return
 
             self._temporary_output_path = self._create_temporary_path(".xlsx")
             self._temporary_android_path = self._create_temporary_path(".eduescale")
-            export_excel(self._spool_path, self._temporary_output_path)
-            export_eduescale(self._spool_path, self._temporary_android_path)
+            export_excel(spool_path, self._temporary_output_path)
+            export_eduescale(spool_path, self._temporary_android_path)
             try:
                 cleanup_warning = replace_export_pair(
                     self._temporary_output_path,
@@ -148,6 +171,12 @@ class ExcelPipeline:
             delete=False,
         ) as export_file:
             return Path(export_file.name)
+
+    def _school_spider(self) -> _SchoolSpiderState:
+        spider = self.crawler.spider
+        if spider is None:
+            raise RuntimeError("La extracción no tiene un spider activo.")
+        return cast(_SchoolSpiderState, spider)
 
     def _close_spool(self):
         if self._spool is not None:

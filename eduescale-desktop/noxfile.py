@@ -13,6 +13,7 @@ def tests(session: Session) -> None:
 def lint(session: Session) -> None:
     session.run("ruff", "check", ".")
     session.run("ruff", "format", "--check", ".")
+    session.run("mypy", "eduescale")
 
 
 @session(uv_groups=["lint"])

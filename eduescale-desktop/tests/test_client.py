@@ -1,11 +1,65 @@
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
 import pytest
 from pydantic import ValidationError
 
+from eduescale import client
 from eduescale.client import (
     SchoolFilters,
     build_search_params,
     parse_institutions,
 )
+
+
+class _RetryTestHandler(BaseHTTPRequestHandler):
+    attempts = 0
+    user_agent = None
+
+    def do_GET(self):
+        type(self).attempts += 1
+        type(self).user_agent = self.headers.get("User-Agent")
+        if type(self).attempts == 1:
+            self.send_response(503)
+            self.send_header("Retry-After", "0")
+            self.end_headers()
+            return
+
+        payload = (
+            b"<regiones><region><idRegion>15</idRegion>"
+            b"<nombreRegion>Lima</nombreRegion></region></regiones>"
+        )
+        self.send_response(200)
+        self.send_header("Content-Type", "application/xml")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def log_message(self, format, *args):
+        pass
+
+
+class TestDirectRequestRetries:
+    def test_retries_temporary_http_errors_and_honors_retry_after(self, monkeypatch):
+        _RetryTestHandler.attempts = 0
+        _RetryTestHandler.user_agent = None
+        server = ThreadingHTTPServer(("127.0.0.1", 0), _RetryTestHandler)
+        server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+        server_thread.start()
+        monkeypatch.setattr(
+            client,
+            "API_URL",
+            f"http://127.0.0.1:{server.server_port}/padron/rest",
+        )
+
+        try:
+            assert client.fetch_regions() == [("15", "Lima")]
+            assert _RetryTestHandler.attempts == 2
+            assert _RetryTestHandler.user_agent == "eduescale/0.1"
+        finally:
+            server.shutdown()
+            server.server_close()
+            server_thread.join()
 
 
 class TestBuildSearchParams:

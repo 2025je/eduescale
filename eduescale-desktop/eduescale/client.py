@@ -5,9 +5,27 @@ from xml.etree import ElementTree
 
 import requests
 from pydantic import BaseModel, ConfigDict, field_validator
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+SchoolManagement = Literal["publica", "privada"]
+SchoolLevel = Literal["inicial", "primaria", "secundaria"]
 
 API_URL = "https://escale.minedu.gob.pe/padron/rest"
 REQUEST_TIMEOUT = 30
+HTTP_RETRY = Retry(
+    total=3,
+    connect=3,
+    read=3,
+    status=3,
+    backoff_factor=0.5,
+    backoff_max=8,
+    retry_after_max=30,
+    status_forcelist=(429, 500, 502, 503, 504),
+    allowed_methods=frozenset({"GET"}),
+    respect_retry_after_header=True,
+    raise_on_status=False,
+)
 
 
 class SchoolRecord(BaseModel):
@@ -25,16 +43,16 @@ class SchoolRecord(BaseModel):
     distrito: str = "Distrito no identificado"
     provincia: str = "Provincia no identificada"
     region: str = "Departamento no identificado"
-    gestion: Literal["publica", "privada"] | None = None
-    nivel: Literal["inicial", "primaria", "secundaria"] | None = None
+    gestion: SchoolManagement | None = None
+    nivel: SchoolLevel | None = None
     codigo_local: str = ""
 
 
-MANAGEMENT_CODES = {
+MANAGEMENT_CODES: dict[SchoolManagement, tuple[str, ...]] = {
     "publica": ("A1", "A2", "A3", "A4"),
     "privada": ("B1", "B2", "B3", "B4", "B5", "B6"),
 }
-LEVEL_CODES = {
+LEVEL_CODES: dict[SchoolLevel, tuple[str, ...]] = {
     "inicial": ("A1", "A2", "A3", "A5"),
     "primaria": ("B0",),
     "secundaria": ("F0",),
@@ -47,8 +65,8 @@ class SchoolFilters(BaseModel):
     region_code: str = ""
     province_code: str = ""
     district_code: str = ""
-    management: tuple[Literal["publica", "privada"], ...] = ()
-    level: tuple[Literal["inicial", "primaria", "secundaria"], ...] = ()
+    management: tuple[SchoolManagement, ...] = ()
+    level: tuple[SchoolLevel, ...] = ()
 
     @field_validator("management", "level", mode="before")
     @classmethod
@@ -73,14 +91,22 @@ def _get_xml(
     path: str,
     params: list[tuple[str, str]] | dict[str, str] | None = None,
 ) -> ElementTree.Element:
-    response = requests.get(
-        f"{API_URL}/{path}",
-        params=params,
-        headers={"User-Agent": "eduescale/0.1"},
-        timeout=REQUEST_TIMEOUT,
-    )
-    response.raise_for_status()
-    return ElementTree.fromstring(response.content)
+    with _new_http_session() as session:
+        response = session.get(
+            f"{API_URL}/{path}",
+            params=params,
+            headers={"User-Agent": "eduescale/0.1"},
+            timeout=REQUEST_TIMEOUT,
+        )
+        response.raise_for_status()
+        return ElementTree.fromstring(response.content)
+
+
+def _new_http_session() -> requests.Session:
+    session = requests.Session()
+    for scheme in ("http://", "https://"):
+        session.mount(scheme, HTTPAdapter(max_retries=HTTP_RETRY))
+    return session
 
 
 def _locations(
@@ -175,7 +201,7 @@ def _normalized_label(value: str) -> str:
     )
 
 
-def _management(value: str) -> Literal["publica", "privada"] | None:
+def _management(value: str) -> SchoolManagement | None:
     normalized = _normalized_label(value)
     if "public" in normalized:
         return "publica"
@@ -187,9 +213,9 @@ def _management(value: str) -> Literal["publica", "privada"] | None:
 def _level(
     value: str,
     code: str = "",
-) -> Literal["inicial", "primaria", "secundaria"] | None:
+) -> SchoolLevel | None:
     normalized = _normalized_label(value)
-    for level in ("inicial", "primaria", "secundaria"):
+    for level in LEVEL_CODES:
         if level in normalized:
             return level
     normalized_code = code.strip().upper()

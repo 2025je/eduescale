@@ -1,14 +1,14 @@
 from pathlib import Path
 from typing import Protocol
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import SignalInstance
 
 from eduescale.client import SchoolFilters
 
 
 class LocationServicePort(Protocol):
-    loaded: Signal
-    failed: Signal
+    loaded: SignalInstance
+    failed: SignalInstance
 
     def load(self, kind: str, parent_code: str = "") -> None: ...
 
@@ -16,12 +16,12 @@ class LocationServicePort(Protocol):
 
 
 class ScrapeRunnerPort(Protocol):
-    started: Signal
-    progressChanged: Signal
-    completed: Signal
-    failed: Signal
-    cancelled: Signal
-    warning: Signal
+    started: SignalInstance
+    progressChanged: SignalInstance
+    completed: SignalInstance
+    failed: SignalInstance
+    cancelled: SignalInstance
+    warning: SignalInstance
 
     def start(self, output_path: Path, filter_sets: list[SchoolFilters]) -> None: ...
 
@@ -31,9 +31,9 @@ class ScrapeRunnerPort(Protocol):
 
 
 class ExportRunnerPort(Protocol):
-    started: Signal
-    completed: Signal
-    failed: Signal
+    started: SignalInstance
+    completed: SignalInstance
+    failed: SignalInstance
 
     def start(
         self,
