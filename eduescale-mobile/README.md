@@ -37,12 +37,15 @@ La interfaz usa la familia `sans-serif` de Android, basada en Roboto.
 
 El mapa usa MapLibre Native Android y los mosaicos raster estándar de
 OpenStreetMap. La atribución «© OpenStreetMap contributors» permanece visible y
-las solicitudes identifican la aplicación. El mapa requiere conexión a
-Internet; no descarga mapas para uso sin conexión. El servidor público de
-mosaicos de OpenStreetMap tiene capacidad limitada y no ofrece SLA; no se deben
-precargar ni descargar mosaicos en bloque. Para un uso de producción con mucho
-tráfico, configura un proveedor de mosaicos con capacidad y condiciones
-adecuadas y respeta la
+las solicitudes identifican la aplicación. MapLibre conserva en una caché HTTP
+local, limitada a 128 MiB, los mosaicos que solicita al navegar y respeta las
+cabeceras de caché del servidor. Las zonas visitadas recientemente pueden
+seguir visibles sin conexión mientras sus mosaicos permanezcan en caché; esto
+no garantiza disponibilidad offline completa ni descarga áreas por adelantado.
+El servidor público de mosaicos de OpenStreetMap tiene capacidad limitada y no
+ofrece SLA; no se deben precargar ni descargar mosaicos en bloque. Para un uso
+de producción con mucho tráfico o descargas offline completas, configura un
+proveedor de mosaicos con capacidad y condiciones adecuadas y respeta la
 [política de uso de mosaicos de OpenStreetMap](https://operations.osmfoundation.org/policies/tiles/).
 
 ## Abrir y ejecutar

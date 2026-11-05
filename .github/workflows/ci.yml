@@ -23,7 +23,7 @@ jobs:
         run: uv run --locked --group nox nox -s tests lint build
         working-directory: eduescale-desktop
       - name: Smoke-test scraper executable
-        run: .\dist\eduescale-scraper.exe list
+        run: .\dist\eduescale-scraper\eduescale-scraper.exe list
         working-directory: eduescale-desktop
       - name: Verify packaged TLS and QML resources
         shell: pwsh
@@ -41,9 +41,10 @@ jobs:
           if ($guiContents -match "Qt6WebEngine.*\.dll|QtWebEngineProcess\.exe") {
             throw "Unused Qt WebEngine components were bundled into the GUI."
           }
-          $scraperContents = (& $viewer -l ".\dist\eduescale-scraper.exe") -join "`n"
+          $scraperContents = (& $viewer -l ".\dist\eduescale-scraper\eduescale-scraper.exe") -join "`n"
           if ($LASTEXITCODE -ne 0) { throw "Could not inspect the scraper executable." }
-          if ($scraperContents -notmatch "certifi.*cacert\.pem") {
+          $scraperCertificate = Get-ChildItem ".\dist\eduescale-scraper" -Filter "cacert.pem" -Recurse
+          if ($null -eq $scraperCertificate) {
             throw "The scraper certificate bundle is missing."
           }
       - name: Upload Windows executables
@@ -53,5 +54,5 @@ jobs:
           name: eduescale-windows-${{ github.sha }}
           path: |
             eduescale-desktop/dist/eduescale-gui.exe
-            eduescale-desktop/dist/eduescale-scraper.exe
+            eduescale-desktop/dist/eduescale-scraper/
           retention-days: 7

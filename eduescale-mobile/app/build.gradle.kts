@@ -33,4 +33,5 @@ dependencies {
     implementation("org.maplibre.gl:android-sdk-opengl:13.6.1")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
 }
