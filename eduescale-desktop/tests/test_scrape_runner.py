@@ -22,6 +22,7 @@ def application():
 class FakeProcess:
     def __init__(self):
         self._state = QProcess.ProcessState.NotRunning
+        self.program = None
         self.output_path = None
         self.terminate_requested = False
         self.kill_requested = False
@@ -37,7 +38,8 @@ class FakeProcess:
     def setWorkingDirectory(self, _working_directory):
         pass
 
-    def start(self, _program, arguments):
+    def start(self, program, arguments):
+        self.program = program
         self._state = QProcess.ProcessState.Running
         output_argument = next(
             argument for argument in arguments if argument.startswith("output=")
@@ -94,6 +96,33 @@ def test_frozen_windows_runner_initializes_without_qprocess_modifier(
     runner = ScrapeRunner()
     try:
         assert runner._frozen
+    finally:
+        runner.shutdown()
+    assert application is not None
+
+
+def test_frozen_windows_runner_uses_onedir_scraper(tmp_path, monkeypatch, application):
+    distribution_directory = tmp_path / "dist"
+    worker_directory = distribution_directory / "eduescale-scraper"
+    worker_directory.mkdir(parents=True)
+    gui_executable = distribution_directory / "eduescale-gui.exe"
+    gui_executable.touch()
+    worker_executable = worker_directory / "eduescale-scraper.exe"
+    worker_executable.touch()
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(sys, "executable", str(gui_executable))
+
+    runner = ScrapeRunner()
+    process = _replace_process(runner)
+
+    try:
+        runner.start(
+            tmp_path / "schools.xlsx",
+            [SchoolFilters(management=("publica",), level=("inicial",))],
+        )
+
+        assert process.program == str(worker_executable)
     finally:
         runner.shutdown()
     assert application is not None

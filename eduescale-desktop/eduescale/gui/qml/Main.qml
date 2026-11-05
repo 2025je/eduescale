@@ -27,6 +27,7 @@ ApplicationWindow {
     readonly property color mutedTextColor: "#65746C"
     readonly property int cardRadius: 20
     readonly property int controlRadius: 14
+    property string filterNotice: ""
 
     Material.theme: Material.Light
     Material.primary: primaryColor
@@ -62,8 +63,18 @@ ApplicationWindow {
         return selected.join(",")
     }
 
+    function filterSetKey(filterSet) {
+        return JSON.stringify([
+            filterSet.regionCode || "",
+            filterSet.provinceCode || "",
+            filterSet.districtCode || "",
+            (filterSet.management || "").split(",").sort().join(","),
+            (filterSet.level || "").split(",").sort().join(",")
+        ])
+    }
+
     function addFilterSet() {
-        filterSetsModel.append({
+        var filterSet = {
             regionCode: regionFilter.currentValue || "",
             provinceCode: provinceFilter.currentValue || "",
             districtCode: districtFilter.currentValue || "",
@@ -72,7 +83,16 @@ ApplicationWindow {
             districtLabel: districtFilter.currentValue ? districtFilter.currentText : "",
             management: selectedManagement(),
             level: selectedLevels()
-        })
+        }
+        var key = filterSetKey(filterSet)
+        for (var index = 0; index < filterSetsModel.count; index++) {
+            if (filterSetKey(filterSetsModel.get(index)) === key) {
+                filterNotice = "Esta combinación ya está en Mis búsquedas."
+                return
+            }
+        }
+        filterSetsModel.append(filterSet)
+        filterNotice = ""
     }
 
     function selectedFilterSetsJson() {
@@ -96,7 +116,7 @@ ApplicationWindow {
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.bottom: actionBar.top
+        anchors.bottom: sourceBar.top
         padding: 20
         clip: true
         contentWidth: availableWidth
@@ -164,8 +184,22 @@ ApplicationWindow {
                 }
             }
 
-            Frame {
+            GridLayout {
+                id: searchWorkspace
+                objectName: "searchWorkspace"
                 Layout.fillWidth: true
+                columns: window.width < 1040 ? 1 : 2
+                columnSpacing: 16
+                rowSpacing: 16
+
+            Frame {
+                id: criteriaCard
+                objectName: "criteriaCard"
+                Layout.fillWidth: true
+                Layout.alignment: Qt.AlignTop
+                Layout.preferredWidth: searchWorkspace.columns === 2
+                    ? filterScrollView.availableWidth * 0.58
+                    : filterScrollView.availableWidth
                 padding: 22
                 background: Rectangle {
                     radius: window.cardRadius
@@ -207,7 +241,10 @@ ApplicationWindow {
                             textRole: "label"
                             valueRole: "code"
                             enabled: controller.regionsEnabled && !controller.scrapeRunning
-                            onActivated: controller.selectRegion(currentValue)
+                            onActivated: {
+                                window.filterNotice = ""
+                                controller.selectRegion(currentValue)
+                            }
                             background: Rectangle {
                                 radius: window.controlRadius
                                 color: regionFilter.enabled ? "#FFFFFF" : "#F2F6F3"
@@ -232,7 +269,10 @@ ApplicationWindow {
                             textRole: "label"
                             valueRole: "code"
                             enabled: controller.provincesEnabled && !controller.scrapeRunning
-                            onActivated: controller.selectProvince(currentValue)
+                            onActivated: {
+                                window.filterNotice = ""
+                                controller.selectProvince(currentValue)
+                            }
                             background: Rectangle {
                                 radius: window.controlRadius
                                 color: provinceFilter.enabled ? "#FFFFFF" : "#F2F6F3"
@@ -257,6 +297,7 @@ ApplicationWindow {
                             textRole: "label"
                             valueRole: "code"
                             enabled: controller.districtsEnabled && !controller.scrapeRunning
+                            onActivated: window.filterNotice = ""
                             background: Rectangle {
                                 radius: window.controlRadius
                                 color: districtFilter.enabled ? "#FFFFFF" : "#F2F6F3"
@@ -281,12 +322,14 @@ ApplicationWindow {
                                 objectName: "publicManagement"
                                 text: "Pública"
                                 enabled: !controller.scrapeRunning
+                                onToggled: window.filterNotice = ""
                             }
                             CheckBox {
                                 id: privateManagement
                                 objectName: "privateManagement"
                                 text: "Privada"
                                 enabled: !controller.scrapeRunning
+                                onToggled: window.filterNotice = ""
                             }
                         }
 
@@ -304,18 +347,21 @@ ApplicationWindow {
                                 objectName: "initialLevel"
                                 text: "Inicial"
                                 enabled: !controller.scrapeRunning
+                                onToggled: window.filterNotice = ""
                             }
                             CheckBox {
                                 id: primaryLevel
                                 objectName: "primaryLevel"
                                 text: "Primaria"
                                 enabled: !controller.scrapeRunning
+                                onToggled: window.filterNotice = ""
                             }
                             CheckBox {
                                 id: secondaryLevel
                                 objectName: "secondaryLevel"
                                 text: "Secundaria"
                                 enabled: !controller.scrapeRunning
+                                onToggled: window.filterNotice = ""
                             }
                         }
 
@@ -323,7 +369,9 @@ ApplicationWindow {
                             objectName: "searchHelpText"
                             Layout.fillWidth: true
                             Layout.columnSpan: filterGrid.columns
-                            text: "Marca al menos una opción en Gestión y Nivel educativo para agregar esta combinación."
+                            text: window.filterNotice.length
+                                ? window.filterNotice
+                                : "Marca al menos una opción en Gestión y Nivel educativo para agregar esta combinación."
                             color: window.mutedTextColor
                             wrapMode: Text.WordWrap
                             font.pixelSize: 12
@@ -360,6 +408,28 @@ ApplicationWindow {
                             }
                         }
                     }
+                }
+            }
+
+            Frame {
+                id: searchesCard
+                objectName: "searchesCard"
+                Layout.fillWidth: true
+                Layout.alignment: Qt.AlignTop
+                Layout.preferredWidth: searchWorkspace.columns === 2
+                    ? filterScrollView.availableWidth * 0.42
+                    : filterScrollView.availableWidth
+                padding: 22
+                background: Rectangle {
+                    radius: window.cardRadius
+                    color: "white"
+                    border.width: 1
+                    border.color: window.borderColor
+                }
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    spacing: 14
 
                     RowLayout {
                         Layout.fillWidth: true
@@ -488,88 +558,33 @@ ApplicationWindow {
                     }
                 }
             }
-
-            Label {
-                Layout.fillWidth: true
-                text: "Después de descargar los datos, elige si deseas exportarlos a Excel o .eduescale."
-                color: window.mutedTextColor
-                wrapMode: Text.WordWrap
-                font.pixelSize: 12
             }
 
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: 6
-                visible: controller.progressVisible
+        }
+    }
 
-                Rectangle {
-                    Layout.fillWidth: true
-                    implicitHeight: 1
-                    color: window.borderColor
-                }
+    Rectangle {
+        id: sourceBar
+        objectName: "sourceBar"
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: actionBar.top
+        height: 36
+        color: "#F4F7F5"
+        border.color: window.borderColor
+        z: 1
 
-                ProgressBar {
-                    Layout.fillWidth: true
-                    from: 0
-                    to: Math.max(controller.progressMaximum, 1)
-                    value: controller.progressValue
-                    indeterminate: controller.progressIndeterminate
-                }
-
-                Label {
-                    Layout.fillWidth: true
-                    text: controller.progressMessage
-                    horizontalAlignment: Text.AlignHCenter
-                    color: window.mutedTextColor
-                    wrapMode: Text.WordWrap
-                }
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: controller.statusText
-                wrapMode: Text.Wrap
-                textFormat: Text.PlainText
-                color: window.mutedTextColor
-            }
-
-            RowLayout {
-                objectName: "exportButtons"
-                Layout.fillWidth: true
-                visible: controller.exportsAvailable
-                spacing: 8
-
-                Button {
-                    objectName: "downloadExcelButton"
-                    Layout.fillWidth: true
-                    text: "Exportar Excel"
-                    enabled: !controller.exportRunning
-                    onClicked: excelSaveDialog.open()
-                    Material.foreground: window.primaryColor
-                }
-
-                Button {
-                    objectName: "downloadEduScaleButton"
-                    Layout.fillWidth: true
-                    text: "Exportar .eduescale"
-                    enabled: !controller.exportRunning
-                    onClicked: eduScaleSaveDialog.open()
-                    Material.foreground: window.primaryColor
-                }
-            }
-
-            Item {
-                Layout.fillHeight: true
-                Layout.minimumHeight: 4
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: '<a href="https://escale.minedu.gob.pe/padron-de-iiee">Fuente: Padrón de IIEE de ESCALE</a>'
-                textFormat: Text.RichText
-                onLinkActivated: link => Qt.openUrlExternally(link)
-                palette.link: window.primaryColor
-            }
+        Label {
+            id: sourceLabel
+            objectName: "sourceLabel"
+            anchors.fill: parent
+            anchors.leftMargin: 20
+            anchors.rightMargin: 20
+            verticalAlignment: Text.AlignVCenter
+            text: '<a href="https://escale.minedu.gob.pe/padron-de-iiee">Fuente: Padrón de IIEE de ESCALE</a>'
+            textFormat: Text.RichText
+            onLinkActivated: link => Qt.openUrlExternally(link)
+            palette.link: window.primaryColor
         }
     }
 
@@ -579,7 +594,9 @@ ApplicationWindow {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        height: controller.scrapeRunning || controller.exportRunning ? 142 : 100
+        height: controller.progressVisible
+            ? window.width < 900 ? 220 : 196
+            : window.width < 900 ? 184 : 124
         color: "white"
         border.color: window.borderColor
         z: 1
@@ -601,16 +618,47 @@ ApplicationWindow {
                 font.pixelSize: 11
             }
 
-            RowLayout {
+            ProgressBar {
+                id: progressIndicator
+                objectName: "progressIndicator"
+                Layout.fillWidth: true
+                Layout.preferredHeight: 8
+                visible: controller.progressVisible
+                from: 0
+                to: Math.max(controller.progressMaximum, 1)
+                value: controller.progressValue
+                indeterminate: controller.progressIndeterminate
+            }
+
+            Label {
+                id: statusLabel
+                objectName: "statusLabel"
+                Layout.fillWidth: true
+                text: controller.scrapeRunning || controller.exportRunning
+                    ? controller.progressMessage
+                    : controller.statusText
+                color: window.mutedTextColor
+                font.pixelSize: 11
+                wrapMode: Text.WordWrap
+                maximumLineCount: 2
+                elide: Text.ElideRight
+            }
+
+            GridLayout {
+                id: actionButtons
+                objectName: "actionButtons"
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                spacing: 10
+                columns: window.width < 900 ? 2 : 3
+                columnSpacing: 8
+                rowSpacing: 8
 
                 Button {
                     id: scrapeButton
                     objectName: "scrapeButton"
                     Layout.fillWidth: true
                     Layout.fillHeight: true
+                    Layout.minimumHeight: 48
                     implicitHeight: 52
                     text: controller.cancelRequested
                         ? "Cancelando extracción..."
@@ -648,10 +696,33 @@ ApplicationWindow {
                 }
 
                 Button {
+                    objectName: "downloadExcelButton"
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Layout.minimumHeight: 48
+                    text: "Exportar Excel"
+                    enabled: controller.exportsAvailable && !controller.exportRunning
+                    onClicked: excelSaveDialog.open()
+                    Material.foreground: window.primaryColor
+                }
+
+                Button {
+                    objectName: "downloadEduScaleButton"
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Layout.minimumHeight: 48
+                    text: "Exportar .eduescale"
+                    enabled: controller.exportsAvailable && !controller.exportRunning
+                    onClicked: eduScaleSaveDialog.open()
+                    Material.foreground: window.primaryColor
+                }
+
+                Button {
                     id: cancelScrapeButton
                     objectName: "cancelScrapeButton"
                     Layout.preferredWidth: 120
                     Layout.fillHeight: true
+                    Layout.minimumHeight: 48
                     visible: controller.scrapeRunning
                     enabled: !controller.cancelRequested
                     text: controller.cancelRequested ? "Cancelando..." : "Cancelar"

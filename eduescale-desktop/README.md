@@ -170,17 +170,19 @@ Genera los ejecutables con PyInstaller a través de Nox:
 uv run --group nox nox -s build
 ```
 
-La carpeta `dist` contendrá `eduescale-gui.exe` y `eduescale-scraper.exe`.
-Mantén ambos archivos juntos: la interfaz usa `QProcess` para iniciar el worker
-de Scrapy como proceso separado y recibir su progreso. Distribuye los dos
-ejecutables en la misma carpeta.
+La carpeta `dist` contendrá `eduescale-gui.exe` y la carpeta
+`eduescale-scraper`, que incluye el worker y sus dependencias. Mantén ambos
+elementos juntos: la interfaz usa `QProcess` para iniciar el worker de Scrapy
+como proceso separado y recibir su progreso. El worker se distribuye como una
+carpeta para que, al cancelar una extracción, Windows cierre el proceso que
+mantiene abierta la base de datos temporal.
 Nox usa `eduescale-gui.spec` y `eduescale-scraper.spec` como configuración de
 empaquetado. GitHub Actions ejecuta las pruebas, Ruff, mypy, ambos builds de
 Windows y una comprobación del comando `list` del scraper, los recursos QML de Material,
 los certificados incluidos y la ausencia de WebEngine innecesario en cada push
 y pull request.
 También se puede ejecutar manualmente desde GitHub Actions; ese flujo permite
-descargar ambos ejecutables como artefacto durante siete días.
+descargar la interfaz y la carpeta del worker como artefacto durante siete días.
 
 Para comprobar lint, formato y tipos con Ruff y mypy:
 

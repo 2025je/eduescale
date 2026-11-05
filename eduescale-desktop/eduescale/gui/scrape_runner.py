@@ -134,7 +134,11 @@ class ScrapeRunner(QObject):
                 if sys.platform == "win32"
                 else "eduescale-scraper"
             )
-            worker_path = Path(sys.executable).resolve().with_name(worker_name)
+            worker_path = (
+                Path(sys.executable).resolve().parent
+                / "eduescale-scraper"
+                / worker_name
+            )
             if not worker_path.is_file():
                 self._fail(
                     "No se encontró el ejecutable de Scrapy",
