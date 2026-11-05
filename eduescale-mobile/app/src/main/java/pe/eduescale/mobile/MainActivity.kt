@@ -32,6 +32,7 @@ import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
@@ -96,6 +97,7 @@ class MainActivity : ComponentActivity() {
     private var schoolsById: Map<Int, SchoolRecord> = emptyMap()
     private var visibleSchools: List<SchoolRecord> = emptyList()
     private var advancedFilters = SchoolFilters()
+    private lateinit var externalFileBackCallback: OnBackPressedCallback
 
     private val openDocument = registerForActivityResult(
         ActivityResultContracts.OpenDocument(),
@@ -121,6 +123,15 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        externalFileBackCallback = object : OnBackPressedCallback(false) {
+            override fun handleOnBackPressed() {
+                if (!moveTaskToBack(true)) {
+                    isEnabled = false
+                    onBackPressedDispatcher.onBackPressed()
+                }
+            }
+        }
+        onBackPressedDispatcher.addCallback(this, externalFileBackCallback)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = Color.TRANSPARENT
         window.navigationBarColor = Color.TRANSPARENT
@@ -394,9 +405,21 @@ class MainActivity : ComponentActivity() {
         setContentView(root)
         WindowCompat.getInsetsController(window, root).isAppearanceLightStatusBars = true
         mapView.getMapAsync(::configureMap)
-        if (intent.action == Intent.ACTION_VIEW) {
-            intent.data?.let(::importFile)
+        handleIncomingIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIncomingIntent(intent)
+    }
+
+    private fun handleIncomingIntent(incomingIntent: Intent) {
+        val uri = incomingIntent.data.takeIf {
+            incomingIntent.action == Intent.ACTION_VIEW
         }
+        externalFileBackCallback.isEnabled = uri != null
+        uri?.let(::importFile)
     }
 
     private fun createTopPanel(): View {

@@ -13,6 +13,9 @@ La interfaz usa la familia `sans-serif` de Android, basada en Roboto.
   admitiendo archivos ZIP de versiones anteriores.
 - Puede abrir directamente los archivos `.eduescale` recibidos como documentos
   por WhatsApp u otras apps compatibles.
+- Al abrir uno desde otra app, EduEscale queda en una tarea separada. El botón
+  Atrás regresa a la app de origen y deja EduEscale disponible en **Recientes**
+  para volver al mapa con los datos cargados.
 - Muestra un marcador por local educativo con coordenadas válidas y agrupa sus
   registros por código de local, nombre, gestión y ubicación.
 - Permite buscar colegios por nombre, sin distinguir mayúsculas ni tildes.
