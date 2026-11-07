@@ -1,0 +1,14 @@
+**
+!eduescale-mobile/
+!eduescale-mobile/**
+eduescale-mobile/.git
+eduescale-mobile/.gradle
+eduescale-mobile/.idea
+eduescale-mobile/.dockerignore
+eduescale-mobile/docker-compose.yml
+eduescale-mobile/**/.gradle
+eduescale-mobile/**/.idea
+eduescale-mobile/**/build
+eduescale-mobile/**/dist
+eduescale-mobile/**/local.properties
+eduescale-mobile/**/*.iml

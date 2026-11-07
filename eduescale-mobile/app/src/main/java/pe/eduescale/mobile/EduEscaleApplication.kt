@@ -7,7 +7,7 @@ import okhttp3.OkHttpClient
 import org.maplibre.android.MapLibre
 import org.maplibre.android.module.http.HttpRequestUtil
 
-class EduScaleApplication : Application() {
+class EduEscaleApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         MapLibre.getInstance(this)

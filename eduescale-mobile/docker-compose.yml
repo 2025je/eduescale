@@ -1,0 +1,30 @@
+services:
+  android:
+    build:
+      context: ..
+      dockerfile: eduescale-mobile/Dockerfile
+      target: android-build
+      args:
+        SOURCE_ROOT: eduescale-mobile
+      secrets:
+        - source: release_keystore
+          target: release_keystore
+        - source: keystore_properties
+          target: keystore_properties
+    working_dir: /workspace
+    volumes:
+      - ./dist:/output
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        mkdir -p /output
+        cp app/build/outputs/apk/debug/app-debug.apk /output/EduEscale-debug.apk
+        cp app/build/outputs/apk/release/app-release.apk /output/EduEscale-release.apk
+        cp app/build/outputs/bundle/release/app-release.aab /output/EduEscale-release.aab
+
+secrets:
+  release_keystore:
+    file: ../android-secrets/release.jks
+  keystore_properties:
+    file: ../android-secrets/keystore.properties

@@ -11,7 +11,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
 
-class EduScaleApplicationTest {
+class EduEscaleApplicationTest {
     @Test
     fun mapHttpClientServesCachedTilesWithoutNetwork() {
         val cacheDirectory = Files.createTempDirectory("eduescale-map-cache").toFile()

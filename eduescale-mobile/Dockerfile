@@ -28,11 +28,26 @@ RUN yes | sdkmanager --sdk_root="${ANDROID_SDK_ROOT}" --licenses
 RUN android --sdk="${ANDROID_SDK_ROOT}" sdk install platforms/android-36 build-tools/36.0.0
 
 WORKDIR /workspace
-COPY . .
+ARG SOURCE_ROOT=.
+COPY ${SOURCE_ROOT}/. .
 
 RUN --mount=type=cache,target=/root/.gradle \
+    --mount=type=secret,id=release_keystore,target=/run/secrets/release.jks,required=false \
+    --mount=type=secret,id=keystore_properties,target=/run/secrets/keystore.properties,required=false \
     chmod +x ./gradlew \
-    && ./gradlew --no-daemon --console=plain :app:testDebugUnitTest :app:assembleDebug
+    && if [ -f /run/secrets/release.jks ] && [ -f /run/secrets/keystore.properties ]; then \
+        export EDUESCALE_KEYSTORE_PROPERTIES=/run/secrets/keystore.properties; \
+    elif [ -e /run/secrets/release.jks ] || [ -e /run/secrets/keystore.properties ]; then \
+        echo "Se requieren tanto release.jks como keystore.properties para firmar." >&2; \
+        exit 1; \
+    fi \
+    && ./gradlew --no-daemon --console=plain :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease :app:bundleRelease
 
 FROM scratch AS apk
 COPY --from=android-build /workspace/app/build/outputs/apk/debug/app-debug.apk /EduEscale-debug.apk
+
+FROM scratch AS release-apk
+COPY --from=android-build /workspace/app/build/outputs/apk/release/app-release-unsigned.apk /EduEscale-release-unsigned.apk
+
+FROM scratch AS release
+COPY --from=android-build /workspace/app/build/outputs/bundle/release/app-release.aab /EduEscale-release.aab

@@ -10,3 +10,4 @@ dist/
 .gradle/
 local.properties
 *.iml
+/android-secrets/

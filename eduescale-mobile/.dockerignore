@@ -7,3 +7,4 @@
 **/dist
 **/local.properties
 **/*.iml
+docker-compose.yml

@@ -35,6 +35,14 @@ La interfaz usa la familia `sans-serif` de Android, basada en Roboto.
   o gestión, muestra un aviso en lugar de ocultar esos datos silenciosamente.
 - Informa cuántos registros no tienen coordenadas utilizables.
 
+## Interfaz
+
+La app usa Jetpack Compose y Material 3 con navegación inferior entre **Mapa**,
+**Colegios** y **Archivos**. La búsqueda y los filtros se aplican localmente a
+los registros importados; la ficha del colegio se presenta en una hoja inferior
+con opciones para abrir rutas en Google Maps o Waze y compartir la ubicación.
+El tema claro u oscuro sigue la preferencia del sistema.
+
 El mapa usa MapLibre Native Android y los mosaicos raster estándar de
 OpenStreetMap. La atribución «© OpenStreetMap contributors» permanece visible y
 las solicitudes identifican la aplicación. MapLibre conserva en una caché HTTP
@@ -75,6 +83,37 @@ Docker genera `dist/EduEscale-debug.apk`. La imagen instala JDK 17, Android
 SDK Platform 36 y Build Tools 36.0.0, ejecuta las pruebas unitarias y empaqueta
 la aplicación como APK de depuración. Se requiere Docker BuildKit y conexión a
 Internet durante la primera compilación.
+
+Para compilar con Docker Compose y firmar los artefactos de release con el
+keystore local, desde esta carpeta ejecuta:
+
+```powershell
+docker compose run --build --rm android
+```
+
+Compose monta `../android-secrets/release.jks` y
+`../android-secrets/keystore.properties` como secretos BuildKit durante la
+compilación; no los copia a la imagen. Se generan el APK debug, el APK release
+firmado y el AAB firmado en `dist/`.
+
+Para generar el bundle Android de release:
+
+```powershell
+docker buildx build --target release --output type=local,dest=dist .
+```
+
+Docker genera `dist/EduEscale-release.aab`. El bundle se compila sin firma de
+publicación; antes de subirlo a Google Play, debe firmarse con la clave de carga
+configurada para la aplicación.
+
+Para generar un APK de release:
+
+```powershell
+docker buildx build --target release-apk --output type=local,dest=dist .
+```
+
+Docker genera `dist/EduEscale-release-unsigned.apk`. El APK no está firmado;
+antes de instalarlo o distribuirlo, debe firmarse con una clave de release.
 
 En la aplicación, pulsa **Abrir archivo**, selecciona el archivo `.eduescale` y
 acerca o aleja el mapa. Toca un punto para consultar sus datos. Los archivos
