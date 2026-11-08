@@ -5,6 +5,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("org.jetbrains.kotlin.kapt")
 }
 
 val signingPropertiesPath = providers.environmentVariable("EDUESCALE_KEYSTORE_PROPERTIES").orNull
@@ -80,6 +81,8 @@ android {
 }
 
 dependencies {
+    val roomVersion = "2.7.2"
+
     implementation("androidx.activity:activity-ktx:1.10.1")
     implementation("androidx.activity:activity-compose:1.10.1")
     implementation("androidx.core:core-ktx:1.17.0")
@@ -95,6 +98,9 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.9.5")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("com.google.code.gson:gson:2.13.2")
+    implementation("androidx.room:room-runtime:$roomVersion")
+    implementation("androidx.room:room-ktx:$roomVersion")
+    kapt("androidx.room:room-compiler:$roomVersion")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.maplibre.gl:android-sdk-opengl:13.6.1")
 

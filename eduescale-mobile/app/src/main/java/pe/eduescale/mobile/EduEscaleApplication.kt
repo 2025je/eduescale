@@ -3,6 +3,7 @@ package pe.eduescale.mobile
 import android.app.Application
 import java.io.File
 import okhttp3.Cache
+import okhttp3.Dispatcher
 import okhttp3.OkHttpClient
 import org.maplibre.android.MapLibre
 import org.maplibre.android.module.http.HttpRequestUtil
@@ -15,8 +16,13 @@ class EduEscaleApplication : Application() {
     }
 }
 
-internal fun createMapHttpClient(cacheDirectory: File): OkHttpClient =
-    OkHttpClient.Builder()
+internal fun createMapHttpClient(cacheDirectory: File): OkHttpClient {
+    val dispatcher = Dispatcher().apply {
+        maxRequests = MAP_MAX_PARALLEL_REQUESTS
+        maxRequestsPerHost = MAP_MAX_PARALLEL_REQUESTS
+    }
+    return OkHttpClient.Builder()
+        .dispatcher(dispatcher)
         .cache(
             Cache(
                 File(cacheDirectory, MAP_TILE_CACHE_DIRECTORY),
@@ -34,6 +40,8 @@ internal fun createMapHttpClient(cacheDirectory: File): OkHttpClient =
             chain.proceed(request)
         }
         .build()
+}
 
 private const val MAP_TILE_CACHE_DIRECTORY = "map-tile-cache"
 internal const val MAP_TILE_CACHE_SIZE_BYTES = 128L * 1024 * 1024
+private const val MAP_MAX_PARALLEL_REQUESTS = 4

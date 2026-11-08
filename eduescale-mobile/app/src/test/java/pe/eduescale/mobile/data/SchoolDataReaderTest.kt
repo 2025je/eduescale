@@ -4,9 +4,11 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.StringReader
 import java.nio.charset.StandardCharsets
+import java.nio.file.Files
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
@@ -153,6 +155,43 @@ class SchoolDataReaderTest {
 
         assertThrows(IllegalArgumentException::class.java) {
             SchoolDataReader.read(StringReader(json))
+        }
+    }
+
+    @Test
+    fun storedFileCanBeRestoredAfterTheAppIsRecreated() {
+        val directory = Files.createTempDirectory("eduescale-store").toFile()
+        try {
+            val storage = SchoolFileStorage(directory)
+            val json =
+                """{"formato":"eduescale","version":1,"colegios":[{"nombre":"Colegio guardado","longitud":-77.0,"latitud":-12.0}]}"""
+            storage.save(ByteArrayInputStream(json.toByteArray(StandardCharsets.UTF_8)))
+
+            val restored = SchoolFileStorage(directory).restore()
+
+            assertNotNull(restored)
+            assertEquals("Colegio guardado", restored?.schools?.single()?.nombre)
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun invalidImportDoesNotReplaceThePreviouslyStoredFile() {
+        val directory = Files.createTempDirectory("eduescale-store").toFile()
+        try {
+            val storage = SchoolFileStorage(directory)
+            val json =
+                """{"formato":"eduescale","version":1,"colegios":[{"nombre":"Colegio guardado","longitud":-77.0,"latitud":-12.0}]}"""
+            storage.save(ByteArrayInputStream(json.toByteArray(StandardCharsets.UTF_8)))
+
+            assertThrows(IllegalArgumentException::class.java) {
+                storage.save(ByteArrayInputStream("""{"formato":"otro"}""".toByteArray()))
+            }
+
+            assertEquals("Colegio guardado", storage.restore()?.schools?.single()?.nombre)
+        } finally {
+            directory.deleteRecursively()
         }
     }
 }

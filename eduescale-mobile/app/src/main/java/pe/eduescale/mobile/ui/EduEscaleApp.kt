@@ -13,22 +13,33 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Comment
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.MyLocation
@@ -45,16 +56,19 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RangeSlider
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
@@ -75,6 +89,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -86,10 +102,17 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import kotlinx.coroutines.launch
 import pe.eduescale.mobile.data.SchoolFile
+import pe.eduescale.mobile.data.SchoolComment
 import pe.eduescale.mobile.data.SchoolFilters
+import pe.eduescale.mobile.data.SchoolReminder
 import pe.eduescale.mobile.data.SchoolRecord
+import pe.eduescale.mobile.data.OfflineTileEstimator
+import pe.eduescale.mobile.data.activityKey
 import pe.eduescale.mobile.ui.EduEscaleUiState
 import pe.eduescale.mobile.ui.EduEscaleViewModel
+import pe.eduescale.mobile.ui.OfflineMapAreaUi
+import pe.eduescale.mobile.ui.OfflineMapBounds
+import kotlin.math.roundToInt
 
 private val EduGreen = Color(0xFF176B50)
 private val EduOrange = Color(0xFFD97706)
@@ -120,6 +143,8 @@ fun EduEscaleTheme(content: @Composable () -> Unit) {
 fun EduEscaleApp(
     viewModel: EduEscaleViewModel,
     onMapTouchEnabled: (Boolean) -> Unit,
+    onMapTopOverlayBottomChanged: (Float) -> Unit,
+    onMapDownloadControlBoundsChanged: (Float, Float, Float, Float) -> Unit,
     onPickFile: () -> Unit,
     onLocate: () -> Unit,
     onApplyFilters: (SchoolFilters) -> Unit,
@@ -127,6 +152,21 @@ fun EduEscaleApp(
     onDirections: (SchoolRecord) -> Unit,
     onShare: (SchoolRecord) -> Unit,
     onClearSelection: () -> Unit,
+    onAddComment: (SchoolRecord, String) -> Unit,
+    onDeleteComment: (SchoolRecord, String) -> Unit,
+    onEditComment: (SchoolRecord, String, String) -> Unit,
+    onSearchComments: (SchoolRecord, String) -> Unit,
+    onAddReminder: (SchoolRecord, String) -> Unit,
+    onDeleteReminder: (SchoolRecord, String) -> Unit,
+    onExportActivityBackup: () -> Unit,
+    onImportActivityBackup: () -> Unit,
+    onDownloadVisibleArea: (OfflineMapBounds, Int, Int) -> Unit,
+    onToggleOfflineMapArea: (Long, Boolean) -> Unit,
+    onDeleteOfflineMapArea: (Long) -> Unit,
+    onRefreshActivityHistory: () -> Unit,
+    onEditHistoryComment: (SchoolComment, String) -> Unit,
+    onEditHistoryReminder: (SchoolReminder, String, Long) -> Unit,
+    onPickReminderDateTime: (Long, (Long) -> Unit) -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val navController = rememberNavController()
@@ -135,9 +175,15 @@ fun EduEscaleApp(
     LaunchedEffect(currentRoute, state.selectedSchool) {
         onMapTouchEnabled(currentRoute == "map" && state.selectedSchool == null)
     }
+    LaunchedEffect(currentRoute) {
+        if (currentRoute == "history") {
+            onRefreshActivityHistory()
+        }
+    }
     val destinations = listOf(
         Destination("map", "Mapa", Icons.Default.Map),
         Destination("schools", "Colegios", Icons.Default.List),
+        Destination("history", "Historial", Icons.Default.History),
         Destination("files", "Archivos", Icons.Default.FolderOpen),
     )
 
@@ -179,6 +225,9 @@ fun EduEscaleApp(
                 composable("map") {
                     MapScreen(
                         state = state,
+                        onMapTopOverlayBottomChanged = onMapTopOverlayBottomChanged,
+                        onMapDownloadControlBoundsChanged =
+                            onMapDownloadControlBoundsChanged,
                         onGoToFiles = {
                             navController.navigate("files") {
                                 launchSingleTop = true
@@ -188,6 +237,14 @@ fun EduEscaleApp(
                         onDirections = onDirections,
                         onShare = onShare,
                         onClearSelection = onClearSelection,
+                        onAddComment = onAddComment,
+                        onDeleteComment = onDeleteComment,
+                        onEditComment = onEditComment,
+                        onSearchComments = onSearchComments,
+                        onAddReminder = onAddReminder,
+                        onDeleteReminder = onDeleteReminder,
+                        onDownloadVisibleArea = onDownloadVisibleArea,
+                        onToggleOfflineMapArea = onToggleOfflineMapArea,
                     )
                 }
                 composable("schools") {
@@ -211,6 +268,22 @@ fun EduEscaleApp(
                         importing = state.isImporting,
                         error = state.importError,
                         onPickFile = onPickFile,
+                        onExportActivityBackup = onExportActivityBackup,
+                        onImportActivityBackup = onImportActivityBackup,
+                        offlineMapAreas = state.offlineMapAreas,
+                        offlineMapMessage = state.offlineMapMessage,
+                        offlineMapMessageIsError = state.offlineMapMessageIsError,
+                        onToggleOfflineMapArea = onToggleOfflineMapArea,
+                        onDeleteOfflineMapArea = onDeleteOfflineMapArea,
+                    )
+                }
+                composable("history") {
+                    ActivityHistoryScreen(
+                        state = state,
+                        onRefresh = onRefreshActivityHistory,
+                        onEditComment = onEditHistoryComment,
+                        onEditReminder = onEditHistoryReminder,
+                        onPickReminderDateTime = onPickReminderDateTime,
                     )
                 }
             }
@@ -227,20 +300,36 @@ private data class Destination(
 @Composable
 private fun MapScreen(
     state: EduEscaleUiState,
+    onMapTopOverlayBottomChanged: (Float) -> Unit,
+    onMapDownloadControlBoundsChanged: (Float, Float, Float, Float) -> Unit,
     onGoToFiles: () -> Unit,
     onLocate: () -> Unit,
     onDirections: (SchoolRecord) -> Unit,
     onShare: (SchoolRecord) -> Unit,
     onClearSelection: () -> Unit,
+    onAddComment: (SchoolRecord, String) -> Unit,
+    onDeleteComment: (SchoolRecord, String) -> Unit,
+    onEditComment: (SchoolRecord, String, String) -> Unit,
+    onSearchComments: (SchoolRecord, String) -> Unit,
+    onAddReminder: (SchoolRecord, String) -> Unit,
+    onDeleteReminder: (SchoolRecord, String) -> Unit,
+    onDownloadVisibleArea: (OfflineMapBounds, Int, Int) -> Unit,
+    onToggleOfflineMapArea: (Long, Boolean) -> Unit,
 ) {
     var legendExpanded by rememberSaveable { mutableStateOf(false) }
+    var showOfflineMapDialog by rememberSaveable { mutableStateOf(false) }
 
     Box(Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .windowInsetsPadding(WindowInsets.statusBars)
-                .padding(horizontal = 16.dp, vertical = 10.dp),
+                .padding(horizontal = 16.dp, vertical = 10.dp)
+                .onGloballyPositioned { coordinates ->
+                    onMapTopOverlayBottomChanged(
+                        coordinates.positionInRoot().y + coordinates.size.height,
+                    )
+                },
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             BrandHeader()
@@ -305,6 +394,106 @@ private fun MapScreen(
             }
         }
 
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 12.dp, bottom = 12.dp)
+                .onGloballyPositioned { coordinates ->
+                    val position = coordinates.positionInRoot()
+                    onMapDownloadControlBoundsChanged(
+                        position.x,
+                        position.y,
+                        position.x + coordinates.size.width,
+                        position.y + coordinates.size.height,
+                    )
+                },
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            val activeDownload = state.offlineMapAreas.firstOrNull(OfflineMapAreaUi::isDownloading)
+            if (state.isCreatingOfflineMapArea) {
+                Card(shape = RoundedCornerShape(14.dp)) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Text("Iniciando descarga del área…", fontWeight = FontWeight.SemiBold)
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    }
+                }
+            } else if (activeDownload != null) {
+                val progress = if (activeDownload.estimatedTiles > 0) {
+                    (activeDownload.completedTiles.toFloat() /
+                        activeDownload.estimatedTiles).coerceIn(0f, 1f)
+                } else {
+                    0f
+                }
+                Card(shape = RoundedCornerShape(14.dp)) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Text("Descargando ${activeDownload.name}", fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "${activeDownload.completedTiles} / " +
+                                "${activeDownload.estimatedTiles} teselas · " +
+                                formatMapBytes(activeDownload.completedBytes),
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                        LinearProgressIndicator(
+                            progress = progress,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        TextButton(
+                            onClick = {
+                                onToggleOfflineMapArea(activeDownload.id, false)
+                            },
+                            modifier = Modifier.align(Alignment.End),
+                        ) {
+                            Text("Pausar")
+                        }
+                    }
+                }
+            }
+            Button(
+                onClick = { showOfflineMapDialog = true },
+                enabled = state.visibleMapBounds != null &&
+                    !state.isCreatingOfflineMapArea &&
+                    state.offlineMapAreas.none(OfflineMapAreaUi::isDownloading),
+            ) {
+                Icon(Icons.Default.FileDownload, contentDescription = null)
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    if (state.isCreatingOfflineMapArea) {
+                        "Iniciando descarga…"
+                    } else if (activeDownload != null) {
+                        "Descarga en curso"
+                    } else {
+                        "Descargar área visible"
+                    },
+                )
+            }
+            Text(
+                "OpenFreeMap © OpenMapTiles · Data from OpenStreetMap",
+                modifier = Modifier.padding(start = 4.dp),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (!state.isCreatingOfflineMapArea && activeDownload == null) {
+                state.offlineMapMessage?.let { message ->
+                Text(
+                    message,
+                    modifier = Modifier.padding(start = 4.dp, end = 8.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (state.offlineMapMessageIsError) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+                }
+            }
+        }
+
         FloatingActionButton(
             onClick = onLocate,
             modifier = Modifier
@@ -315,15 +504,19 @@ private fun MapScreen(
         ) {
             Icon(Icons.Default.MyLocation, contentDescription = "Centrar mi ubicación")
         }
+    }
 
-        Text(
-            "© OpenStreetMap contributors",
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 5.dp),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+    if (showOfflineMapDialog) {
+        state.visibleMapBounds?.let { bounds ->
+            OfflineMapDownloadDialog(
+                bounds = bounds,
+                onDismiss = { showOfflineMapDialog = false },
+                onDownload = { minZoom, maxZoom ->
+                    onDownloadVisibleArea(bounds, minZoom, maxZoom)
+                    showOfflineMapDialog = false
+                },
+            )
+        }
     }
 
     SchoolDetailsSheet(
@@ -331,6 +524,100 @@ private fun MapScreen(
         onDismiss = onClearSelection,
         onDirections = onDirections,
         onShare = onShare,
+        comments = state.schoolComments,
+        reminders = state.schoolReminders,
+        commentSearchQuery = state.commentSearchQuery,
+        onAddComment = { text ->
+            state.selectedSchool?.let { school -> onAddComment(school, text) }
+        },
+        onDeleteComment = { commentId ->
+            state.selectedSchool?.let { school -> onDeleteComment(school, commentId) }
+        },
+        onEditComment = { commentId, text ->
+            state.selectedSchool?.let { school ->
+                onEditComment(school, commentId, text)
+            }
+        },
+        onSearchComments = { query ->
+            state.selectedSchool?.let { school -> onSearchComments(school, query) }
+        },
+        onAddReminder = { message ->
+            state.selectedSchool?.let { school -> onAddReminder(school, message) }
+        },
+        onDeleteReminder = { reminderId ->
+            state.selectedSchool?.let { school -> onDeleteReminder(school, reminderId) }
+        },
+    )
+}
+
+@Composable
+private fun OfflineMapDownloadDialog(
+    bounds: OfflineMapBounds,
+    onDismiss: () -> Unit,
+    onDownload: (Int, Int) -> Unit,
+) {
+    val initialZoom = bounds.cameraZoom.toInt().coerceIn(0, OfflineTileEstimator.MAX_ZOOM)
+    var zoomRange by remember(bounds) {
+        mutableStateOf(
+            maxOf(initialZoom - 2, 0).toFloat()..
+                minOf(initialZoom + 2, OfflineTileEstimator.MAX_ZOOM).toFloat(),
+        )
+    }
+    val minZoom = zoomRange.start.roundToInt()
+    val maxZoom = zoomRange.endInclusive.roundToInt()
+    val estimatedTiles = OfflineTileEstimator.estimate(
+        west = bounds.west,
+        south = bounds.south,
+        east = bounds.east,
+        north = bounds.north,
+        minZoom = minZoom,
+        maxZoom = maxZoom,
+    )
+    val withinTileLimit = estimatedTiles <= OfflineTileEstimator.MAX_TILE_COUNT
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Descargar área visible") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Elige los niveles de zoom que estarán disponibles sin conexión.")
+                Text("Zoom $minZoom–$maxZoom")
+                RangeSlider(
+                    value = zoomRange,
+                    onValueChange = { zoomRange = it },
+                    valueRange = 0f..OfflineTileEstimator.MAX_ZOOM.toFloat(),
+                    steps = OfflineTileEstimator.MAX_ZOOM - 1,
+                )
+                Text(
+                    "$estimatedTiles / ${OfflineTileEstimator.MAX_TILE_COUNT} teselas estimadas",
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    "Cada área debe respetar el límite de OpenFreeMap: 3.000 teselas o 50 MB.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (!withinTileLimit) {
+                    Text(
+                        "Reduce el área o el rango de zoom para continuar.",
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onDownload(minZoom, maxZoom) },
+                enabled = withinTileLimit,
+            ) {
+                Text("Descargar")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar")
+            }
+        },
     )
 }
 
@@ -410,6 +697,372 @@ private fun SchoolsScreen(
     }
 }
 
+private enum class ActivityHistoryFilter {
+    ALL,
+    COMMENTS,
+    PENDING_REMINDERS,
+    NON_PENDING_REMINDERS,
+}
+
+private data class ActivityHistoryEntry(
+    val id: String,
+    val type: String,
+    val status: String,
+    val schoolName: String,
+    val message: String,
+    val date: String,
+    val timestamp: Long,
+    val isReminder: Boolean,
+    val isPending: Boolean,
+    val comment: SchoolComment? = null,
+    val reminder: SchoolReminder? = null,
+)
+
+@Composable
+private fun ActivityHistoryScreen(
+    state: EduEscaleUiState,
+    onRefresh: () -> Unit,
+    onEditComment: (SchoolComment, String) -> Unit,
+    onEditReminder: (SchoolReminder, String, Long) -> Unit,
+    onPickReminderDateTime: (Long, (Long) -> Unit) -> Unit,
+) {
+    var query by rememberSaveable { mutableStateOf("") }
+    var selectedFilter by rememberSaveable {
+        mutableStateOf(ActivityHistoryFilter.ALL)
+    }
+    var commentBeingEdited by remember { mutableStateOf<SchoolComment?>(null) }
+    var commentEditText by remember { mutableStateOf("") }
+    var reminderBeingEdited by remember { mutableStateOf<SchoolReminder?>(null) }
+    var reminderEditText by remember { mutableStateOf("") }
+    var reminderEditScheduledAt by remember { mutableStateOf(0L) }
+    val schoolNames = remember(state.schoolFile) {
+        state.schoolFile?.schools
+            ?.associate { school ->
+                school.activityKey() to (
+                    school.nombre?.takeIf(String::isNotBlank) ?: "Colegio sin nombre"
+                    )
+            }
+            .orEmpty()
+    }
+    val entries = remember(
+        state.activityHistoryComments,
+        state.activityHistoryReminders,
+        schoolNames,
+        query,
+        selectedFilter,
+    ) {
+        val now = System.currentTimeMillis()
+        buildList {
+            if (
+                selectedFilter == ActivityHistoryFilter.ALL ||
+                selectedFilter == ActivityHistoryFilter.COMMENTS
+            ) {
+                state.activityHistoryComments.forEach { comment ->
+                    val updatedAt = comment.updatedAtMillis
+                    add(
+                        ActivityHistoryEntry(
+                            id = "comment-${comment.id}",
+                            type = "Comentario",
+                            status = if (updatedAt == null) "Guardado" else "Editado",
+                            schoolName = schoolNames[comment.schoolKey]
+                                ?: "Colegio no disponible",
+                            message = comment.text,
+                            date = buildString {
+                                append("Creado: ${formatActivityDate(comment.createdAtMillis)}")
+                                updatedAt?.let {
+                                    append(" · Editado: ${formatActivityDate(it)}")
+                                }
+                            },
+                            timestamp = updatedAt ?: comment.createdAtMillis,
+                            isReminder = false,
+                            isPending = false,
+                            comment = comment,
+                        ),
+                    )
+                }
+            }
+            if (
+                selectedFilter != ActivityHistoryFilter.COMMENTS
+            ) {
+                state.activityHistoryReminders.forEach { reminder ->
+                    val isPending = isReminderPending(reminder, now)
+                    if (
+                        selectedFilter == ActivityHistoryFilter.PENDING_REMINDERS &&
+                        !isPending
+                    ) {
+                        return@forEach
+                    }
+                    if (
+                        selectedFilter == ActivityHistoryFilter.NON_PENDING_REMINDERS &&
+                        isPending
+                    ) {
+                        return@forEach
+                    }
+                    add(
+                        ActivityHistoryEntry(
+                            id = "reminder-${reminder.id}",
+                            type = "Alarma",
+                            status = reminderStatusLabel(reminder, now),
+                            schoolName = reminder.schoolName,
+                            message = reminder.message,
+                            date = formatActivityDate(reminder.scheduledAtMillis),
+                            timestamp = reminder.scheduledAtMillis,
+                            isReminder = true,
+                            isPending = isPending,
+                            reminder = reminder,
+                        ),
+                    )
+                }
+            }
+        }.filter { entry ->
+            query.isBlank() ||
+                entry.schoolName.contains(query.trim(), ignoreCase = true) ||
+                entry.message.contains(query.trim(), ignoreCase = true)
+        }.sortedByDescending(ActivityHistoryEntry::timestamp)
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .windowInsetsPadding(WindowInsets.statusBars)
+            .padding(horizontal = 16.dp),
+    ) {
+        BrandHeader(modifier = Modifier.padding(top = 12.dp, bottom = 8.dp))
+        Text("Historial", style = MaterialTheme.typography.headlineSmall)
+        OutlinedTextField(
+            value = query,
+            onValueChange = { query = it },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 10.dp),
+            singleLine = true,
+            placeholder = { Text("Buscar colegio, comentario o alarma") },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+            shape = RoundedCornerShape(16.dp),
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            ActivityHistoryFilter.entries.forEach { filter ->
+                FilterChip(
+                    selected = selectedFilter == filter,
+                    onClick = { selectedFilter = filter },
+                    label = {
+                        Text(
+                            when (filter) {
+                                ActivityHistoryFilter.ALL -> "Todo"
+                                ActivityHistoryFilter.COMMENTS -> "Comentarios"
+                                ActivityHistoryFilter.PENDING_REMINDERS -> "Alarmas pendientes"
+                                ActivityHistoryFilter.NON_PENDING_REMINDERS -> "Alarmas no pendientes"
+                            },
+                        )
+                    },
+                )
+            }
+        }
+        if (state.isLoadingActivityHistory) {
+            LinearProgressIndicator(Modifier.fillMaxWidth())
+        }
+        state.activityHistoryError?.let { error ->
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                ),
+            ) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text(error, color = MaterialTheme.colorScheme.onErrorContainer)
+                    TextButton(onClick = onRefresh) { Text("Reintentar") }
+                }
+            }
+        }
+        if (entries.isNotEmpty()) {
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                items(entries, key = ActivityHistoryEntry::id) { entry ->
+                    ActivityHistoryCard(entry) {
+                        entry.comment?.let { comment ->
+                            commentBeingEdited = comment
+                            commentEditText = comment.text
+                        }
+                        entry.reminder?.let { reminder ->
+                            reminderBeingEdited = reminder
+                            reminderEditText = reminder.message
+                            reminderEditScheduledAt = reminder.scheduledAtMillis
+                        }
+                    }
+                }
+            }
+        } else if (state.isLoadingActivityHistory) {
+            EmptyState("Cargando historial", "Consultando comentarios y alarmas guardados.")
+        } else if (state.activityHistoryError == null) {
+            EmptyState(
+                title = if (query.isBlank()) "Aún no hay actividad" else "Sin resultados",
+                message = if (query.isBlank()) {
+                    "Los comentarios y las alarmas de tus colegios aparecerán aquí."
+                } else {
+                    "Prueba con otro texto o cambia el filtro."
+                },
+            )
+        }
+    }
+    commentBeingEdited?.let { comment ->
+        AlertDialog(
+            onDismissRequest = { commentBeingEdited = null },
+            title = { Text("Editar comentario") },
+            text = {
+                OutlinedTextField(
+                    value = commentEditText,
+                    onValueChange = { commentEditText = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Comentario") },
+                    minLines = 3,
+                    maxLines = 6,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = commentEditText.isNotBlank(),
+                    onClick = {
+                        onEditComment(comment, commentEditText)
+                        commentBeingEdited = null
+                    },
+                ) { Text("Guardar") }
+            },
+            dismissButton = {
+                TextButton(onClick = { commentBeingEdited = null }) { Text("Cancelar") }
+            },
+        )
+    }
+    reminderBeingEdited?.let { reminder ->
+        AlertDialog(
+            onDismissRequest = { reminderBeingEdited = null },
+            title = { Text("Editar alarma") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = reminderEditText,
+                        onValueChange = { reminderEditText = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Recordatorio") },
+                        minLines = 2,
+                        maxLines = 4,
+                    )
+                    OutlinedButton(
+                        onClick = {
+                            onPickReminderDateTime(reminderEditScheduledAt) { selectedAt ->
+                                reminderEditScheduledAt = selectedAt
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Fecha y hora: ${formatActivityDate(reminderEditScheduledAt)}")
+                    }
+                    Text(
+                        "Al guardar, la alarma quedará pendiente con la nueva fecha.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = reminderEditText.isNotBlank() &&
+                        reminderEditScheduledAt > System.currentTimeMillis(),
+                    onClick = {
+                        onEditReminder(reminder, reminderEditText, reminderEditScheduledAt)
+                        reminderBeingEdited = null
+                    },
+                ) { Text("Guardar y reactivar") }
+            },
+            dismissButton = {
+                TextButton(onClick = { reminderBeingEdited = null }) { Text("Cancelar") }
+            },
+        )
+    }
+}
+
+@Composable
+private fun ActivityHistoryCard(entry: ActivityHistoryEntry, onEdit: () -> Unit) {
+    Card(shape = RoundedCornerShape(18.dp)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Icon(
+                if (entry.isReminder) Icons.Default.Alarm else Icons.Default.Comment,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        entry.schoolName,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = if (entry.isPending) {
+                            MaterialTheme.colorScheme.primaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant
+                        },
+                    ) {
+                        Text(
+                            entry.status,
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
+                }
+                Text(
+                    "${entry.type}: ${entry.message}",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    entry.date,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            IconButton(onClick = onEdit) {
+                Icon(
+                    Icons.Default.Edit,
+                    contentDescription = "Editar ${entry.type.lowercase()}",
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun FilesScreen(
     file: SchoolFile?,
@@ -417,12 +1070,21 @@ private fun FilesScreen(
     importing: Boolean,
     error: String?,
     onPickFile: () -> Unit,
+    onExportActivityBackup: () -> Unit,
+    onImportActivityBackup: () -> Unit,
+    offlineMapAreas: List<OfflineMapAreaUi>,
+    offlineMapMessage: String?,
+    offlineMapMessageIsError: Boolean,
+    onToggleOfflineMapArea: (Long, Boolean) -> Unit,
+    onDeleteOfflineMapArea: (Long) -> Unit,
 ) {
+    var pendingOfflineAreaDeletion by remember { mutableStateOf<OfflineMapAreaUi?>(null) }
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .windowInsetsPadding(WindowInsets.statusBars)
+            .verticalScroll(rememberScrollState())
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
@@ -500,7 +1162,150 @@ private fun FilesScreen(
             Spacer(Modifier.width(8.dp))
             Text(if (file == null) "Seleccionar archivo" else "Reemplazar archivo")
         }
+        HorizontalDivider()
+        Text("Mapas sin conexión", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "Descarga el área visible desde Mapa. Los mapas guardados se pueden reanudar o eliminar aquí.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        offlineMapMessage?.let { message ->
+            Text(
+                message,
+                color = if (offlineMapMessageIsError) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+        }
+        if (offlineMapAreas.isEmpty()) {
+            Text(
+                "Aún no hay áreas descargadas.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            offlineMapAreas.forEach { area ->
+                OfflineMapAreaCard(
+                    area = area,
+                    onToggle = { onToggleOfflineMapArea(area.id, !area.isDownloading) },
+                    onDelete = { pendingOfflineAreaDeletion = area },
+                )
+            }
+        }
+        HorizontalDivider()
+        Text("Copia local", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "Guarda comentarios y recordatorios en un archivo para conservarlos al cambiar de dispositivo.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Button(
+            onClick = onExportActivityBackup,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(14.dp),
+        ) {
+            Icon(Icons.Default.Share, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("Exportar copia")
+        }
+        OutlinedButton(
+            onClick = onImportActivityBackup,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(14.dp),
+        ) {
+            Icon(Icons.Default.FolderOpen, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("Restaurar copia")
+        }
+        Text(
+            "Restaurar combina la copia con los datos actuales y omite registros duplicados.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
+    pendingOfflineAreaDeletion?.let { area ->
+        AlertDialog(
+            onDismissRequest = { pendingOfflineAreaDeletion = null },
+            title = { Text("Eliminar mapa sin conexión") },
+            text = { Text("¿Quieres eliminar “${area.name}” del dispositivo?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDeleteOfflineMapArea(area.id)
+                        pendingOfflineAreaDeletion = null
+                    },
+                ) {
+                    Text("Eliminar")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingOfflineAreaDeletion = null }) {
+                    Text("Cancelar")
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun OfflineMapAreaCard(
+    area: OfflineMapAreaUi,
+    onToggle: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    Card(shape = RoundedCornerShape(16.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(area.name, fontWeight = FontWeight.SemiBold)
+            Text(
+                "Zoom ${area.minZoom}–${area.maxZoom} · ${area.completedTiles} / " +
+                    "${area.estimatedTiles} teselas · ${formatMapBytes(area.completedBytes)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            LinearProgressIndicator(
+                progress = if (area.estimatedTiles > 0) {
+                    (area.completedTiles.toFloat() / area.estimatedTiles).coerceIn(0f, 1f)
+                } else {
+                    0f
+                },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                if (!area.isComplete) {
+                    TextButton(onClick = onToggle) {
+                        Text(if (area.isDownloading) "Pausar" else "Reanudar")
+                    }
+                } else {
+                    Text(
+                        "Disponible sin conexión",
+                        modifier = Modifier
+                            .weight(1f)
+                            .align(Alignment.CenterVertically),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                TextButton(onClick = onDelete) {
+                    Icon(Icons.Default.Delete, contentDescription = null)
+                    Spacer(Modifier.width(4.dp))
+                    Text("Eliminar")
+                }
+            }
+        }
+    }
+}
+
+private fun formatMapBytes(bytes: Long): String = when {
+    bytes < 1024 -> "$bytes B"
+    bytes < 1024 * 1024 -> "${bytes / 1024} KB"
+    else -> "${bytes / (1024 * 1024)} MB"
 }
 
 @Composable
@@ -648,11 +1453,32 @@ private fun SchoolDetailsSheet(
     onDismiss: () -> Unit,
     onDirections: (SchoolRecord) -> Unit,
     onShare: (SchoolRecord) -> Unit,
+    comments: List<SchoolComment>,
+    reminders: List<SchoolReminder>,
+    commentSearchQuery: String,
+    onAddComment: (String) -> Unit,
+    onDeleteComment: (String) -> Unit,
+    onEditComment: (String, String) -> Unit,
+    onSearchComments: (String) -> Unit,
+    onAddReminder: (String) -> Unit,
+    onDeleteReminder: (String) -> Unit,
 ) {
     if (school == null) return
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val scope = rememberCoroutineScope()
+    var commentText by rememberSaveable(school.id) { mutableStateOf("") }
+    var commentQuery by rememberSaveable(school.id) { mutableStateOf(commentSearchQuery) }
+    var reminderText by rememberSaveable(school.id) { mutableStateOf("") }
+    var commentBeingEdited by remember(school.id) { mutableStateOf<SchoolComment?>(null) }
+    var commentEditText by rememberSaveable(school.id) { mutableStateOf("") }
+    var commentPendingDeletion by remember(school.id) { mutableStateOf<SchoolComment?>(null) }
+    var reminderPendingDeletion by remember(school.id) { mutableStateOf<SchoolReminder?>(null) }
     LaunchedEffect(school.id) { sheetState.show() }
+    LaunchedEffect(school.id, commentSearchQuery) {
+        if (commentQuery != commentSearchQuery) {
+            commentQuery = commentSearchQuery
+        }
+    }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -662,6 +1488,8 @@ private fun SchoolDetailsSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .windowInsetsPadding(WindowInsets.navigationBars)
+                .imePadding()
+                .verticalScroll(rememberScrollState())
                 .padding(start = 20.dp, end = 20.dp, bottom = 18.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -752,6 +1580,230 @@ private fun SchoolDetailsSheet(
                     Spacer(Modifier.width(6.dp))
                     Text("Compartir")
                 }
+            }
+            HorizontalDivider()
+            Text(
+                "Comentarios",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+            OutlinedTextField(
+                value = commentText,
+                onValueChange = { commentText = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Añadir un comentario") },
+                minLines = 2,
+                maxLines = 4,
+            )
+            Button(
+                onClick = {
+                    onAddComment(commentText)
+                    commentText = ""
+                },
+                enabled = commentText.isNotBlank(),
+                modifier = Modifier.align(Alignment.End),
+            ) {
+                Icon(Icons.Default.Add, contentDescription = null)
+                Spacer(Modifier.width(6.dp))
+                Text("Guardar comentario")
+            }
+            OutlinedTextField(
+                value = commentQuery,
+                onValueChange = { query ->
+                    commentQuery = query
+                    onSearchComments(query)
+                },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Buscar en el historial") },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                singleLine = true,
+            )
+            if (comments.isEmpty()) {
+                Text(
+                    if (commentQuery.isBlank()) {
+                        "Todavía no hay comentarios para este colegio."
+                    } else {
+                        "No hay comentarios que coincidan con la búsqueda."
+                    },
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                comments.forEach { comment ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(3.dp),
+                        ) {
+                            Text(comment.text, style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                buildString {
+                                    append("Creado: ${formatActivityDate(comment.createdAtMillis)}")
+                                    comment.updatedAtMillis?.let {
+                                        append(" · Editado: ${formatActivityDate(it)}")
+                                    }
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        IconButton(
+                            onClick = {
+                                commentBeingEdited = comment
+                                commentEditText = comment.text
+                            },
+                        ) {
+                            Icon(Icons.Default.Edit, contentDescription = "Editar comentario")
+                        }
+                        IconButton(onClick = { commentPendingDeletion = comment }) {
+                            Icon(Icons.Default.Delete, contentDescription = "Eliminar comentario")
+                        }
+                    }
+                }
+            }
+            HorizontalDivider()
+            Text(
+                "Recordatorios",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+            OutlinedTextField(
+                value = reminderText,
+                onValueChange = { reminderText = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("¿Qué debes recordar?") },
+                singleLine = true,
+            )
+            OutlinedButton(
+                onClick = {
+                    onAddReminder(reminderText)
+                    reminderText = ""
+                },
+                enabled = reminderText.isNotBlank(),
+                modifier = Modifier.align(Alignment.End),
+            ) {
+                Icon(Icons.Default.Alarm, contentDescription = null)
+                Spacer(Modifier.width(6.dp))
+                Text("Programar alarma")
+            }
+            if (reminders.isEmpty()) {
+                Text(
+                    "No hay alarmas programadas para este colegio.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                reminders.forEach { reminder ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(3.dp),
+                        ) {
+                            Text(reminder.message, style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                "${reminderStatusLabel(reminder)} · " +
+                                    formatActivityDate(reminder.scheduledAtMillis),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        if (isReminderPending(reminder)) {
+                            IconButton(onClick = { reminderPendingDeletion = reminder }) {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    contentDescription = "Cancelar recordatorio",
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            commentBeingEdited?.let { comment ->
+                AlertDialog(
+                    onDismissRequest = { commentBeingEdited = null },
+                    title = { Text("Editar comentario") },
+                    text = {
+                        OutlinedTextField(
+                            value = commentEditText,
+                            onValueChange = { commentEditText = it },
+                            label = { Text("Comentario") },
+                            minLines = 2,
+                            maxLines = 5,
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(
+                            enabled = commentEditText.isNotBlank(),
+                            onClick = {
+                                onEditComment(comment.id, commentEditText)
+                                commentBeingEdited = null
+                            },
+                        ) {
+                            Text("Guardar")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { commentBeingEdited = null }) {
+                            Text("Cancelar")
+                        }
+                    },
+                )
+            }
+
+            commentPendingDeletion?.let { comment ->
+                AlertDialog(
+                    onDismissRequest = { commentPendingDeletion = null },
+                    title = { Text("Eliminar comentario") },
+                    text = { Text("Esta acción no se puede deshacer. ¿Quieres eliminar este comentario?") },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                onDeleteComment(comment.id)
+                                commentPendingDeletion = null
+                            },
+                        ) {
+                            Text("Eliminar")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { commentPendingDeletion = null }) {
+                            Text("Cancelar")
+                        }
+                    },
+                )
+            }
+
+            reminderPendingDeletion?.let { reminder ->
+                AlertDialog(
+                    onDismissRequest = { reminderPendingDeletion = null },
+                    title = { Text("Cancelar recordatorio") },
+                    text = {
+                        Text(
+                            "¿Quieres cancelar la alarma de “${reminder.message}”? " +
+                                "Se conservará en el historial.",
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                onDeleteReminder(reminder.id)
+                                reminderPendingDeletion = null
+                            },
+                        ) {
+                            Text("Cancelar y conservar")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { reminderPendingDeletion = null }) {
+                            Text("Volver")
+                        }
+                    },
+                )
             }
         }
     }
@@ -1004,4 +2056,27 @@ private fun managementLabel(value: String): String = when (value) {
     "publica" -> "Pública"
     "privada" -> "Privada"
     else -> value.replaceFirstChar(Char::uppercase)
+}
+
+private fun formatActivityDate(timestamp: Long): String =
+    java.text.DateFormat.getDateTimeInstance(
+        java.text.DateFormat.SHORT,
+        java.text.DateFormat.SHORT,
+    ).format(java.util.Date(timestamp))
+
+internal fun isReminderPending(
+    reminder: SchoolReminder,
+    nowMillis: Long = System.currentTimeMillis(),
+): Boolean =
+    reminder.status == SchoolReminder.STATUS_PENDING &&
+        reminder.scheduledAtMillis > nowMillis
+
+private fun reminderStatusLabel(
+    reminder: SchoolReminder,
+    nowMillis: Long = System.currentTimeMillis(),
+): String = when {
+    isReminderPending(reminder, nowMillis) -> "Pendiente"
+    reminder.status == SchoolReminder.STATUS_TRIGGERED -> "Disparada"
+    reminder.status == SchoolReminder.STATUS_CANCELLED -> "Cancelada"
+    else -> "Vencida"
 }

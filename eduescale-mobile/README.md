@@ -13,6 +13,9 @@ La interfaz usa la familia `sans-serif` de Android, basada en Roboto.
   admitiendo archivos ZIP de versiones anteriores.
 - Puede abrir directamente los archivos `.eduescale` recibidos como documentos
   por WhatsApp u otras apps compatibles.
+- Conserva el último archivo importado en el almacenamiento privado de la app
+  (`files/selected.eduescale`) y lo restaura al volver a abrirla, incluso si el
+  permiso temporal de WhatsApp para leer el archivo ya expiró.
 - Al abrir uno desde otra app, EduEscale queda en una tarea separada. El botón
   Atrás regresa a la app de origen y deja EduEscale disponible en **Recientes**
   para volver al mapa con los datos cargados.
@@ -25,10 +28,32 @@ La interfaz usa la familia `sans-serif` de Android, basada en Roboto.
   marcador representa el nivel más avanzado que se ofrece en ese local.
 - Muestra tu ubicación actual con un indicador azul pulsante al tocar el botón
   de ubicación; la primera vez, Android solicita permiso aproximado o preciso.
+- Conserva el centro, nivel de zoom, inclinación y rotación del mapa al cerrar y
+  volver a abrir la aplicación.
+- Permite descargar para uso sin conexión el área visible del mapa y el rango
+  de zoom elegido; muestra el progreso y permite pausar, reanudar o eliminar
+  cada área guardada.
 - Al tocar un marcador, muestra nombre, dirección, localidad, distrito,
   provincia, departamento, CP, turno, gestión, todos los niveles educativos y
   los totales de alumnos y secciones, con opciones para abrir rutas en auto con
   Google Maps o Waze y compartir el enlace.
+- Permite guardar comentarios en un historial por colegio, buscarlos por texto
+  y editar comentarios con su fecha de modificación. Antes de borrar un
+  comentario o cancelar una alarma, pide confirmación.
+- Incluye una sección **Historial** global para buscar y filtrar comentarios,
+  alarmas pendientes, disparadas, canceladas y vencidas. Desde el historial se
+  pueden editar comentarios y alarmas; al guardar una alarma, queda pendiente
+  y se programa con la nueva fecha.
+- Programa recordatorios de una sola vez. Room conserva comentarios y
+  recordatorios en el dispositivo y migra los datos locales de la versión
+  anterior. Antes de pedir permisos, la app explica por qué necesita
+  notificaciones y acceso a alarmas exactas; las alarmas pendientes se
+  restauran al abrir la app o después de reiniciar el dispositivo, siempre que
+  ambos permisos sigan habilitados. El historial conserva el estado de cada
+  alarma, incluso después de dispararse o cancelarse.
+- Exporta comentarios y recordatorios como un archivo JSON desde **Archivos** y
+  permite restaurarlo en otro dispositivo. La restauración combina la copia con
+  los datos existentes y omite registros duplicados.
 - Presenta la información en una ficha desplazable con niveles destacados,
   métricas de alumnos/secciones y acciones para abrir o compartir la ubicación.
 - Permite minimizar o cerrar la ficha; si un archivo antiguo no contiene nivel
@@ -43,18 +68,20 @@ los registros importados; la ficha del colegio se presenta en una hoja inferior
 con opciones para abrir rutas en Google Maps o Waze y compartir la ubicación.
 El tema claro u oscuro sigue la preferencia del sistema.
 
-El mapa usa MapLibre Native Android y los mosaicos raster estándar de
-OpenStreetMap. La atribución «© OpenStreetMap contributors» permanece visible y
-las solicitudes identifican la aplicación. MapLibre conserva en una caché HTTP
-local, limitada a 128 MiB, los mosaicos que solicita al navegar y respeta las
-cabeceras de caché del servidor. Las zonas visitadas recientemente pueden
-seguir visibles sin conexión mientras sus mosaicos permanezcan en caché; esto
-no garantiza disponibilidad offline completa ni descarga áreas por adelantado.
-El servidor público de mosaicos de OpenStreetMap tiene capacidad limitada y no
-ofrece SLA; no se deben precargar ni descargar mosaicos en bloque. Para un uso
-de producción con mucho tráfico o descargas offline completas, configura un
-proveedor de mosaicos con capacidad y condiciones adecuadas y respeta la
-[política de uso de mosaicos de OpenStreetMap](https://operations.osmfoundation.org/policies/tiles/).
+El mapa usa el estilo Liberty de OpenFreeMap con MapLibre Native Android y
+mantiene visible la atribución «OpenFreeMap © OpenMapTiles · Data from OpenStreetMap».
+MapLibre conserva además una caché HTTP local de hasta 128 MiB. Desde **Mapa**,
+desplaza y acerca el mapa al área que quieras guardar, pulsa **Descargar área
+visible** y elige el rango de zoom. La app confirma al instante que inició la
+preparación y muestra el progreso en el mapa y en **Archivos > Mapas sin
+conexión**, donde también puedes pausar, reanudar o eliminar áreas descargadas.
+
+Las condiciones de OpenFreeMap limitan cada descarga a 3.000 teselas o 50 MB y
+a un máximo de cuatro solicitudes simultáneas. La app estima las teselas antes
+de empezar y elimina una descarga si el tamaño real supera esos límites. El
+servicio se ofrece «tal cual» y no tiene SLA; revisa los
+[términos de OpenFreeMap](https://openfreemap.org/terms) antes de distribuir la
+app o realizar descargas.
 
 ## Abrir y ejecutar
 
