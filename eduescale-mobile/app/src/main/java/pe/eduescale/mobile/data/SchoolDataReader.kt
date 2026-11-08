@@ -25,14 +25,26 @@ data class SchoolRecord(
     val gestion: String?,
     val codigoLocal: String?,
     val niveles: List<String>,
-    val longitud: Double,
-    val latitud: Double,
-)
+    val longitud: Double?,
+    val latitud: Double?,
+) {
+    val coordinates: SchoolCoordinates?
+        get() {
+            val longitude = longitud ?: return null
+            val latitude = latitud ?: return null
+            return SchoolCoordinates(latitude, longitude)
+        }
+
+    val hasCoordinates: Boolean
+        get() = coordinates != null
+}
 
 data class SchoolFile(
+    // Both counts refer to source rows, before grouping by local.
     val totalCount: Int,
     val withoutCoordinates: Int,
     val schools: List<SchoolRecord>,
+    val schoolsWithoutCoordinates: List<SchoolRecord> = emptyList(),
 )
 
 private data class ParsedSchools(
@@ -133,10 +145,12 @@ object SchoolDataReader {
         }
         val result = parsedSchools
             ?: throw IllegalArgumentException("El archivo no contiene la lista colegios.")
+        val groupedSchools = groupSchools(result.schools)
         return SchoolFile(
             totalCount = result.totalCount,
             withoutCoordinates = result.withoutCoordinates,
-            schools = groupSchools(result.schools),
+            schools = groupedSchools.filter(SchoolRecord::hasCoordinates),
+            schoolsWithoutCoordinates = groupedSchools.filterNot(SchoolRecord::hasCoordinates),
         )
     }
 
@@ -145,7 +159,7 @@ object SchoolDataReader {
             throw IllegalArgumentException("El campo colegios debe ser una lista.")
         }
 
-        val mappedSchools = mutableListOf<SchoolRecord>()
+        val schools = mutableListOf<SchoolRecord>()
         var count = 0
         var withoutCoordinates = 0
         reader.beginArray()
@@ -155,17 +169,16 @@ object SchoolDataReader {
             }
             val school = readSchool(reader, count)
             count += 1
-            if (school != null) {
-                mappedSchools += school
-            } else {
+            if (!school.hasCoordinates) {
                 withoutCoordinates += 1
             }
+            schools += school
         }
         reader.endArray()
-        return ParsedSchools(count, withoutCoordinates, mappedSchools)
+        return ParsedSchools(count, withoutCoordinates, schools)
     }
 
-    private fun readSchool(reader: JsonReader, id: Int): SchoolRecord? {
+    private fun readSchool(reader: JsonReader, id: Int): SchoolRecord {
         var departamento: String? = null
         var provincia: String? = null
         var distrito: String? = null
@@ -206,16 +219,19 @@ object SchoolDataReader {
         }
         reader.endObject()
 
-        if (longitud == null || latitud == null) {
-            return null
-        }
-        if (
-            !longitud.isFinite() ||
-            !latitud.isFinite() ||
-            longitud !in -180.0..180.0 ||
-            latitud !in -MAX_MERCATOR_LATITUDE..MAX_MERCATOR_LATITUDE
+        val parsedLongitude = longitud
+        val parsedLatitude = latitud
+        val coordinates = if (
+            parsedLongitude != null &&
+            parsedLatitude != null &&
+            parsedLongitude.isFinite() &&
+            parsedLatitude.isFinite() &&
+            parsedLongitude in -180.0..180.0 &&
+            parsedLatitude in -MAX_MERCATOR_LATITUDE..MAX_MERCATOR_LATITUDE
         ) {
-            return null
+            SchoolCoordinates(latitude = parsedLatitude, longitude = parsedLongitude)
+        } else {
+            null
         }
 
         return SchoolRecord(
@@ -233,8 +249,8 @@ object SchoolDataReader {
             gestion = gestion,
             codigoLocal = codigoLocal,
             niveles = niveles.distinct(),
-            longitud = longitud,
-            latitud = latitud,
+            longitud = coordinates?.longitude,
+            latitud = coordinates?.latitude,
         )
     }
 
@@ -270,6 +286,8 @@ object SchoolDataReader {
             niveles = group.flatMap { it.niveles }
                 .distinct()
                 .sortedBy { levelOrder.indexOf(it).let { index -> if (index < 0) Int.MAX_VALUE else index } },
+            longitud = group.firstOrNull(SchoolRecord::hasCoordinates)?.longitud,
+            latitud = group.firstOrNull(SchoolRecord::hasCoordinates)?.latitud,
         )
     }
 

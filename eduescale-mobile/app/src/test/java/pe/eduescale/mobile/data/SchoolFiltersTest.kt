@@ -1,6 +1,7 @@
 package pe.eduescale.mobile.data
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SchoolFiltersTest {
@@ -68,6 +69,38 @@ class SchoolFiltersTest {
                 SchoolFilters(niveles = setOf("secundaria")),
             ),
         )
+    }
+
+    @Test
+    fun sortsSchoolsFromNearestToFarthestAndKeepsOriginalOrderWithoutLocation() {
+        val origin = SchoolCoordinates(latitude = -12.0, longitude = -77.0)
+        val nearest = schools[0].copy(latitud = -12.001, longitud = -77.001)
+        val middle = schools[2].copy(latitud = -12.1, longitud = -77.0)
+        val farthest = schools[1].copy(latitud = -13.0, longitud = -77.0)
+        val input = listOf(farthest, nearest, middle)
+
+        assertEquals(
+            listOf(nearest, middle, farthest),
+            sortSchoolsByDistance(input, origin),
+        )
+        val nearestDistance = distanceInMeters(nearest, origin)
+        assertTrue(nearestDistance != null && nearestDistance in 100.0..200.0)
+        assertEquals(input, sortSchoolsByDistance(input, null))
+    }
+
+    @Test
+    fun sortsSchoolsWithoutCoordinatesAfterLocatedSchools() {
+        val nearby = schools[0]
+        val withoutCoordinates = schools[1].copy(longitud = null, latitud = null)
+
+        assertEquals(
+            listOf(nearby, withoutCoordinates),
+            sortSchoolsByDistance(
+                listOf(withoutCoordinates, nearby),
+                SchoolCoordinates(latitude = -12.0, longitude = -77.0),
+            ),
+        )
+        assertEquals(null, distanceInMeters(withoutCoordinates, SchoolCoordinates(-12.0, -77.0)))
     }
 
     private fun school(

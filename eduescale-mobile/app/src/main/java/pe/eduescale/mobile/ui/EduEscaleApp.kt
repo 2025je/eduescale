@@ -56,6 +56,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
@@ -103,15 +104,19 @@ import androidx.navigation.compose.rememberNavController
 import kotlinx.coroutines.launch
 import pe.eduescale.mobile.data.SchoolFile
 import pe.eduescale.mobile.data.SchoolComment
+import pe.eduescale.mobile.data.SchoolCoordinates
 import pe.eduescale.mobile.data.SchoolFilters
 import pe.eduescale.mobile.data.SchoolReminder
 import pe.eduescale.mobile.data.SchoolRecord
+import pe.eduescale.mobile.data.distanceInMeters
+import pe.eduescale.mobile.data.sortSchoolsByDistance
 import pe.eduescale.mobile.data.OfflineTileEstimator
 import pe.eduescale.mobile.data.activityKey
 import pe.eduescale.mobile.ui.EduEscaleUiState
 import pe.eduescale.mobile.ui.EduEscaleViewModel
 import pe.eduescale.mobile.ui.OfflineMapAreaUi
 import pe.eduescale.mobile.ui.OfflineMapBounds
+import java.util.Locale
 import kotlin.math.roundToInt
 
 private val EduGreen = Color(0xFF176B50)
@@ -356,7 +361,7 @@ private fun MapScreen(
                     shadowElevation = 2.dp,
                 ) {
                     Text(
-                        "${state.visibleSchools.size} colegios en el mapa",
+                        "${state.visibleSchools.count(SchoolRecord::hasCoordinates)} colegios en el mapa",
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
                         style = MaterialTheme.typography.labelLarge,
                     )
@@ -494,15 +499,28 @@ private fun MapScreen(
             }
         }
 
-        FloatingActionButton(
-            onClick = onLocate,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = 16.dp, bottom = 16.dp),
-            containerColor = MaterialTheme.colorScheme.surface,
-            contentColor = MaterialTheme.colorScheme.primary,
-        ) {
-            Icon(Icons.Default.MyLocation, contentDescription = "Centrar mi ubicación")
+        if (state.locationServicesEnabled == false) {
+            ExtendedFloatingActionButton(
+                onClick = onLocate,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 16.dp, bottom = 16.dp),
+                containerColor = MaterialTheme.colorScheme.surface,
+                contentColor = MaterialTheme.colorScheme.primary,
+                icon = { Icon(Icons.Default.MyLocation, contentDescription = null) },
+                text = { Text("Activar ubicación") },
+            )
+        } else {
+            FloatingActionButton(
+                onClick = onLocate,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 16.dp, bottom = 16.dp),
+                containerColor = MaterialTheme.colorScheme.surface,
+                contentColor = MaterialTheme.colorScheme.primary,
+            ) {
+                Icon(Icons.Default.MyLocation, contentDescription = "Centrar mi ubicación")
+            }
         }
     }
 
@@ -658,11 +676,24 @@ private fun SchoolsScreen(
             )
         }
         ActiveFilterChips(state.filters, Modifier.padding(top = 4.dp))
+        val schoolsWithoutCoordinates = state.visibleSchools.count { !it.hasCoordinates }
         Text(
             if (state.schoolFile == null) {
                 "Importa un archivo desde la sección Archivos."
             } else {
-                "${state.visibleSchools.size} instituciones"
+                buildString {
+                    append("${state.visibleSchools.size} instituciones")
+                    if (schoolsWithoutCoordinates > 0) {
+                        append(" · $schoolsWithoutCoordinates sin ubicación")
+                    }
+                    append(
+                        if (state.userLocation == null) {
+                            " · activa la ubicación en Mapa"
+                        } else {
+                            " · ordenadas por cercanía"
+                        },
+                    )
+                }
             },
             modifier = Modifier.padding(vertical = 8.dp),
             style = MaterialTheme.typography.labelLarge,
@@ -673,20 +704,27 @@ private fun SchoolsScreen(
         } else if (state.visibleSchools.isEmpty()) {
             EmptyState("No hay resultados", "Prueba con otro nombre o cambia los filtros.")
         } else {
+            val schoolsByDistance = remember(state.visibleSchools, state.userLocation) {
+                sortSchoolsByDistance(state.visibleSchools, state.userLocation)
+            }
             LazyColumn(
                 modifier = Modifier.weight(1f),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                items(state.visibleSchools, key = SchoolRecord::id) { school ->
-                    SchoolListCard(school, onClick = { onSchoolSelected(school) })
+                items(schoolsByDistance, key = SchoolRecord::id) { school ->
+                    SchoolListCard(
+                        school = school,
+                        userLocation = state.userLocation,
+                        onClick = { onSchoolSelected(school) },
+                    )
                 }
             }
         }
     }
     if (filtersOpen && state.schoolFile != null) {
         SchoolFiltersDialog(
-            schools = state.schoolFile.schools,
+            schools = state.schoolFile.schools + state.schoolFile.schoolsWithoutCoordinates,
             filters = state.filters,
             onDismiss = { filtersOpen = false },
             onApply = {
@@ -1127,9 +1165,18 @@ private fun FilesScreen(
                         fontWeight = FontWeight.SemiBold,
                     )
                     HorizontalDivider(Modifier.padding(vertical = 4.dp))
-                    StatisticLine("Instituciones en el archivo", file.totalCount.toString())
-                    StatisticLine("Con ubicación disponible", file.schools.size.toString())
-                    StatisticLine("Sin coordenadas utilizables", file.withoutCoordinates.toString())
+                    StatisticLine(
+                        "Registros en el archivo (antes de agrupar)",
+                        file.totalCount.toString(),
+                    )
+                    StatisticLine(
+                        "Locales agrupados con ubicación",
+                        file.schools.size.toString(),
+                    )
+                    StatisticLine(
+                        "Registros sin coordenadas utilizables",
+                        file.withoutCoordinates.toString(),
+                    )
                     Text(
                         if (importing) "Importando archivo…" else "Archivo listo para explorar",
                         color = MaterialTheme.colorScheme.primary,
@@ -1394,7 +1441,12 @@ private fun LegendRow(color: Color, label: String) {
 }
 
 @Composable
-private fun SchoolListCard(school: SchoolRecord, onClick: () -> Unit) {
+private fun SchoolListCard(
+    school: SchoolRecord,
+    userLocation: SchoolCoordinates?,
+    onClick: () -> Unit,
+) {
+    val distance = userLocation?.let { distanceInMeters(school, it) }
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -1422,6 +1474,18 @@ private fun SchoolListCard(school: SchoolRecord, onClick: () -> Unit) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            when {
+                !school.hasCoordinates -> Text(
+                    "Sin ubicación · toca para ver detalles",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = EduOrange,
+                )
+                distance != null -> Text(
+                    formatDistanceKm(distance),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -1435,16 +1499,25 @@ private fun SchoolListCard(school: SchoolRecord, onClick: () -> Unit) {
                     )
                 }
                 Spacer(Modifier.weight(1f))
-                Icon(
-                    Icons.Default.TurnRight,
-                    contentDescription = "Mostrar en el mapa",
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(20.dp),
-                )
+                if (school.hasCoordinates) {
+                    Icon(
+                        Icons.Default.TurnRight,
+                        contentDescription = "Mostrar en el mapa",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
             }
         }
     }
 }
+
+private fun formatDistanceKm(distanceInMeters: Double): String =
+    if (distanceInMeters < 50.0) {
+        "<0,1 km"
+    } else {
+        String.format(Locale("es", "PE"), "%.1f km", distanceInMeters / 1000.0)
+    }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable

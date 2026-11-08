@@ -22,12 +22,21 @@ La interfaz usa la familia `sans-serif` de Android, basada en Roboto.
 - Muestra un marcador por local educativo con coordenadas válidas y agrupa sus
   registros por código de local, nombre, gestión y ubicación.
 - Permite buscar colegios por nombre, sin distinguir mayúsculas ni tildes.
+- Ordena la pestaña **Colegios** por cercanía y muestra la distancia aproximada en
+  kilómetros; identifica los colegios sin ubicación, permite abrir sus detalles
+  y muestra cuántos hay entre los resultados.
+- En **Archivos**, distingue los registros originales del archivo, los locales
+  agrupados con ubicación y los registros sin coordenadas utilizables.
 - Filtra los resultados por departamento, provincia, distrito, gestión y nivel
   educativo desde **Filtros avanzados**.
 - Distingue colegios públicos (verde) y particulares (naranja); el tamaño del
   marcador representa el nivel más avanzado que se ofrece en ese local.
+- Resalta con un aro celeste el colegio seleccionado para distinguirlo de los
+  marcadores cercanos.
 - Muestra tu ubicación actual con un indicador azul pulsante al tocar el botón
   de ubicación; la primera vez, Android solicita permiso aproximado o preciso.
+- Si los servicios de ubicación están desactivados, ofrece abrir la configuración
+  del sistema; al volver, detecta el cambio y actualiza la ubicación del mapa.
 - Conserva el centro, nivel de zoom, inclinación y rotación del mapa al cerrar y
   volver a abrir la aplicación.
 - Permite descargar para uso sin conexión el área visible del mapa y el rango

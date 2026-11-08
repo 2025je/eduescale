@@ -14,6 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineDispatcher
 import pe.eduescale.mobile.data.SchoolFile
 import pe.eduescale.mobile.data.SchoolComment
+import pe.eduescale.mobile.data.SchoolCoordinates
 import pe.eduescale.mobile.data.SchoolFilters
 import pe.eduescale.mobile.data.SchoolReminder
 import pe.eduescale.mobile.data.SchoolRecord
@@ -47,6 +48,8 @@ data class EduEscaleUiState(
     val query: String = "",
     val filters: SchoolFilters = SchoolFilters(),
     val visibleSchools: List<SchoolRecord> = emptyList(),
+    val userLocation: SchoolCoordinates? = null,
+    val locationServicesEnabled: Boolean? = null,
     val selectedSchool: SchoolRecord? = null,
     val schoolComments: List<SchoolComment> = emptyList(),
     val schoolReminders: List<SchoolReminder> = emptyList(),
@@ -79,6 +82,7 @@ class EduEscaleViewModel(
 
     fun setSchoolFile(file: SchoolFile, fileName: String) {
         filterJob?.cancel()
+        val schools = file.schools + file.schoolsWithoutCoordinates
         mutableState.update {
             it.copy(
                 schoolFile = file,
@@ -87,7 +91,7 @@ class EduEscaleViewModel(
                 importError = null,
                 query = "",
                 filters = SchoolFilters(),
-                visibleSchools = file.schools,
+                visibleSchools = schools,
                 selectedSchool = null,
                 schoolComments = emptyList(),
                 schoolReminders = emptyList(),
@@ -104,6 +108,16 @@ class EduEscaleViewModel(
     fun setFilters(filters: SchoolFilters) {
         mutableState.update { it.copy(filters = filters) }
         filterSchoolsAsync()
+    }
+
+    fun setUserLocation(latitude: Double, longitude: Double) {
+        mutableState.update {
+            it.copy(userLocation = SchoolCoordinates(latitude, longitude))
+        }
+    }
+
+    fun setLocationServicesEnabled(enabled: Boolean) {
+        mutableState.update { it.copy(locationServicesEnabled = enabled) }
     }
 
     fun selectSchool(school: SchoolRecord?) {
@@ -192,13 +206,14 @@ class EduEscaleViewModel(
     private fun filterSchoolsAsync() {
         val snapshot = mutableState.value
         val file = snapshot.schoolFile ?: return
+        val schools = file.schools + file.schoolsWithoutCoordinates
         val query = snapshot.query
         val filters = snapshot.filters
         filterJob?.cancel()
         filterJob = viewModelScope.launch {
             delay(FILTER_DEBOUNCE_MS)
             val matches = withContext(filteringDispatcher) {
-                filterSchools(file.schools, query, filters)
+                filterSchools(schools, query, filters)
             }
             mutableState.update { current ->
                 if (

@@ -9,6 +9,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Test
 import pe.eduescale.mobile.data.SchoolFile
@@ -38,6 +39,42 @@ class EduEscaleViewModelTest {
         } finally {
             Dispatchers.resetMain()
         }
+    }
+
+    @Test
+    fun keepsSchoolsWithoutCoordinatesVisibleInTheSchoolsList() {
+        val viewModel = EduEscaleViewModel()
+        val locatedSchool = school(1, "Con coordenadas")
+        val schoolWithoutCoordinates = school(2, "Sin coordenadas").copy(
+            longitud = null,
+            latitud = null,
+        )
+        val file = SchoolFile(
+            totalCount = 2,
+            withoutCoordinates = 1,
+            schools = listOf(locatedSchool),
+            schoolsWithoutCoordinates = listOf(schoolWithoutCoordinates),
+        )
+
+        viewModel.setSchoolFile(file, "colegios.eduescale")
+
+        assertEquals(
+            listOf(1, 2),
+            viewModel.state.value.visibleSchools.map(SchoolRecord::id),
+        )
+    }
+
+    @Test
+    fun tracksLocationServicesAvailability() {
+        val viewModel = EduEscaleViewModel()
+
+        assertNull(viewModel.state.value.locationServicesEnabled)
+
+        viewModel.setLocationServicesEnabled(false)
+        assertEquals(false, viewModel.state.value.locationServicesEnabled)
+
+        viewModel.setLocationServicesEnabled(true)
+        assertEquals(true, viewModel.state.value.locationServicesEnabled)
     }
 
     @Test

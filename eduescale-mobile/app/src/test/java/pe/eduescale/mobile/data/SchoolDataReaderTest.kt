@@ -78,13 +78,15 @@ class SchoolDataReaderTest {
         assertEquals(2, parsed.totalCount)
         assertEquals(1, parsed.withoutCoordinates)
         assertEquals(1, parsed.schools.size)
+        assertEquals(1, parsed.schoolsWithoutCoordinates.size)
+        assertEquals("Sin coordenadas", parsed.schoolsWithoutCoordinates.single().nombre)
         assertEquals("Colegio Ejemplo", parsed.schools.single().nombre)
         assertEquals("120", parsed.schools.single().alumnos)
         assertEquals("6", parsed.schools.single().secciones)
         assertEquals("publica", parsed.schools.single().gestion)
         assertEquals(listOf("secundaria"), parsed.schools.single().niveles)
-        assertEquals(-73.253, parsed.schools.single().longitud, 0.000001)
-        assertEquals(-3.749, parsed.schools.single().latitud, 0.000001)
+        assertEquals(-73.253, parsed.schools.single().longitud!!, 0.000001)
+        assertEquals(-3.749, parsed.schools.single().latitud!!, 0.000001)
     }
 
     @Test

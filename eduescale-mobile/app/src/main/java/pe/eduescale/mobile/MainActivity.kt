@@ -5,11 +5,17 @@ import android.app.AlertDialog
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.content.ActivityNotFoundException
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.database.sqlite.SQLiteException
 import android.graphics.Color
 import android.graphics.RectF
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -65,6 +71,7 @@ import org.maplibre.geojson.Point
 import pe.eduescale.mobile.data.SchoolFile
 import pe.eduescale.mobile.data.SchoolFileStorage
 import pe.eduescale.mobile.data.SchoolComment
+import pe.eduescale.mobile.data.SchoolCoordinates
 import pe.eduescale.mobile.data.SchoolReminder
 import pe.eduescale.mobile.data.SchoolRecord
 import pe.eduescale.mobile.data.SchoolActivityRepository
@@ -101,6 +108,26 @@ class MainActivity : ComponentActivity() {
 
     private val importExecutor = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val locationManager by lazy { getSystemService(LocationManager::class.java) }
+    private val currentLocationListener = object : LocationListener {
+        override fun onLocationChanged(location: Location) {
+            viewModel.setUserLocation(location.latitude, location.longitude)
+            locationManager.removeUpdates(this)
+        }
+
+        override fun onProviderEnabled(provider: String) = Unit
+
+        override fun onProviderDisabled(provider: String) = Unit
+
+        @Deprecated("Deprecated in Android")
+        override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) = Unit
+    }
+    private val locationProviderReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            refreshLocationServices()
+        }
+    }
+    private var locationProviderReceiverRegistered = false
     private var map: MapLibreMap? = null
     private var style: Style? = null
     private var bottomSystemInsetPx = 0
@@ -138,7 +165,7 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { permissions ->
         if (permissions.values.any { it }) {
-            enableMyLocation()
+            showMyLocation()
         } else {
             Toast.makeText(
                 this,
@@ -261,6 +288,7 @@ class MainActivity : ComponentActivity() {
 
         var observedFile: SchoolFile? = null
         var observedVisibleSchools: List<SchoolRecord>? = null
+        var observedSelectedSchoolId: Int? = null
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.state.collect { state ->
@@ -269,12 +297,15 @@ class MainActivity : ComponentActivity() {
                     schoolsById = state.schoolFile?.schools
                         ?.associateBy(SchoolRecord::id)
                         .orEmpty()
+                    val selectedSchoolId = state.selectedSchool?.id
                     if (
                         observedFile !== state.schoolFile ||
-                        observedVisibleSchools != state.visibleSchools
+                        observedVisibleSchools != state.visibleSchools ||
+                        observedSelectedSchoolId != selectedSchoolId
                     ) {
                         observedFile = state.schoolFile
                         observedVisibleSchools = state.visibleSchools
+                        observedSelectedSchoolId = selectedSchoolId
                         updateMapData()
                     }
                 }
@@ -384,9 +415,7 @@ class MainActivity : ComponentActivity() {
             updateMapData()
             updateVisibleMapBounds(mapLibreMap)
             refreshOfflineMapAreas()
-            if (hasLocationPermission()) {
-                enableMyLocation(trackCamera = false)
-            }
+            refreshLocationServices()
         }
     }
 
@@ -775,8 +804,9 @@ class MainActivity : ComponentActivity() {
         val tapPoint = mapLibreMap.projection.toScreenLocation(coordinate)
         val hitRadius = dp(MARKER_TOUCH_RADIUS_DP).toFloat()
         fun distanceSquared(school: SchoolRecord): Float {
+            val coordinates = school.coordinates ?: return Float.POSITIVE_INFINITY
             val markerPoint = mapLibreMap.projection.toScreenLocation(
-                LatLng(school.latitud, school.longitud),
+                LatLng(coordinates.latitude, coordinates.longitude),
             )
             val dx = markerPoint.x - tapPoint.x
             val dy = markerPoint.y - tapPoint.y
@@ -1385,7 +1415,48 @@ class MainActivity : ComponentActivity() {
             )
             return
         }
+        if (!isLocationServicesEnabled()) {
+            openLocationSettings()
+            return
+        }
         enableMyLocation()
+    }
+
+    private fun isLocationServicesEnabled(): Boolean =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            locationManager.isLocationEnabled
+        } else {
+            locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
+                locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+        }
+
+    private fun refreshLocationServices() {
+        val enabled = isLocationServicesEnabled()
+        viewModel.setLocationServicesEnabled(enabled)
+        if (enabled) {
+            if (hasLocationPermission()) {
+                enableMyLocation(trackCamera = false)
+            }
+        } else {
+            locationManager.removeUpdates(currentLocationListener)
+            map?.locationComponent?.let { locationComponent ->
+                if (locationComponent.isLocationComponentActivated) {
+                    locationComponent.isLocationComponentEnabled = false
+                }
+            }
+        }
+    }
+
+    private fun openLocationSettings() {
+        try {
+            startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+        } catch (error: ActivityNotFoundException) {
+            Toast.makeText(
+                this,
+                "No se pudo abrir la configuración de ubicación.",
+                Toast.LENGTH_LONG,
+            ).show()
+        }
     }
 
     private fun enableMyLocation(trackCamera: Boolean = true) {
@@ -1412,6 +1483,7 @@ class MainActivity : ComponentActivity() {
             }
             locationComponent.isLocationComponentEnabled = true
             locationComponent.renderMode = RenderMode.NORMAL
+            updateCurrentLocation()
             if (trackCamera) {
                 locationComponent.cameraMode = CameraMode.TRACKING
             }
@@ -1421,6 +1493,31 @@ class MainActivity : ComponentActivity() {
                 "Android no permitió acceder a la ubicación.",
                 Toast.LENGTH_LONG,
             ).show()
+        }
+    }
+
+    private fun updateCurrentLocation() {
+        if (!hasLocationPermission()) {
+            return
+        }
+        val providers = listOf(
+            LocationManager.GPS_PROVIDER,
+            LocationManager.NETWORK_PROVIDER,
+        ).filter(locationManager::isProviderEnabled)
+        providers.mapNotNull(locationManager::getLastKnownLocation)
+            .maxByOrNull(Location::getTime)
+            ?.let { location ->
+                viewModel.setUserLocation(location.latitude, location.longitude)
+            }
+        if (providers.isNotEmpty()) {
+            locationManager.removeUpdates(currentLocationListener)
+            providers.forEach { provider ->
+                locationManager.requestSingleUpdate(
+                    provider,
+                    currentLocationListener,
+                    mainLooper,
+                )
+            }
         }
     }
 
@@ -1495,14 +1592,18 @@ class MainActivity : ComponentActivity() {
         }
 
         currentStyle.getLayer(SCHOOL_LAYER)?.let(currentStyle::removeLayer)
+        currentStyle.getLayer(SELECTED_SCHOOL_LAYER)?.let(currentStyle::removeLayer)
         currentStyle.getSource(SCHOOL_SOURCE)?.let(currentStyle::removeSource)
+        currentStyle.getSource(SELECTED_SCHOOL_SOURCE)?.let(currentStyle::removeSource)
 
-        if (visibleSchools.isEmpty()) {
+        val locatedSchools = visibleSchools.filter(SchoolRecord::hasCoordinates)
+        if (locatedSchools.isEmpty()) {
             return
         }
 
-        val features = visibleSchools.map { school ->
-            Feature.fromGeometry(Point.fromLngLat(school.longitud, school.latitud)).apply {
+        val features = locatedSchools.mapNotNull { school ->
+            val coordinates = school.coordinates ?: return@mapNotNull null
+            Feature.fromGeometry(Point.fromLngLat(coordinates.longitude, coordinates.latitude)).apply {
                 addStringProperty(SCHOOL_ID_PROPERTY, school.id.toString())
                 addStringProperty(MARKER_COLOR_PROPERTY, markerColor(school.gestion))
                 addNumberProperty(MARKER_RADIUS_PROPERTY, markerRadius(school.niveles))
@@ -1522,15 +1623,41 @@ class MainActivity : ComponentActivity() {
                 circleStrokeWidth(2f),
             ),
         )
+        val selectedSchool = viewModel.state.value.selectedSchool
+            ?.takeIf { selected -> locatedSchools.any { it.id == selected.id } }
+        val selectedCoordinates = selectedSchool?.coordinates
+        if (selectedSchool != null && selectedCoordinates != null) {
+            val selectedFeature = Feature.fromGeometry(
+                Point.fromLngLat(
+                    selectedCoordinates.longitude,
+                    selectedCoordinates.latitude,
+                ),
+            )
+            currentStyle.addSource(
+                GeoJsonSource(
+                    SELECTED_SCHOOL_SOURCE,
+                    FeatureCollection.fromFeatures(listOf(selectedFeature)),
+                ),
+            )
+            currentStyle.addLayer(
+                CircleLayer(SELECTED_SCHOOL_LAYER, SELECTED_SCHOOL_SOURCE).withProperties(
+                    circleColor(Color.TRANSPARENT),
+                    circleRadius(SELECTED_MARKER_RADIUS),
+                    circleStrokeColor(Color.CYAN),
+                    circleStrokeWidth(SELECTED_MARKER_STROKE_WIDTH),
+                ),
+            )
+        }
         if (shouldFocusOnNextMapDataUpdate) {
             shouldFocusOnNextMapDataUpdate = false
             hasPendingUserFileImport = false
-            focusSchools(currentMap, visibleSchools)
+            focusSchools(currentMap, locatedSchools)
         }
     }
 
     private fun focusSchools(map: MapLibreMap, schools: List<SchoolRecord>) {
-        if (schools.isEmpty()) {
+        val locatedSchools = schools.filter(SchoolRecord::hasCoordinates)
+        if (locatedSchools.isEmpty()) {
             return
         }
         val bounds = org.maplibre.android.geometry.LatLngBounds.Builder()
@@ -1538,22 +1665,23 @@ class MainActivity : ComponentActivity() {
         var maxLatitude = Double.NEGATIVE_INFINITY
         var minLongitude = Double.POSITIVE_INFINITY
         var maxLongitude = Double.NEGATIVE_INFINITY
-        schools.forEach { school ->
-            val position = LatLng(school.latitud, school.longitud)
+        locatedSchools.forEach { school ->
+            val coordinates = school.coordinates ?: return@forEach
+            val position = LatLng(coordinates.latitude, coordinates.longitude)
             bounds.include(position)
-            minLatitude = minOf(minLatitude, school.latitud)
-            maxLatitude = maxOf(maxLatitude, school.latitud)
-            minLongitude = minOf(minLongitude, school.longitud)
-            maxLongitude = maxOf(maxLongitude, school.longitud)
+            minLatitude = minOf(minLatitude, coordinates.latitude)
+            maxLatitude = maxOf(maxLatitude, coordinates.latitude)
+            minLongitude = minOf(minLongitude, coordinates.longitude)
+            maxLongitude = maxOf(maxLongitude, coordinates.longitude)
         }
 
         val samePoint = maxLatitude - minLatitude < MIN_COORDINATE_SPAN &&
             maxLongitude - minLongitude < MIN_COORDINATE_SPAN
-        if (schools.size == 1 || samePoint) {
-            val school = schools.first()
+        if (locatedSchools.size == 1 || samePoint) {
+            val coordinates = locatedSchools.first().coordinates ?: return
             map.animateCamera(
                 CameraUpdateFactory.newLatLngZoom(
-                    LatLng(school.latitud, school.longitud),
+                    LatLng(coordinates.latitude, coordinates.longitude),
                     SINGLE_POINT_ZOOM,
                 ),
             )
@@ -1580,12 +1708,17 @@ class MainActivity : ComponentActivity() {
         }
 
     private fun showNavigationOptions(school: SchoolRecord) {
+        if (!school.hasCoordinates) {
+            showMissingCoordinatesMessage()
+            return
+        }
         AlertDialog.Builder(this)
             .setTitle("Cómo llegar en auto")
             .setItems(arrayOf("Google Maps", "Waze")) { _, choice ->
+                val coordinates = school.coordinates ?: return@setItems
                 val url = when (choice) {
-                    0 -> googleMapsDirectionsUrl(school)
-                    1 -> wazeDirectionsUrl(school)
+                    0 -> googleMapsDirectionsUrl(coordinates)
+                    1 -> wazeDirectionsUrl(coordinates)
                     else -> return@setItems
                 }
                 openNavigationUrl(url)
@@ -1608,37 +1741,44 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun shareSchoolLocation(school: SchoolRecord) {
+        val coordinates = school.coordinates ?: run {
+            showMissingCoordinatesMessage()
+            return
+        }
         val schoolName = school.nombre?.takeIf(String::isNotBlank) ?: "Ubicación del colegio"
         val sendIntent = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
             putExtra(Intent.EXTRA_SUBJECT, schoolName)
             putExtra(
                 Intent.EXTRA_TEXT,
-                "$schoolName\n${googleMapsUrl(school)}",
+                "$schoolName\n${googleMapsUrl(coordinates)}",
             )
         }
         startActivity(Intent.createChooser(sendIntent, "Compartir ubicación"))
     }
 
-    private fun googleMapsUrl(school: SchoolRecord): String {
-        val coordinates = Uri.encode("${school.latitud},${school.longitud}")
-        return "https://www.google.com/maps/search/?api=1&query=$coordinates"
+    private fun showMissingCoordinatesMessage() {
+        Toast.makeText(this, "Este colegio no tiene coordenadas disponibles.", Toast.LENGTH_LONG).show()
     }
 
-    private fun googleMapsDirectionsUrl(school: SchoolRecord): String =
+    private fun googleMapsUrl(coordinates: SchoolCoordinates): String =
+        "https://www.google.com/maps/search/?api=1&query=" +
+            Uri.encode("${coordinates.latitude},${coordinates.longitude}")
+
+    private fun googleMapsDirectionsUrl(coordinates: SchoolCoordinates): String =
         Uri.parse("https://www.google.com/maps/dir/").buildUpon()
             .appendQueryParameter("api", "1")
             .appendQueryParameter(
                 "destination",
-                "${school.latitud},${school.longitud}",
+                "${coordinates.latitude},${coordinates.longitude}",
             )
             .appendQueryParameter("travelmode", "driving")
             .build()
             .toString()
 
-    private fun wazeDirectionsUrl(school: SchoolRecord): String =
+    private fun wazeDirectionsUrl(coordinates: SchoolCoordinates): String =
         Uri.parse("https://waze.com/ul").buildUpon()
-            .appendQueryParameter("ll", "${school.latitud},${school.longitud}")
+            .appendQueryParameter("ll", "${coordinates.latitude},${coordinates.longitude}")
             .appendQueryParameter("navigate", "yes")
             .build()
             .toString()
@@ -1692,11 +1832,22 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         mapView.onStart()
+        val locationProviderFilter = IntentFilter(LocationManager.PROVIDERS_CHANGED_ACTION).apply {
+            addAction(LocationManager.MODE_CHANGED_ACTION)
+        }
+        ContextCompat.registerReceiver(
+            this,
+            locationProviderReceiver,
+            locationProviderFilter,
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+        locationProviderReceiverRegistered = true
     }
 
     override fun onResume() {
         super.onResume()
         mapView.onResume()
+        refreshLocationServices()
         restorePendingReminders()
         refreshActivityHistory()
         val state = viewModel.state.value
@@ -1705,11 +1856,16 @@ class MainActivity : ComponentActivity() {
 
     override fun onPause() {
         map?.let { saveCameraPosition(it.cameraPosition) }
+        locationManager.removeUpdates(currentLocationListener)
         mapView.onPause()
         super.onPause()
     }
 
     override fun onStop() {
+        if (locationProviderReceiverRegistered) {
+            unregisterReceiver(locationProviderReceiver)
+            locationProviderReceiverRegistered = false
+        }
         mapView.onStop()
         super.onStop()
     }
@@ -1802,6 +1958,8 @@ class MainActivity : ComponentActivity() {
         const val MAP_CAMERA_TILT = "tilt"
         const val SCHOOL_SOURCE = "eduescale-schools"
         const val SCHOOL_LAYER = "eduescale-school-markers"
+        const val SELECTED_SCHOOL_SOURCE = "eduescale-selected-school"
+        const val SELECTED_SCHOOL_LAYER = "eduescale-selected-school-highlight"
         const val SCHOOL_ID_PROPERTY = "school_id"
         const val MARKER_COLOR_PROPERTY = "marker_color"
         const val MARKER_RADIUS_PROPERTY = "marker_radius"
@@ -1812,6 +1970,8 @@ class MainActivity : ComponentActivity() {
         const val PRIMARY_MARKER_RADIUS = 8.0
         const val SECONDARY_MARKER_RADIUS = 10.0
         const val UNKNOWN_MARKER_RADIUS = 7.0
+        const val SELECTED_MARKER_RADIUS = 18f
+        const val SELECTED_MARKER_STROKE_WIDTH = 4f
         const val MARKER_TOUCH_RADIUS_DP = 24
         const val SINGLE_POINT_ZOOM = 12.0
         const val MIN_COORDINATE_SPAN = 0.00001
