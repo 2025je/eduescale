@@ -140,7 +140,6 @@ class MainActivity : ComponentActivity() {
         window.statusBarColor = Color.TRANSPARENT
         window.navigationBarColor = Color.TRANSPARENT
 
-        val root = TouchRoutingFrameLayout(this, mapView) { mapController.bottomSystemInsetPx }
         mapView = MapView(this)
         mapController = SchoolMapController(
             context = this,
@@ -152,6 +151,8 @@ class MainActivity : ComponentActivity() {
             onSchoolTapped = ::showSchoolDetails,
         )
         mapView.onCreate(savedInstanceState)
+
+        val root = TouchRoutingFrameLayout(this, mapView) { mapController.bottomSystemInsetPx }
         root.addView(
             mapView,
             FrameLayout.LayoutParams(
