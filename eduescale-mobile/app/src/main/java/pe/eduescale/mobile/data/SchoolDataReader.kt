@@ -3,9 +3,9 @@ package pe.eduescale.mobile.data
 import com.google.gson.stream.JsonReader
 import com.google.gson.stream.JsonToken
 import java.io.BufferedInputStream
+import java.io.IOException
 import java.io.InputStream
 import java.io.InputStreamReader
-import java.io.IOException
 import java.io.Reader
 import java.nio.charset.StandardCharsets
 import java.util.zip.ZipInputStream

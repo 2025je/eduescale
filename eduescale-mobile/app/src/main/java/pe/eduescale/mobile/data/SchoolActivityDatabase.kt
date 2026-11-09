@@ -1,9 +1,6 @@
 package pe.eduescale.mobile.data
 
 import android.content.Context
-import dagger.hilt.android.qualifiers.ApplicationContext
-import javax.inject.Inject
-import javax.inject.Singleton
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Entity
@@ -16,10 +13,11 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Update
 import androidx.room.migration.Migration
-import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.room.withTransaction
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.google.gson.Gson
 import com.google.gson.JsonParseException
+import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import java.io.FileInputStream
 import java.io.IOException
@@ -27,6 +25,8 @@ import java.io.InputStreamReader
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.util.UUID
+import javax.inject.Inject
+import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock

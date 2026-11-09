@@ -2,6 +2,8 @@ package pe.eduescale.mobile.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -10,14 +12,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.CoroutineDispatcher
-import pe.eduescale.mobile.data.SchoolFile
 import pe.eduescale.mobile.data.SchoolComment
 import pe.eduescale.mobile.data.SchoolCoordinates
+import pe.eduescale.mobile.data.SchoolFile
 import pe.eduescale.mobile.data.SchoolFilters
-import pe.eduescale.mobile.data.SchoolReminder
 import pe.eduescale.mobile.data.SchoolRecord
+import pe.eduescale.mobile.data.SchoolReminder
 import pe.eduescale.mobile.data.filterSchools
 
 data class OfflineMapAreaUi(

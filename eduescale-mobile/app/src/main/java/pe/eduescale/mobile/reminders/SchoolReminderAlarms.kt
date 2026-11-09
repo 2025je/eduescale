@@ -16,10 +16,6 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
-import pe.eduescale.mobile.MainActivity
-import pe.eduescale.mobile.R
-import pe.eduescale.mobile.data.SchoolActivityRepository
-import pe.eduescale.mobile.data.SchoolReminder
 import dagger.hilt.android.AndroidEntryPoint
 import java.io.IOException
 import javax.inject.Inject
@@ -27,6 +23,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import pe.eduescale.mobile.MainActivity
+import pe.eduescale.mobile.R
+import pe.eduescale.mobile.data.SchoolActivityRepository
+import pe.eduescale.mobile.data.SchoolReminder
 
 object SchoolReminderAlarms {
     const val CHANNEL_ID = "school_reminders"
