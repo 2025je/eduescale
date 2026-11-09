@@ -12,6 +12,7 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.database.sqlite.SQLiteException
 import android.graphics.Color
+import android.graphics.PointF
 import android.graphics.RectF
 import android.location.Location
 import android.location.LocationListener
@@ -79,6 +80,11 @@ import pe.eduescale.mobile.data.SchoolActivityBackup
 import pe.eduescale.mobile.data.OfflineTileEstimator
 import pe.eduescale.mobile.data.activityKey
 import pe.eduescale.mobile.reminders.SchoolReminderAlarms
+import pe.eduescale.mobile.map.MapCameraStore
+import pe.eduescale.mobile.map.OfflineAreaMetadata
+import pe.eduescale.mobile.map.SchoolMarkerStyle
+import pe.eduescale.mobile.navigation.SchoolNavigationLinks
+import pe.eduescale.mobile.reminders.PendingReminder
 import pe.eduescale.mobile.ui.EduEscaleApp
 import pe.eduescale.mobile.ui.EduEscaleViewModel
 import pe.eduescale.mobile.ui.OfflineMapAreaUi
@@ -88,6 +94,8 @@ import kotlinx.coroutines.launch
 import com.google.gson.Gson
 import com.google.gson.JsonParseException
 import java.io.InputStreamReader
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 import java.io.IOException
 import java.io.OutputStreamWriter
 import java.nio.charset.StandardCharsets
@@ -96,18 +104,22 @@ import org.json.JSONObject
 import java.util.Calendar
 import java.util.concurrent.Executors
 
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     private val viewModel: EduEscaleViewModel by viewModels()
     private lateinit var mapView: MapView
-    private val schoolFileStorage by lazy { SchoolFileStorage(filesDir) }
-    private val schoolActivityRepository by lazy { SchoolActivityRepository(this) }
-    private val offlineManager by lazy { OfflineManager.getInstance(applicationContext) }
+    @Inject lateinit var schoolFileStorage: SchoolFileStorage
+    @Inject lateinit var schoolActivityRepository: SchoolActivityRepository
+    @Inject lateinit var offlineManager: OfflineManager
     private var schoolActivityLoadJob: Job? = null
     private var activityHistoryLoadJob: Job? = null
     private var pendingReminder: PendingReminder? = null
+    private var selectedSchoolCameraFocusInProgress = false
+    private var pendingSchoolSheetAlignment: PendingSchoolSheetAlignment? = null
 
     private val importExecutor = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val mapCameraStore by lazy { MapCameraStore(this) }
     private val locationManager by lazy { getSystemService(LocationManager::class.java) }
     private val currentLocationListener = object : LocationListener {
         override fun onLocationChanged(location: Location) {
@@ -234,6 +246,13 @@ class MainActivity : ComponentActivity() {
                         onMapTopOverlayBottomChanged = {
                             root.mapTopOverlayBottomPx = it
                         },
+                        onSchoolDetailsSheetShown = { school, sheetTopOnScreen ->
+                            alignSelectedSchoolWithSheet(
+                                school,
+                                sheetTopOnScreen,
+                                root.mapTopOverlayBottomPx,
+                            )
+                        },
                         onMapDownloadControlBoundsChanged = { left, top, right, bottom ->
                             root.mapDownloadControlBounds.set(left, top, right, bottom)
                         },
@@ -242,7 +261,7 @@ class MainActivity : ComponentActivity() {
                         onApplyFilters = viewModel::setFilters,
                         onSchoolSelected = { school ->
                             showSchoolDetails(school)
-                            map?.let { focusSchools(it, listOf(school)) }
+                            focusSelectedSchoolFromList(school)
                         },
                         onDirections = ::showNavigationOptions,
                         onShare = ::shareSchoolLocation,
@@ -266,6 +285,8 @@ class MainActivity : ComponentActivity() {
                         onEditHistoryReminder = ::editHistoryReminder,
                         onPickReminderDateTime = ::pickReminderDateTime,
                         onClearSelection = {
+                            selectedSchoolCameraFocusInProgress = false
+                            pendingSchoolSheetAlignment = null
                             viewModel.selectSchool(null)
                         },
                     )
@@ -390,7 +411,7 @@ class MainActivity : ComponentActivity() {
     private fun configureMap(mapLibreMap: MapLibreMap) {
         map = mapLibreMap
         updateCompassPosition()
-        val savedCameraPosition = readSavedCameraPosition()
+        val savedCameraPosition = mapCameraStore.read()
         shouldFocusOnNextMapDataUpdate =
             savedCameraPosition == null || hasPendingUserFileImport
         mapLibreMap.cameraPosition = savedCameraPosition ?: CameraPosition.Builder()
@@ -398,8 +419,12 @@ class MainActivity : ComponentActivity() {
             .zoom(4.0)
             .build()
         mapLibreMap.addOnCameraIdleListener {
-            saveCameraPosition(mapLibreMap.cameraPosition)
+            mapCameraStore.save(mapLibreMap.cameraPosition)
             updateVisibleMapBounds(mapLibreMap)
+            if (selectedSchoolCameraFocusInProgress) {
+                selectedSchoolCameraFocusInProgress = false
+                alignPendingSchoolWithSheet()
+            }
         }
         mapLibreMap.addOnMapClickListener { coordinate ->
             val school = schoolAtTap(mapLibreMap, coordinate)
@@ -451,7 +476,10 @@ class MainActivity : ComponentActivity() {
                     invalidOfflineRegions.clear()
                     val areas = regions.map { region ->
                         offlineRegions[region.id] = region
-                        val metadata = readOfflineAreaMetadata(region.metadata)
+                        val metadata = OfflineAreaMetadata.fromBytes(region.metadata) ?: run {
+                            showOfflineMapMessage("Una región sin conexión tiene metadatos no válidos.")
+                            OfflineAreaMetadata.UNNAMED
+                        }
                         offlineAreaMetadata[region.id] = metadata
                         observeOfflineRegion(region, metadata)
                         OfflineMapAreaUi(
@@ -475,29 +503,6 @@ class MainActivity : ComponentActivity() {
                 showOfflineMapMessage("No se pudieron cargar los mapas sin conexión: $error")
             }
         })
-    }
-
-    private fun readOfflineAreaMetadata(bytes: ByteArray): OfflineAreaMetadata {
-        return try {
-            val json = JSONObject(String(bytes, StandardCharsets.UTF_8))
-            OfflineAreaMetadata(
-                name = json.optString("name", "Área sin nombre"),
-                minZoom = json.optInt("minZoom", 0).coerceIn(0, OfflineTileEstimator.MAX_ZOOM),
-                maxZoom = json.optInt("maxZoom", OfflineTileEstimator.MAX_ZOOM)
-                    .coerceIn(0, OfflineTileEstimator.MAX_ZOOM),
-                estimatedTiles = json.optInt("estimatedTiles", 0)
-                    .coerceIn(0, OfflineTileEstimator.MAX_TILE_COUNT),
-            )
-        } catch (error: JSONException) {
-            Log.w(TAG, "Offline map region metadata is invalid", error)
-            showOfflineMapMessage("Una región sin conexión tiene metadatos no válidos.")
-            OfflineAreaMetadata(
-                name = "Área sin nombre",
-                minZoom = 0,
-                maxZoom = OfflineTileEstimator.MAX_ZOOM,
-                estimatedTiles = 0,
-            )
-        }
     }
 
     private fun observeOfflineRegion(
@@ -634,7 +639,7 @@ class MainActivity : ComponentActivity() {
         try {
             offlineManager.createOfflineRegion(
                 definition,
-                writeOfflineAreaMetadata(metadata),
+                metadata.toBytes(),
                 object : OfflineManager.CreateOfflineRegionCallback {
                     override fun onCreate(region: OfflineRegion) {
                         mainHandler.post {
@@ -689,15 +694,6 @@ class MainActivity : ComponentActivity() {
             showOfflineMapMessage(error.message ?: "Android bloqueó la descarga del mapa.")
         }
     }
-
-    private fun writeOfflineAreaMetadata(metadata: OfflineAreaMetadata): ByteArray =
-        JSONObject()
-            .put("name", metadata.name)
-            .put("minZoom", metadata.minZoom)
-            .put("maxZoom", metadata.maxZoom)
-            .put("estimatedTiles", metadata.estimatedTiles)
-            .toString()
-            .toByteArray(StandardCharsets.UTF_8)
 
     private fun setOfflineMapAreaDownloadState(id: Long, active: Boolean) {
         val region = offlineRegions[id]
@@ -848,23 +844,85 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private data class PendingReminder(
-        val schoolKey: String,
-        val schoolName: String,
-        val message: String,
-        val scheduledAtMillis: Long,
-    )
-
-    private data class OfflineAreaMetadata(
-        val name: String,
-        val minZoom: Int,
-        val maxZoom: Int,
-        val estimatedTiles: Int,
+    private data class PendingSchoolSheetAlignment(
+        val school: SchoolRecord,
+        val sheetTopOnScreen: Float,
+        val mapTopOverlayBottomPx: Float,
     )
 
     private fun showSchoolDetails(school: SchoolRecord) {
         viewModel.selectSchool(school)
         refreshSchoolActivity(school, "")
+    }
+
+    private fun focusSelectedSchoolFromList(school: SchoolRecord) {
+        val currentMap = map ?: return
+        if (!school.hasCoordinates) {
+            return
+        }
+        selectedSchoolCameraFocusInProgress = true
+        focusSchools(currentMap, listOf(school))
+    }
+
+    private fun alignSelectedSchoolWithSheet(
+        school: SchoolRecord,
+        sheetTopOnScreen: Float,
+        mapTopOverlayBottomPx: Float,
+    ) {
+        pendingSchoolSheetAlignment = PendingSchoolSheetAlignment(
+            school = school,
+            sheetTopOnScreen = sheetTopOnScreen,
+            mapTopOverlayBottomPx = mapTopOverlayBottomPx,
+        )
+        alignPendingSchoolWithSheet()
+    }
+
+    private fun alignPendingSchoolWithSheet() {
+        if (selectedSchoolCameraFocusInProgress) {
+            return
+        }
+        val pendingAlignment = pendingSchoolSheetAlignment ?: return
+        val currentMap = map ?: return
+        val coordinates = pendingAlignment.school.coordinates
+        if (coordinates == null) {
+            pendingSchoolSheetAlignment = null
+            return
+        }
+        if (
+            viewModel.state.value.selectedSchool?.id != pendingAlignment.school.id ||
+            mapView.width == 0 ||
+            mapView.height == 0
+        ) {
+            pendingSchoolSheetAlignment = null
+            return
+        }
+
+        val mapScreenLocation = IntArray(2)
+        mapView.getLocationOnScreen(mapScreenLocation)
+        val sheetTopInMap = pendingAlignment.sheetTopOnScreen - mapScreenLocation[1]
+        val availableMapTop = pendingAlignment.mapTopOverlayBottomPx
+        val availableMapHeight = sheetTopInMap - availableMapTop
+        if (availableMapHeight <= dp(MIN_VISIBLE_MAP_REGION_DP)) {
+            pendingSchoolSheetAlignment = null
+            return
+        }
+
+        val selectedPoint = currentMap.projection.toScreenLocation(
+            LatLng(coordinates.latitude, coordinates.longitude),
+        )
+        val visibleCenter = PointF(
+            mapView.width / 2f,
+            availableMapTop + availableMapHeight / 2f,
+        )
+        val cameraTargetPoint = PointF(
+            (mapView.width / 2f + selectedPoint.x - visibleCenter.x)
+                .coerceIn(0f, mapView.width.toFloat()),
+            (mapView.height / 2f + selectedPoint.y - visibleCenter.y)
+                .coerceIn(0f, mapView.height.toFloat()),
+        )
+        val cameraTarget = currentMap.projection.fromScreenLocation(cameraTargetPoint)
+        pendingSchoolSheetAlignment = null
+        currentMap.animateCamera(CameraUpdateFactory.newLatLng(cameraTarget))
     }
 
     private fun addSchoolComment(school: SchoolRecord, text: String) {
@@ -1593,6 +1651,7 @@ class MainActivity : ComponentActivity() {
 
         currentStyle.getLayer(SCHOOL_LAYER)?.let(currentStyle::removeLayer)
         currentStyle.getLayer(SELECTED_SCHOOL_LAYER)?.let(currentStyle::removeLayer)
+        currentStyle.getLayer(SELECTED_SCHOOL_ACCENT_LAYER)?.let(currentStyle::removeLayer)
         currentStyle.getSource(SCHOOL_SOURCE)?.let(currentStyle::removeSource)
         currentStyle.getSource(SELECTED_SCHOOL_SOURCE)?.let(currentStyle::removeSource)
 
@@ -1605,8 +1664,8 @@ class MainActivity : ComponentActivity() {
             val coordinates = school.coordinates ?: return@mapNotNull null
             Feature.fromGeometry(Point.fromLngLat(coordinates.longitude, coordinates.latitude)).apply {
                 addStringProperty(SCHOOL_ID_PROPERTY, school.id.toString())
-                addStringProperty(MARKER_COLOR_PROPERTY, markerColor(school.gestion))
-                addNumberProperty(MARKER_RADIUS_PROPERTY, markerRadius(school.niveles))
+                addStringProperty(MARKER_COLOR_PROPERTY, SchoolMarkerStyle.color(school.gestion))
+                addNumberProperty(MARKER_RADIUS_PROPERTY, SchoolMarkerStyle.radius(school.niveles))
             }
         }
         currentStyle.addSource(
@@ -1643,8 +1702,19 @@ class MainActivity : ComponentActivity() {
                 CircleLayer(SELECTED_SCHOOL_LAYER, SELECTED_SCHOOL_SOURCE).withProperties(
                     circleColor(Color.TRANSPARENT),
                     circleRadius(SELECTED_MARKER_RADIUS),
+                    circleStrokeColor(Color.WHITE),
+                    circleStrokeWidth(SELECTED_MARKER_OUTLINE_STROKE_WIDTH),
+                ),
+            )
+            currentStyle.addLayer(
+                CircleLayer(
+                    SELECTED_SCHOOL_ACCENT_LAYER,
+                    SELECTED_SCHOOL_SOURCE,
+                ).withProperties(
+                    circleColor(Color.TRANSPARENT),
+                    circleRadius(SELECTED_MARKER_RADIUS),
                     circleStrokeColor(Color.CYAN),
-                    circleStrokeWidth(SELECTED_MARKER_STROKE_WIDTH),
+                    circleStrokeWidth(SELECTED_MARKER_ACCENT_STROKE_WIDTH),
                 ),
             )
         }
@@ -1692,21 +1762,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun markerColor(gestion: String?): String =
-        when (gestion) {
-            "publica" -> PUBLIC_MARKER_COLOR
-            "privada" -> PRIVATE_MARKER_COLOR
-            else -> UNKNOWN_MARKER_COLOR
-        }
-
-    private fun markerRadius(niveles: List<String>): Double =
-        when {
-            "secundaria" in niveles -> SECONDARY_MARKER_RADIUS
-            "primaria" in niveles -> PRIMARY_MARKER_RADIUS
-            "inicial" in niveles -> INITIAL_MARKER_RADIUS
-            else -> UNKNOWN_MARKER_RADIUS
-        }
-
     private fun showNavigationOptions(school: SchoolRecord) {
         if (!school.hasCoordinates) {
             showMissingCoordinatesMessage()
@@ -1717,8 +1772,8 @@ class MainActivity : ComponentActivity() {
             .setItems(arrayOf("Google Maps", "Waze")) { _, choice ->
                 val coordinates = school.coordinates ?: return@setItems
                 val url = when (choice) {
-                    0 -> googleMapsDirectionsUrl(coordinates)
-                    1 -> wazeDirectionsUrl(coordinates)
+                    0 -> SchoolNavigationLinks.googleMapsDirections(coordinates)
+                    1 -> SchoolNavigationLinks.wazeDirections(coordinates)
                     else -> return@setItems
                 }
                 openNavigationUrl(url)
@@ -1751,7 +1806,7 @@ class MainActivity : ComponentActivity() {
             putExtra(Intent.EXTRA_SUBJECT, schoolName)
             putExtra(
                 Intent.EXTRA_TEXT,
-                "$schoolName\n${googleMapsUrl(coordinates)}",
+                "$schoolName\n${SchoolNavigationLinks.googleMapsLocation(coordinates)}",
             )
         }
         startActivity(Intent.createChooser(sendIntent, "Compartir ubicación"))
@@ -1761,73 +1816,8 @@ class MainActivity : ComponentActivity() {
         Toast.makeText(this, "Este colegio no tiene coordenadas disponibles.", Toast.LENGTH_LONG).show()
     }
 
-    private fun googleMapsUrl(coordinates: SchoolCoordinates): String =
-        "https://www.google.com/maps/search/?api=1&query=" +
-            Uri.encode("${coordinates.latitude},${coordinates.longitude}")
-
-    private fun googleMapsDirectionsUrl(coordinates: SchoolCoordinates): String =
-        Uri.parse("https://www.google.com/maps/dir/").buildUpon()
-            .appendQueryParameter("api", "1")
-            .appendQueryParameter(
-                "destination",
-                "${coordinates.latitude},${coordinates.longitude}",
-            )
-            .appendQueryParameter("travelmode", "driving")
-            .build()
-            .toString()
-
-    private fun wazeDirectionsUrl(coordinates: SchoolCoordinates): String =
-        Uri.parse("https://waze.com/ul").buildUpon()
-            .appendQueryParameter("ll", "${coordinates.latitude},${coordinates.longitude}")
-            .appendQueryParameter("navigate", "yes")
-            .build()
-            .toString()
-
     private fun dp(value: Int): Int =
         (value * resources.displayMetrics.density).toInt()
-
-    private fun readSavedCameraPosition(): CameraPosition? {
-        val preferences = getSharedPreferences(MAP_CAMERA_PREFERENCES, MODE_PRIVATE)
-        val latitude = preferences.getString(MAP_CAMERA_LATITUDE, null)?.toDoubleOrNull()
-            ?: return null
-        val longitude = preferences.getString(MAP_CAMERA_LONGITUDE, null)?.toDoubleOrNull()
-            ?: return null
-        val zoom = preferences.getString(MAP_CAMERA_ZOOM, null)?.toDoubleOrNull()
-            ?: return null
-        val bearing = preferences.getString(MAP_CAMERA_BEARING, null)?.toDoubleOrNull()
-            ?: return null
-        val tilt = preferences.getString(MAP_CAMERA_TILT, null)?.toDoubleOrNull()
-            ?: return null
-        if (
-            !latitude.isFinite() ||
-            latitude !in -90.0..90.0 ||
-            !longitude.isFinite() ||
-            longitude !in -180.0..180.0 ||
-            !zoom.isFinite() ||
-            !bearing.isFinite() ||
-            !tilt.isFinite()
-        ) {
-            return null
-        }
-        return CameraPosition.Builder()
-            .target(LatLng(latitude, longitude))
-            .zoom(zoom)
-            .bearing(bearing)
-            .tilt(tilt)
-            .build()
-    }
-
-    private fun saveCameraPosition(position: CameraPosition) {
-        val target = position.target ?: return
-        getSharedPreferences(MAP_CAMERA_PREFERENCES, MODE_PRIVATE)
-            .edit()
-            .putString(MAP_CAMERA_LATITUDE, target.latitude.toString())
-            .putString(MAP_CAMERA_LONGITUDE, target.longitude.toString())
-            .putString(MAP_CAMERA_ZOOM, position.zoom.toString())
-            .putString(MAP_CAMERA_BEARING, position.bearing.toString())
-            .putString(MAP_CAMERA_TILT, position.tilt.toString())
-            .apply()
-    }
 
     override fun onStart() {
         super.onStart()
@@ -1855,7 +1845,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onPause() {
-        map?.let { saveCameraPosition(it.cameraPosition) }
+        map?.let { mapCameraStore.save(it.cameraPosition) }
         locationManager.removeUpdates(currentLocationListener)
         mapView.onPause()
         super.onPause()
@@ -1950,30 +1940,20 @@ class MainActivity : ComponentActivity() {
     private companion object {
         const val FILE_PREFERENCES = "eduescale_file"
         const val LAST_FILE_NAME = "last_file_name"
-        const val MAP_CAMERA_PREFERENCES = "map_camera"
-        const val MAP_CAMERA_LATITUDE = "latitude"
-        const val MAP_CAMERA_LONGITUDE = "longitude"
-        const val MAP_CAMERA_ZOOM = "zoom"
-        const val MAP_CAMERA_BEARING = "bearing"
-        const val MAP_CAMERA_TILT = "tilt"
         const val SCHOOL_SOURCE = "eduescale-schools"
         const val SCHOOL_LAYER = "eduescale-school-markers"
         const val SELECTED_SCHOOL_SOURCE = "eduescale-selected-school"
         const val SELECTED_SCHOOL_LAYER = "eduescale-selected-school-highlight"
+        const val SELECTED_SCHOOL_ACCENT_LAYER = "eduescale-selected-school-accent"
         const val SCHOOL_ID_PROPERTY = "school_id"
         const val MARKER_COLOR_PROPERTY = "marker_color"
         const val MARKER_RADIUS_PROPERTY = "marker_radius"
-        const val PUBLIC_MARKER_COLOR = "#176B50"
-        const val PRIVATE_MARKER_COLOR = "#D97706"
-        const val UNKNOWN_MARKER_COLOR = "#7B8794"
-        const val INITIAL_MARKER_RADIUS = 6.0
-        const val PRIMARY_MARKER_RADIUS = 8.0
-        const val SECONDARY_MARKER_RADIUS = 10.0
-        const val UNKNOWN_MARKER_RADIUS = 7.0
-        const val SELECTED_MARKER_RADIUS = 18f
-        const val SELECTED_MARKER_STROKE_WIDTH = 4f
+        const val SELECTED_MARKER_RADIUS = 22f
+        const val SELECTED_MARKER_OUTLINE_STROKE_WIDTH = 8f
+        const val SELECTED_MARKER_ACCENT_STROKE_WIDTH = 4f
         const val MARKER_TOUCH_RADIUS_DP = 24
         const val SINGLE_POINT_ZOOM = 12.0
+        const val MIN_VISIBLE_MAP_REGION_DP = 100
         const val MIN_COORDINATE_SPAN = 0.00001
         const val MAP_TOUCH_BOTTOM_EXCLUSION_DP = 104
         const val MAP_NAVIGATION_BAR_HEIGHT_DP = 80

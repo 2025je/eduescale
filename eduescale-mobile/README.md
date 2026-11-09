@@ -31,8 +31,8 @@ La interfaz usa la familia `sans-serif` de Android, basada en Roboto.
   educativo desde **Filtros avanzados**.
 - Distingue colegios públicos (verde) y particulares (naranja); el tamaño del
   marcador representa el nivel más avanzado que se ofrece en ese local.
-- Resalta con un aro celeste el colegio seleccionado para distinguirlo de los
-  marcadores cercanos.
+- Resalta el colegio seleccionado con un aro celeste de borde blanco y ajusta
+  el mapa para mantenerlo visible por encima de la ficha.
 - Muestra tu ubicación actual con un indicador azul pulsante al tocar el botón
   de ubicación; la primera vez, Android solicita permiso aproximado o preciso.
 - Si los servicios de ubicación están desactivados, ofrece abrir la configuración
@@ -44,8 +44,8 @@ La interfaz usa la familia `sans-serif` de Android, basada en Roboto.
   cada área guardada.
 - Al tocar un marcador, muestra nombre, dirección, localidad, distrito,
   provincia, departamento, CP, turno, gestión, todos los niveles educativos y
-  los totales de alumnos y secciones, con opciones para abrir rutas en auto con
-  Google Maps o Waze y compartir el enlace.
+  los totales de alumnos y secciones, la distancia desde tu ubicación y
+  opciones para abrir rutas en auto con Google Maps o Waze y compartir el enlace.
 - Permite guardar comentarios en un historial por colegio, buscarlos por texto
   y editar comentarios con su fecha de modificación. Antes de borrar un
   comentario o cancelar una alarma, pide confirmación.

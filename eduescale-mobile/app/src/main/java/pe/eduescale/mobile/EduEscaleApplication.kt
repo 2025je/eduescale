@@ -1,18 +1,24 @@
 package pe.eduescale.mobile
 
 import android.app.Application
+import dagger.hilt.android.HiltAndroidApp
 import java.io.File
+import javax.inject.Inject
 import okhttp3.Cache
 import okhttp3.Dispatcher
 import okhttp3.OkHttpClient
 import org.maplibre.android.MapLibre
 import org.maplibre.android.module.http.HttpRequestUtil
 
+@HiltAndroidApp
 class EduEscaleApplication : Application() {
+    @Inject
+    lateinit var mapHttpClient: OkHttpClient
+
     override fun onCreate() {
         super.onCreate()
         MapLibre.getInstance(this)
-        HttpRequestUtil.setOkHttpClient(createMapHttpClient(cacheDir))
+        HttpRequestUtil.setOkHttpClient(mapHttpClient)
     }
 }
 

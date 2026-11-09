@@ -20,7 +20,9 @@ import pe.eduescale.mobile.MainActivity
 import pe.eduescale.mobile.R
 import pe.eduescale.mobile.data.SchoolActivityRepository
 import pe.eduescale.mobile.data.SchoolReminder
+import dagger.hilt.android.AndroidEntryPoint
 import java.io.IOException
+import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -112,7 +114,10 @@ object SchoolReminderAlarms {
         )
     }
 
+    @AndroidEntryPoint
     class SchoolReminderAlarmReceiver : BroadcastReceiver() {
+        @Inject lateinit var repository: SchoolActivityRepository
+
         override fun onReceive(context: Context, intent: Intent) {
             val reminderId = intent.getStringExtra(EXTRA_REMINDER_ID)
             val schoolName = intent.getStringExtra(EXTRA_SCHOOL_NAME)
@@ -125,7 +130,7 @@ object SchoolReminderAlarms {
             val pendingResult = goAsync()
             CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
                 try {
-                    SchoolActivityRepository(context).markReminderTriggered(reminderId)
+                    repository.markReminderTriggered(reminderId)
                 } catch (error: IOException) {
                     Log.e(TAG, "No se pudo registrar la alarma activada.", error)
                 } catch (error: SQLiteException) {
@@ -179,7 +184,10 @@ object SchoolReminderAlarms {
         }
     }
 
+    @AndroidEntryPoint
     class SchoolReminderRescheduleReceiver : BroadcastReceiver() {
+        @Inject lateinit var repository: SchoolActivityRepository
+
         override fun onReceive(context: Context, intent: Intent) {
             if (
                 intent.action != Intent.ACTION_BOOT_COMPLETED &&
@@ -210,7 +218,7 @@ object SchoolReminderAlarms {
             val pendingResult = goAsync()
             CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
                 try {
-                    val reminders = SchoolActivityRepository(context).pendingReminders()
+                    val reminders = repository.pendingReminders()
                     reminders.forEach { reminder -> schedule(context, reminder) }
                 } catch (error: IOException) {
                     Log.e(TAG, "No se pudieron restaurar los recordatorios guardados.", error)

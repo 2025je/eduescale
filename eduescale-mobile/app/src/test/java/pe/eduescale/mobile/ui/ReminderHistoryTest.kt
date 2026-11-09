@@ -6,6 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import pe.eduescale.mobile.data.SchoolReminder
 import pe.eduescale.mobile.data.reactivatedWith
+import pe.eduescale.mobile.ui.history.isReminderPending
 
 class ReminderHistoryTest {
     @Test

@@ -1,6 +1,9 @@
 package pe.eduescale.mobile.data
 
 import android.content.Context
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
+import javax.inject.Singleton
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Entity
@@ -236,7 +239,10 @@ abstract class SchoolActivityDatabase : RoomDatabase() {
     }
 }
 
-class SchoolActivityRepository(context: Context) {
+@Singleton
+class SchoolActivityRepository @Inject constructor(
+    @ApplicationContext context: Context,
+) {
     private val applicationContext = context.applicationContext
     private val database = SchoolActivityDatabase.getInstance(applicationContext)
     private val dao = database.schoolActivityDao()
