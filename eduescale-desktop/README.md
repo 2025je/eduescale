@@ -45,7 +45,7 @@ params = build_search_params(
     SchoolFilters(
         region_code="22",
         management=("publica",),
-        level=("inicial",),
+        level=("primaria",),
     )
 )
 ```
@@ -61,8 +61,8 @@ esa interfaz.
 ## Uso
 
 Selecciona, si lo deseas, departamento, provincia y distrito; una o ambas
-opciones de gestión pública/privada; y uno o varios niveles entre inicial,
-primaria y secundaria. Pulsa **Agregar combinación de filtros** para guardar
+opciones de gestión pública/privada; y uno o varios niveles entre primaria,
+secundaria y CETPRO. Pulsa **Agregar combinación de filtros** para guardar
 esa búsqueda y repite el proceso para agregar otras ubicaciones o criterios.
 Cada combinación debe tener al menos una opción de Gestión y una de Nivel
 educativo. Puedes quitar combinaciones antes de iniciar. Al pulsar
@@ -74,10 +74,13 @@ confirmar, se genera únicamente el formato elegido y se abre con la aplicación
 predeterminada del sistema. El nombre sugerido incluye la fecha y hora en que
 finalizó la descarga de datos, por ejemplo
 `colegios_escale_2026-11-04_16-09-53.xlsx`; ambos formatos usan el mismo nombre
-base. Los colegios repetidos se guardan una sola vez. El
-Excel organiza tablas por distrito dentro de una hoja y contiene
-nombre del colegio, dirección, localidad, centro poblado (CP), turno, alumnos y
-secciones; no incluye coordenadas ni enlaces de Google Maps.
+base. Los colegios repetidos se guardan una sola vez. El Excel crea una hoja por
+distrito y, dentro de cada hoja, una tabla por cada nivel presente (Primaria,
+Secundaria o CETPRO). Cada tabla indica el nivel y el distrito en su cabecera;
+sus columnas incluyen nombre del colegio, dirección, localidad, centro poblado
+(CP), turno, alumnos y secciones. Departamento, provincia y distrito solo
+aparecen en la cabecera de la tabla. No incluye coordenadas ni enlaces de Google
+Maps.
 
 Si se exportan ambos formatos, comparten el mismo nombre base y solo cambia la
 extensión.
@@ -116,26 +119,26 @@ Puedes enviar el `.eduescale` como documento por WhatsApp; en Android, al tocar
 el archivo, el sistema ofrecerá abrirlo con EduEscale si la app está instalada.
 Android también sigue admitiendo archivos `.eduescale` antiguos en ZIP.
 
-`gestion` identifica colegios públicos o privados y `nivel` clasifica el nivel
-inicial, primaria o secundaria. `codigo_local` identifica el local educativo.
+`gestion` identifica colegios públicos o privados y `nivel` clasifica el servicio como primaria, secundaria o CETPRO.
+`codigo_local` identifica el local educativo.
 La app móvil combina los registros con el mismo código de local, nombre,
 gestión y ubicación para mostrar un solo marcador con todos sus niveles; los
-alumnos y las secciones se suman entre esos niveles. Si ESCALE no proporciona
-una clasificación reconocible, `nivel` se exporta como `null`; el resto de datos
-del colegio se mantiene disponible.
+alumnos y las secciones se suman entre esos niveles. El scraper omite los
+registros sin una clasificación admitida.
 
 También puedes ejecutar el spider directamente desde la terminal:
 
 ```powershell
-uv run --project . --directory eduescale scrapy crawl colegios -a output=colegios_escale.xlsx -a region_code=22 -a management=publica,privada -a level=inicial,primaria
+uv run --project . --directory eduescale scrapy crawl colegios -a output=colegios_escale.xlsx -a region_code=22 -a management=publica,privada -a level=primaria,cetpro
 ```
 
 Este comando también genera `colegios_escale.eduescale` en la misma carpeta.
 
 Los filtros `region_code`, `province_code`, `district_code`, `management` y
 `level` son opcionales. Los valores para gestión son `publica` y `privada`; los
-valores para nivel son `inicial`, `primaria` y `secundaria`. Para combinar
-valores en la terminal, sepáralos con comas.
+valores para nivel son `primaria`, `secundaria` y `cetpro`. Para combinar
+valores en la terminal, sepáralos con comas. Los registros de otros niveles
+se omiten.
 
 La app consulta los servicios activos, como en la configuración predeterminada
 del buscador de ESCALE. La ubicación corresponde al local donde se brinda el

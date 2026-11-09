@@ -9,7 +9,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 SchoolManagement = Literal["publica", "privada"]
-SchoolLevel = Literal["inicial", "primaria", "secundaria"]
+SchoolLevel = Literal["primaria", "secundaria", "cetpro"]
 
 API_URL = "https://escale.minedu.gob.pe/padron/rest"
 REQUEST_TIMEOUT = 30
@@ -44,7 +44,7 @@ class SchoolRecord(BaseModel):
     provincia: str = "Provincia no identificada"
     region: str = "Departamento no identificado"
     gestion: SchoolManagement | None = None
-    nivel: SchoolLevel | None = None
+    nivel: SchoolLevel
     codigo_local: str = ""
 
 
@@ -53,9 +53,9 @@ MANAGEMENT_CODES: dict[SchoolManagement, tuple[str, ...]] = {
     "privada": ("B1", "B2", "B3", "B4", "B5", "B6"),
 }
 LEVEL_CODES: dict[SchoolLevel, tuple[str, ...]] = {
-    "inicial": ("A1", "A2", "A3", "A5"),
     "primaria": ("B0",),
     "secundaria": ("F0",),
+    "cetpro": ("L0",),
 }
 
 
@@ -215,6 +215,8 @@ def _level(
     code: str = "",
 ) -> SchoolLevel | None:
     normalized = _normalized_label(value)
+    if "cetpro" in normalized or "tecnico productiva" in normalized:
+        return "cetpro"
     for level in LEVEL_CODES:
         if level in normalized:
             return level
@@ -229,6 +231,14 @@ def parse_institutions(xml: bytes) -> list[dict[str, object]]:
     root = ElementTree.fromstring(xml)
     records: list[dict[str, object]] = []
     for item in root.findall("./items"):
+        longitud = _float(item, "nlongIE")
+        latitud = _float(item, "nlatIE")
+        nivel = _level(
+            _text(item, "nivelModalidad/valor") or _text(item, "nivelModalidad"),
+            _text(item, "nivelModalidad/idCodigo"),
+        )
+        if nivel is None:
+            continue
         record = SchoolRecord(
             nombre=_text(item, "cenEdu"),
             direccion=_text(item, "dirCen"),
@@ -237,8 +247,8 @@ def parse_institutions(xml: bytes) -> list[dict[str, object]]:
             turno=_text(item, "turno/valor"),
             alumnos=_integer(item, "estadistica/talumno"),
             secciones=_integer(item, "estadistica/tseccion"),
-            longitud=_float(item, "nlongIE"),
-            latitud=_float(item, "nlatIE"),
+            longitud=longitud,
+            latitud=latitud,
             distrito=_text(item, "distrito/nombreDistrito")
             or "Distrito no identificado",
             provincia=_text(item, "distrito/provincia/nombreProvincia")
@@ -246,10 +256,7 @@ def parse_institutions(xml: bytes) -> list[dict[str, object]]:
             region=_text(item, "distrito/provincia/region/nombreRegion")
             or "Departamento no identificado",
             gestion=_management(_text(item, "gestion")),
-            nivel=_level(
-                _text(item, "nivelModalidad/valor") or _text(item, "nivelModalidad"),
-                _text(item, "nivelModalidad/idCodigo"),
-            ),
+            nivel=nivel,
             codigo_local=_text(item, "codlocal"),
         )
         records.append(record.model_dump())

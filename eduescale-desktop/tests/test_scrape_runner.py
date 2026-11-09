@@ -119,7 +119,7 @@ def test_frozen_windows_runner_uses_onedir_scraper(tmp_path, monkeypatch, applic
     try:
         runner.start(
             tmp_path / "schools.xlsx",
-            [SchoolFilters(management=("publica",), level=("inicial",))],
+            [SchoolFilters(management=("publica",), level=("primaria",))],
         )
 
         assert process.program == str(worker_executable)
@@ -179,7 +179,7 @@ def test_runner_completes_scrape_without_exporting_files(tmp_path, application):
     try:
         runner.start(
             output_path,
-            [SchoolFilters(management=("publica",), level=("inicial",))],
+            [SchoolFilters(management=("publica",), level=("primaria",))],
         )
         staging_directory = runner._staging_directory
         assert output_path.read_bytes() == b"previous workbook"
@@ -212,7 +212,7 @@ def test_runner_cancels_without_replacing_existing_excel(tmp_path, application):
     try:
         runner.start(
             output_path,
-            [SchoolFilters(management=("publica",), level=("inicial",))],
+            [SchoolFilters(management=("publica",), level=("primaria",))],
         )
         staging_directory = runner._staging_directory
 
@@ -248,7 +248,7 @@ def test_runner_rejects_missing_dataset_without_replacing_exports(
     try:
         runner.start(
             output_path,
-            [SchoolFilters(management=("publica",), level=("inicial",))],
+            [SchoolFilters(management=("publica",), level=("primaria",))],
         )
         assert runner._staging_path is not None
         runner._staging_path.unlink()

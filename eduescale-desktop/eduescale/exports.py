@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import sqlite3
 import tempfile
 import warnings
@@ -23,6 +24,11 @@ HEADERS = (
     "Secciones",
 )
 EXCEL_MAX_ROWS = 1_048_576
+EXCEL_LEVEL_LABELS = {
+    "primaria": "Primaria",
+    "secundaria": "Secundaria",
+    "cetpro": "CETPRO",
+}
 EXCEL_FIELDS = (
     "nombre",
     "direccion",
@@ -52,25 +58,52 @@ def export_excel(database_path: Path, output_path: Path) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     temporary_path = _temporary_path(output_path, ".xlsx")
     workbook = Workbook(write_only=True)
-    worksheet = workbook.create_sheet("Colegios")
-    worksheet.column_dimensions["A"].width = 45
-    worksheet.column_dimensions["B"].width = 55
-    worksheet.column_dimensions["C"].width = 30
-    worksheet.column_dimensions["D"].width = 30
-    worksheet.column_dimensions["E"].width = 20
-    worksheet.column_dimensions["F"].width = 14
-    worksheet.column_dimensions["G"].width = 14
-    sheet_row_count = 0
+    worksheets = []
+    used_sheet_names = set()
+    current_state = None
+    current_district = None
+    table_number = 0
     workbook_saved = False
 
-    def append_row(values):
-        nonlocal sheet_row_count
-        if sheet_row_count >= EXCEL_MAX_ROWS:
+    def create_sheet_state(sheet_name):
+        worksheet = workbook.create_sheet(sheet_name)
+        worksheets.append(worksheet)
+        for column, width in (
+            ("A", 45),
+            ("B", 55),
+            ("C", 30),
+            ("D", 30),
+            ("E", 20),
+            ("F", 14),
+            ("G", 14),
+        ):
+            worksheet.column_dimensions[column].width = width
+        return {
+            "worksheet": worksheet,
+            "current_level": None,
+            "table_start_row": 0,
+            "sheet_row_count": 0,
+        }
+
+    def append_row(state, values):
+        if state["sheet_row_count"] >= EXCEL_MAX_ROWS:
             raise RuntimeError(
                 "Las tablas por distrito superan el límite de filas de una hoja de Excel."
             )
-        worksheet.append(values)
-        sheet_row_count += 1
+        state["worksheet"].append(values)
+        state["sheet_row_count"] += 1
+
+    def finish_table(state):
+        nonlocal table_number
+        if state["current_level"] is None:
+            return
+        table_number += 1
+        _add_district_table(
+            state["worksheet"],
+            table_number,
+            state["table_start_row"],
+            state["sheet_row_count"],
+        )
 
     try:
         with closing(sqlite3.connect(database_path)) as database:
@@ -81,37 +114,73 @@ def export_excel(database_path: Path, output_path: Path) -> None:
                 ORDER BY region COLLATE NOCASE,
                          province COLLATE NOCASE,
                          district COLLATE NOCASE,
+                         CASE json_extract(payload, '$.nivel')
+                             WHEN 'primaria' THEN 0
+                             WHEN 'secundaria' THEN 1
+                             WHEN 'cetpro' THEN 2
+                             ELSE 3
+                         END,
                          rowid
                 """
             )
-            current_district = None
-            table_start_row = 0
-            table_number = 0
             for region, province, district, payload in cursor:
+                item = json.loads(payload)
+                level = item.get("nivel")
+                if level not in EXCEL_LEVEL_LABELS:
+                    raise ValueError(
+                        f"Nivel educativo no admitido para Excel: {level!r}."
+                    )
+
                 district_key = (region, province, district)
                 if district_key != current_district:
-                    if current_district is not None:
-                        _add_district_table(
-                            worksheet, table_number, table_start_row, sheet_row_count
-                        )
-                        append_row([])
-                    append_row(_district_heading(worksheet, region, province, district))
-                    append_row([_safe_cell(worksheet, header) for header in HEADERS])
-                    table_start_row = sheet_row_count
-                    table_number += 1
+                    if current_state is not None:
+                        finish_table(current_state)
+                    sheet_name = _district_sheet_name(
+                        district, province, region, used_sheet_names
+                    )
+                    current_state = create_sheet_state(sheet_name)
                     current_district = district_key
 
-                item = json.loads(payload)
+                if level != current_state["current_level"]:
+                    if current_state["current_level"] is not None:
+                        finish_table(current_state)
+                        append_row(current_state, [])
+                    append_row(
+                        current_state,
+                        _district_heading(
+                            current_state["worksheet"],
+                            region,
+                            province,
+                            district,
+                            EXCEL_LEVEL_LABELS[level],
+                        )
+                    )
+                    append_row(
+                        current_state,
+                        [
+                            _safe_cell(current_state["worksheet"], header)
+                            for header in HEADERS
+                        ],
+                    )
+                    current_state["table_start_row"] = current_state["sheet_row_count"]
+                    current_state["current_level"] = level
+
                 append_row(
-                    [_safe_cell(worksheet, item[field]) for field in EXCEL_FIELDS]
+                    current_state,
+                    [
+                        _safe_cell(current_state["worksheet"], value)
+                        for value in (item[field] for field in EXCEL_FIELDS)
+                    ],
                 )
 
-            if current_district is not None:
-                _add_district_table(
-                    worksheet, table_number, table_start_row, sheet_row_count
-                )
-            else:
-                append_row([_safe_cell(worksheet, header) for header in HEADERS])
+        if current_state is None:
+            current_state = create_sheet_state("Sin datos")
+            append_row(
+                current_state,
+                [_safe_cell(current_state["worksheet"], header) for header in HEADERS],
+            )
+        else:
+            finish_table(current_state)
 
         workbook.save(temporary_path)
         workbook_saved = True
@@ -119,10 +188,11 @@ def export_excel(database_path: Path, output_path: Path) -> None:
         os.replace(temporary_path, output_path)
     finally:
         if not workbook_saved:
-            try:
-                worksheet.close()
-            except WorkbookAlreadySaved:
-                pass
+            for worksheet in worksheets:
+                try:
+                    worksheet.close()
+                except WorkbookAlreadySaved:
+                    pass
         temporary_path.unlink(missing_ok=True)
 
 
@@ -180,6 +250,24 @@ def _temporary_path(output_path: Path, suffix: str) -> Path:
         return Path(export_file.name)
 
 
+def _district_sheet_name(district, province, region, used_names):
+    location = " - ".join(
+        str(value).strip()
+        for value in (district, province, region)
+        if value is not None and str(value).strip()
+    )
+    base = re.sub(r"[\[\]:*?/\\]", "-", location).strip().strip("'") or "Distrito"
+    candidate = base[:31].rstrip("'")
+    suffix_number = 2
+    while candidate.casefold() in used_names:
+        suffix = f" ({suffix_number})"
+        prefix = base[: 31 - len(suffix)].rstrip("'")
+        candidate = f"{prefix}{suffix}"
+        suffix_number += 1
+    used_names.add(candidate.casefold())
+    return candidate
+
+
 def _safe_cell(worksheet, value):
     cell = WriteOnlyCell(worksheet, value=value)
     if isinstance(value, str) and value.startswith("="):
@@ -187,19 +275,20 @@ def _safe_cell(worksheet, value):
     return cell
 
 
-def _district_heading(worksheet, region, province, district):
+def _district_heading(worksheet, region, province, district, level):
     fill = PatternFill(fill_type="solid", fgColor="1E4D73")
     row = []
     for index, value in enumerate(
         (
-            f"Distrito: {district}",
-            f"Provincia: {province}",
             f"Departamento: {region}",
+            f"Provincia: {province}",
+            f"Distrito: {district}",
+            f"Nivel: {level}",
         )
-        + ("",) * (len(HEADERS) - 3)
+        + ("",) * (len(HEADERS) - 4)
     ):
         cell = _safe_cell(worksheet, value)
-        if index < 3:
+        if index < 4:
             cell.font = Font(bold=True, color="FFFFFF", size=12)
         cell.fill = fill
         row.append(cell)
@@ -234,7 +323,7 @@ def _add_district_table(worksheet, table_number, start_row, end_row):
 def _validate_workbook(path: Path) -> None:
     workbook = load_workbook(path, read_only=True)
     try:
-        if "Colegios" not in workbook.sheetnames:
-            raise RuntimeError("El archivo temporal no contiene la hoja Colegios.")
+        if not workbook.sheetnames:
+            raise RuntimeError("El archivo temporal no contiene hojas por distrito.")
     finally:
         workbook.close()

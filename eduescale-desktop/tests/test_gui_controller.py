@@ -129,7 +129,7 @@ def test_restores_export_folder_and_window_size(tmp_path):
 
         controller.startScrape(
             QUrl.fromLocalFile(str(tmp_path / "export.xlsx")).toString(),
-            json.dumps([{"management": "publica", "level": "inicial"}]),
+            json.dumps([{"management": "publica", "level": "primaria"}]),
         )
 
         assert settings.value("export/lastDirectory") == str(tmp_path)
@@ -157,7 +157,7 @@ def test_management_selection_is_required(controller_components):
     controller, scrape_runner, errors = controller_components
     controller.startScrape(
         "file:///tmp/schools.xlsx",
-        json.dumps([{"management": "", "level": "inicial"}]),
+        json.dumps([{"management": "", "level": "primaria"}]),
     )
 
     assert len(errors) == 1
@@ -181,7 +181,7 @@ def test_rejects_non_local_output_urls(controller_components):
     controller, scrape_runner, errors = controller_components
     controller.startScrape(
         "https://example.invalid/schools.xlsx",
-        json.dumps([{"management": "publica", "level": "inicial"}]),
+        json.dumps([{"management": "publica", "level": "primaria"}]),
     )
 
     assert errors == [
@@ -199,7 +199,7 @@ def test_starts_scrape_with_multiple_filter_sets(controller_components):
                 {
                     "region_code": "01",
                     "management": "publica",
-                    "level": "inicial",
+                    "level": "primaria",
                 },
                 {
                     "region_code": "02",
@@ -222,7 +222,7 @@ def test_cancel_scrape_updates_status_after_runner_confirms(controller_component
     controller, scrape_runner, _errors = controller_components
     controller.startScrape(
         "file:///tmp/schools.xlsx",
-        json.dumps([{"management": "publica", "level": "inicial"}]),
+        json.dumps([{"management": "publica", "level": "primaria"}]),
     )
 
     controller.cancelScrape()

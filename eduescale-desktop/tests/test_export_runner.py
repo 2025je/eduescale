@@ -40,7 +40,7 @@ def _create_database(path: Path):
                         "alumnos": 10,
                         "secciones": 1,
                         "gestion": "publica",
-                        "nivel": "inicial",
+                        "nivel": "primaria",
                         "codigo_local": "000123",
                         "longitud": -77.2,
                         "latitud": -12.1,
@@ -104,7 +104,7 @@ def test_export_runner_generates_each_requested_format(tmp_path):
 
         workbook = load_workbook(excel_path, read_only=True)
         try:
-            assert workbook["Colegios"]["A3"].value == "Colegio Ejemplo"
+            assert workbook["Iquitos - Maynas - Loreto"]["A3"].value == "Colegio Ejemplo"
         finally:
             workbook.close()
         document = json.loads(eduescale_path.read_text(encoding="utf-8"))

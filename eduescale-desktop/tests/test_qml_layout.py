@@ -201,7 +201,9 @@ for width, height in ((560, 600), (1280, 720), (1366, 768), (1600, 900), (1920, 
         )
 
 child("publicManagement").setProperty("checked", True)
-child("initialLevel").setProperty("checked", True)
+assert window.findChild(QObject, "initialLevel") is None
+child("primaryLevel").setProperty("checked", True)
+child("cetproLevel").setProperty("checked", True)
 assert QMetaObject.invokeMethod(window, "addFilterSet")
 assert filter_sets.property("count") == 1
 assert QMetaObject.invokeMethod(window, "addFilterSet")
@@ -210,6 +212,7 @@ assert "ya está en Mis búsquedas" in help_text.property("text")
 download_button.click()
 application.processEvents()
 assert controller.scrapeRunning
+assert scrape_runner.started_requests[0][1][0].level == ("primaria", "cetpro")
 cancel_button = child("cancelScrapeButton")
 assert cancel_button.property("visible")
 for width, expected_action_columns in ((560, 2), (1280, 3)):

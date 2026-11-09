@@ -54,12 +54,12 @@ ApplicationWindow {
 
     function selectedLevels() {
         var selected = []
-        if (initialLevel.checked)
-            selected.push("inicial")
         if (primaryLevel.checked)
             selected.push("primaria")
         if (secondaryLevel.checked)
             selected.push("secundaria")
+        if (cetproLevel.checked)
+            selected.push("cetpro")
         return selected.join(",")
     }
 
@@ -343,13 +343,6 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             spacing: 8
                             CheckBox {
-                                id: initialLevel
-                                objectName: "initialLevel"
-                                text: "Inicial"
-                                enabled: !controller.scrapeRunning
-                                onToggled: window.filterNotice = ""
-                            }
-                            CheckBox {
                                 id: primaryLevel
                                 objectName: "primaryLevel"
                                 text: "Primaria"
@@ -360,6 +353,13 @@ ApplicationWindow {
                                 id: secondaryLevel
                                 objectName: "secondaryLevel"
                                 text: "Secundaria"
+                                enabled: !controller.scrapeRunning
+                                onToggled: window.filterNotice = ""
+                            }
+                            CheckBox {
+                                id: cetproLevel
+                                objectName: "cetproLevel"
+                                text: "CETPRO"
                                 enabled: !controller.scrapeRunning
                                 onToggled: window.filterNotice = ""
                             }

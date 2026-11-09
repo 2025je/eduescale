@@ -63,14 +63,14 @@ class TestDirectRequestRetries:
 
 
 class TestBuildSearchParams:
-    def test_selects_most_specific_location_and_public_initial(self):
+    def test_selects_most_specific_location_and_public_primary(self):
         params = build_search_params(
             SchoolFilters(
                 region_code="15",
                 province_code="1501",
                 district_code="150101",
                 management=("publica",),
-                level=("inicial",),
+                level=("primaria",),
             ),
             offset=50,
         )
@@ -78,7 +78,7 @@ class TestBuildSearchParams:
         assert ("ubigeo", "150101") in params
         assert ("ubigeo", "15") not in params
         assert ("gestiones", "A4") in params
-        assert ("niveles", "A5") in params
+        assert ("niveles", "B0") in params
         assert ("estados", "1") in params
         assert ("start", "50") in params
 
@@ -106,7 +106,7 @@ class TestBuildSearchParams:
         params = build_search_params(
             SchoolFilters(
                 management=("publica",),
-                level=("inicial", "primaria"),
+                level=("primaria", "cetpro"),
             )
         )
 
@@ -117,18 +117,15 @@ class TestBuildSearchParams:
             "A4",
         ]
         assert [value for key, value in params if key == "niveles"] == [
-            "A1",
-            "A2",
-            "A3",
-            "A5",
             "B0",
+            "L0",
         ]
 
     def test_all_checkbox_values_send_all_selected_codes(self):
         params = build_search_params(
             SchoolFilters(
                 management=("publica", "privada"),
-                level=("inicial", "primaria", "secundaria"),
+                level=("primaria", "secundaria", "cetpro"),
             )
         )
 
@@ -145,28 +142,28 @@ class TestBuildSearchParams:
             "B6",
         ]
         assert [value for key, value in params if key == "niveles"] == [
-            "A1",
-            "A2",
-            "A3",
-            "A5",
             "B0",
             "F0",
+            "L0",
         ]
 
     def test_pydantic_normalizes_comma_separated_selections(self):
         filters = SchoolFilters.model_validate(
             {
                 "management": "publica, privada,publica",
-                "level": "inicial,primaria",
+                "level": "primaria,cetpro",
             }
         )
 
         assert filters.management == ("publica", "privada")
-        assert filters.level == ("inicial", "primaria")
+        assert filters.level == ("primaria", "cetpro")
 
     def test_pydantic_rejects_unknown_filter_values(self):
         with pytest.raises(ValidationError):
             SchoolFilters(management=("mixta",))
+
+        with pytest.raises(ValidationError):
+            SchoolFilters(level=("inicial",))
 
 
 class TestParseInstitutions:
@@ -214,8 +211,9 @@ class TestParseInstitutions:
     @pytest.mark.parametrize(
         ("management", "modality", "expected_management", "expected_level"),
         [
-            ("Privada", "A2Inicial - Jardín", "privada", "inicial"),
+            ("Pública", "B0Primaria", "publica", "primaria"),
             ("Pública", "F0Secundaria", "publica", "secundaria"),
+            ("Pública", "Técnico Productiva", "publica", "cetpro"),
         ],
     )
     def test_classifies_school_management_and_level(
@@ -252,6 +250,26 @@ class TestParseInstitutions:
         record = parse_institutions(xml)[0]
 
         assert record["nivel"] == "secundaria"
+
+    def test_classifies_cetpro_by_escale_code(self):
+        xml = """<instituciones><items>
+            <nivelModalidad>
+              <idCodigo>L0</idCodigo><valor>Técnico Productiva</valor>
+            </nivelModalidad>
+        </items></instituciones>""".encode("utf-8")
+
+        record = parse_institutions(xml)[0]
+
+        assert record["nivel"] == "cetpro"
+
+    def test_omits_initial_level_records(self):
+        xml = """<instituciones><items>
+            <nivelModalidad>
+              <idCodigo>A2</idCodigo><valor>Inicial - Jardín</valor>
+            </nivelModalidad>
+        </items></instituciones>""".encode("utf-8")
+
+        assert parse_institutions(xml) == []
 
     @pytest.mark.parametrize("value", ["nan", "inf", "-inf"])
     def test_rejects_non_finite_coordinates(self, value):

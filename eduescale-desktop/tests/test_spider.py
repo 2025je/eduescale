@@ -15,12 +15,12 @@ class TestSchoolsSpiderPage:
                     {
                         "region_code": "01",
                         "management": "publica,privada",
-                        "level": "inicial,primaria",
+                        "level": "primaria,cetpro",
                     },
                     {
                         "region_code": "01",
                         "management": "privada,publica",
-                        "level": "primaria,inicial",
+                        "level": "cetpro,primaria",
                     },
                 ]
             ),
@@ -36,7 +36,7 @@ class TestSchoolsSpiderPage:
                     {
                         "region_code": "01",
                         "management": "publica",
-                        "level": "inicial",
+                        "level": "primaria",
                     },
                     {
                         "region_code": "02",
@@ -144,6 +144,7 @@ class TestSchoolsSpiderPage:
             <turno><valor>Manana</valor></turno>
             <estadistica><talumno>10</talumno><tseccion>1</tseccion></estadistica>
             <nlongIE>-77</nlongIE><nlatIE>-12</nlatIE>
+            <nivelModalidad><idCodigo>B0</idCodigo><valor>Primaria</valor></nivelModalidad>
         </items></instituciones>"""
 
         outputs = []
