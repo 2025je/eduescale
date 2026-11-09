@@ -19,12 +19,15 @@ class SchoolNavigator(private val context: Context) {
             .setTitle("Cómo llegar en auto")
             .setItems(arrayOf("Google Maps", "Waze")) { _, choice ->
                 val coordinates = school.coordinates ?: return@setItems
-                val url = when (choice) {
-                    0 -> SchoolNavigationLinks.googleMapsDirections(coordinates)
-                    1 -> SchoolNavigationLinks.wazeDirections(coordinates)
+                val urls = when (choice) {
+                    0 -> arrayOf(SchoolNavigationLinks.googleMapsDirections(coordinates))
+                    1 -> arrayOf(
+                        SchoolNavigationLinks.wazeAppDirections(coordinates),
+                        SchoolNavigationLinks.wazeDirections(coordinates),
+                    )
                     else -> return@setItems
                 }
-                openNavigationUrl(url)
+                openNavigationUrl(*urls)
             }
             .setNegativeButton("Cancelar", null)
             .show()
@@ -47,17 +50,20 @@ class SchoolNavigator(private val context: Context) {
         context.startActivity(Intent.createChooser(sendIntent, "Compartir ubicación"))
     }
 
-    private fun openNavigationUrl(url: String) {
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-        try {
-            context.startActivity(intent)
-        } catch (error: ActivityNotFoundException) {
-            Toast.makeText(
-                context,
-                "No se encontró una aplicación o navegador para abrir la ruta.",
-                Toast.LENGTH_LONG,
-            ).show()
+    private fun openNavigationUrl(vararg urls: String) {
+        for (url in urls) {
+            try {
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                return
+            } catch (error: ActivityNotFoundException) {
+                continue
+            }
         }
+        Toast.makeText(
+            context,
+            "No se encontr? una aplicaci?n o navegador para abrir la ruta.",
+            Toast.LENGTH_LONG,
+        ).show()
     }
 
     private fun showMissingCoordinatesMessage() {

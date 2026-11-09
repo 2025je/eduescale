@@ -19,10 +19,10 @@ internal object SchoolNavigationLinks {
             .build()
             .toString()
 
+    // Waze does not parse a percent-encoded comma in "ll", so the query is built by hand.
+    fun wazeAppDirections(coordinates: SchoolCoordinates): String =
+        "waze://?ll=${coordinates.latitude},${coordinates.longitude}&navigate=yes"
+
     fun wazeDirections(coordinates: SchoolCoordinates): String =
-        Uri.parse("https://waze.com/ul").buildUpon()
-            .appendQueryParameter("ll", "${coordinates.latitude},${coordinates.longitude}")
-            .appendQueryParameter("navigate", "yes")
-            .build()
-            .toString()
+        "https://waze.com/ul?ll=${coordinates.latitude},${coordinates.longitude}&navigate=yes"
 }
