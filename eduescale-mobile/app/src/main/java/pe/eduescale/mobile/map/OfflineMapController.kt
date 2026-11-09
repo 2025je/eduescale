@@ -11,6 +11,7 @@ import org.maplibre.android.offline.OfflineRegion
 import org.maplibre.android.offline.OfflineRegionError
 import org.maplibre.android.offline.OfflineRegionStatus
 import org.maplibre.android.offline.OfflineTilePyramidRegionDefinition
+import pe.eduescale.mobile.data.OfflineTileEstimator
 import pe.eduescale.mobile.ui.EduEscaleViewModel
 import pe.eduescale.mobile.ui.OfflineMapAreaUi
 import pe.eduescale.mobile.ui.OfflineMapBounds
