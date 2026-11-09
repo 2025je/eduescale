@@ -85,8 +85,77 @@ class SchoolDataReaderTest {
         assertEquals("6", parsed.schools.single().secciones)
         assertEquals("publica", parsed.schools.single().gestion)
         assertEquals(listOf("secundaria"), parsed.schools.single().niveles)
+        assertEquals(
+            listOf(
+                SchoolScheduleRow(
+                    nivel = "secundaria",
+                    aulas = "6",
+                    alumnos = "120",
+                    turno = "Mañana",
+                ),
+            ),
+            parsed.schools.single().ofertaEducativa,
+        )
         assertEquals(-73.253, parsed.schools.single().longitud!!, 0.000001)
         assertEquals(-3.749, parsed.schools.single().latitud!!, 0.000001)
+    }
+
+    @Test
+    fun readsCetproAsAnEducationLevel() {
+        val json = """
+            {
+              "formato": "eduescale",
+              "version": 1,
+              "colegios": [
+                {
+                  "nombre": "CETPRO Ejemplo",
+                  "nivel": "cetpro",
+                  "alumnos": 130,
+                  "secciones": 7,
+                  "turno": "Tarde y Noche",
+                  "longitud": -76.5954,
+                  "latitud": -7.0603
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val school = SchoolDataReader.read(StringReader(json)).schools.single()
+
+        assertEquals(listOf("cetpro"), school.niveles)
+        assertEquals(
+            listOf(
+                SchoolScheduleRow(
+                    nivel = "cetpro",
+                    aulas = "7",
+                    alumnos = "130",
+                    turno = "Tarde y Noche",
+                ),
+            ),
+            school.ofertaEducativa,
+        )
+    }
+
+    @Test
+    fun rejectsFilesContainingInitialLevelRecords() {
+        val json = """
+            {
+              "formato": "eduescale",
+              "version": 1,
+              "colegios": [
+                {
+                  "nombre": "Servicio Inicial",
+                  "nivel": "inicial",
+                  "longitud": -77.0,
+                  "latitud": -12.0
+                }
+              ]
+            }
+        """.trimIndent()
+
+        assertThrows(IllegalArgumentException::class.java) {
+            SchoolDataReader.read(StringReader(json))
+        }
     }
 
     @Test
@@ -104,6 +173,7 @@ class SchoolDataReaderTest {
                   "nombre": "Colegio Ejemplo",
                   "gestion": "publica",
                   "nivel": "secundaria",
+                  "turno": "Mañana",
                   "alumnos": 80,
                   "secciones": 4,
                   "longitud": -73.253,
@@ -117,6 +187,7 @@ class SchoolDataReaderTest {
                   "nombre": "Colegio Ejemplo",
                   "gestion": "publica",
                   "nivel": "primaria",
+                  "turno": "Tarde",
                   "alumnos": 120,
                   "secciones": 6,
                   "longitud": -73.253,
@@ -140,6 +211,31 @@ class SchoolDataReaderTest {
         assertEquals(listOf("primaria", "secundaria"), parsed.schools.single().niveles)
         assertEquals("200", parsed.schools.single().alumnos)
         assertEquals("10", parsed.schools.single().secciones)
+        assertEquals(
+            SchoolLevelStatistics(alumnos = "120", secciones = "6"),
+            parsed.schools.single().estadisticasPorNivel["primaria"],
+        )
+        assertEquals(
+            SchoolLevelStatistics(alumnos = "80", secciones = "4"),
+            parsed.schools.single().estadisticasPorNivel["secundaria"],
+        )
+        assertEquals(
+            listOf(
+                SchoolScheduleRow(
+                    nivel = "primaria",
+                    aulas = "6",
+                    alumnos = "120",
+                    turno = "Tarde",
+                ),
+                SchoolScheduleRow(
+                    nivel = "secundaria",
+                    aulas = "4",
+                    alumnos = "80",
+                    turno = "Mañana",
+                ),
+            ),
+            parsed.schools.single().ofertaEducativa,
+        )
     }
 
     @Test
@@ -189,6 +285,13 @@ class SchoolDataReaderTest {
 
             assertThrows(IllegalArgumentException::class.java) {
                 storage.save(ByteArrayInputStream("""{"formato":"otro"}""".toByteArray()))
+            }
+            val initialLevelJson =
+                """{"formato":"eduescale","version":1,"colegios":[{"nombre":"Servicio Inicial","nivel":"inicial","longitud":-77.0,"latitud":-12.0}]}"""
+            assertThrows(IllegalArgumentException::class.java) {
+                storage.save(
+                    ByteArrayInputStream(initialLevelJson.toByteArray(StandardCharsets.UTF_8)),
+                )
             }
 
             assertEquals("Colegio guardado", storage.restore()?.schools?.single()?.nombre)

@@ -146,6 +146,7 @@ def test_default_output_url_avoids_overwriting_existing_exports(
     output_path = tmp_path / "colegios_escale.xlsx"
     output_path.write_bytes(b"existing Excel")
     android_data_path(output_path).write_bytes(b"existing EduEscale")
+    output_path.with_suffix(".pdf").write_bytes(b"existing PDF")
     controller._settings.setValue("export/lastDirectory", str(tmp_path))
 
     next_output = Path(QUrl(controller.defaultOutputUrl).toLocalFile())
@@ -247,6 +248,7 @@ def test_scrape_completed_makes_results_available_without_exporting_files(
     assert "2 colegios" in controller.statusText
     assert not (tmp_path / "schools.xlsx").exists()
     assert not (tmp_path / "schools.eduescale").exists()
+    assert not (tmp_path / "schools.pdf").exists()
     assert controller._dataset_path == database_path
     assert controller.exportsAvailable
 
@@ -260,6 +262,7 @@ def test_export_buttons_generate_and_open_the_requested_file(
     export_runner = controller._export_runner
     output_path = tmp_path / "schools.xlsx"
     eduescale_path = android_data_path(output_path)
+    pdf_path = output_path.with_suffix(".pdf")
     opened_urls = []
     monkeypatch.setattr(
         controller_module,
@@ -286,7 +289,17 @@ def test_export_buttons_generate_and_open_the_requested_file(
     eduescale_path.write_text("{}", encoding="utf-8")
     export_runner.completed.emit("eduescale", str(eduescale_path))
 
+    controller.exportPdfFile(QUrl.fromLocalFile(str(pdf_path)).toString())
+    assert export_runner.started_requests[-1] == (
+        "pdf",
+        controller._dataset_path,
+        pdf_path,
+    )
+    pdf_path.write_bytes(b"%PDF-")
+    export_runner.completed.emit("pdf", str(pdf_path))
+
     assert [Path(QUrl(url).toLocalFile()) for url in opened_urls] == [
         output_path,
         eduescale_path,
+        pdf_path,
     ]

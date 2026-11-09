@@ -159,6 +159,12 @@ class SchoolFinderController(QObject):
             str(android_data_path(self._default_output_path()))
         ).toString()
 
+    @Property(str, notify=stateChanged)
+    def defaultPdfOutputUrl(self):
+        return QUrl.fromLocalFile(
+            str(self._default_output_path().with_suffix(".pdf"))
+        ).toString()
+
     def _next_output_path(self) -> Path:
         directory = self._settings.value("export/lastDirectory", str(Path.home()))
         if not isinstance(directory, str):
@@ -169,7 +175,11 @@ class SchoolFinderController(QObject):
             output_directory = Path.home()
         output_path = output_directory / "colegios_escale.xlsx"
         suffix = 1
-        while output_path.exists() or android_data_path(output_path).exists():
+        while (
+            output_path.exists()
+            or android_data_path(output_path).exists()
+            or output_path.with_suffix(".pdf").exists()
+        ):
             output_path = output_directory / f"colegios_escale_{suffix}.xlsx"
             suffix += 1
         return output_path
@@ -473,12 +483,20 @@ class SchoolFinderController(QObject):
     def exportEduScaleFile(self, output_url: str):
         self._start_export("eduescale", output_url)
 
+    @Slot(str)
+    def exportPdfFile(self, output_url: str):
+        self._start_export("pdf", output_url)
+
     @staticmethod
     def _timestamped_output_path(directory: Path) -> Path:
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         output_path = directory / f"colegios_escale_{timestamp}.xlsx"
         suffix = 1
-        while output_path.exists() or android_data_path(output_path).exists():
+        while (
+            output_path.exists()
+            or android_data_path(output_path).exists()
+            or output_path.with_suffix(".pdf").exists()
+        ):
             output_path = directory / f"colegios_escale_{timestamp}_{suffix}.xlsx"
             suffix += 1
         return output_path
@@ -513,7 +531,11 @@ class SchoolFinderController(QObject):
                 "Selecciona un nombre de archivo para la exportación.",
             )
             return
-        expected_suffix = ".xlsx" if export_type == "excel" else ".eduescale"
+        expected_suffix = {
+            "excel": ".xlsx",
+            "eduescale": ".eduescale",
+            "pdf": ".pdf",
+        }[export_type]
         if output_path.suffix.lower() != expected_suffix:
             output_path = output_path.with_suffix(expected_suffix)
         self._output_path = output_path.with_suffix(".xlsx")
@@ -525,11 +547,11 @@ class SchoolFinderController(QObject):
         self._export_running = True
         self._progress_visible = True
         self._progress_indeterminate = True
-        self._progress_message = (
-            "Generando archivo Excel..."
-            if export_type == "excel"
-            else "Generando archivo .eduescale..."
-        )
+        self._progress_message = {
+            "excel": "Generando archivo Excel...",
+            "eduescale": "Generando archivo .eduescale...",
+            "pdf": "Generando archivo PDF...",
+        }[export_type]
         self._status_text = self._progress_message
         self.stateChanged.emit()
         self._export_runner.start(export_type, self._dataset_path, output_path)
@@ -552,7 +574,11 @@ class SchoolFinderController(QObject):
         self._progress_visible = False
         self._progress_indeterminate = False
         self._progress_message = ""
-        export_label = "Excel" if export_type == "excel" else ".eduescale"
+        export_label = {
+            "excel": "Excel",
+            "eduescale": ".eduescale",
+            "pdf": "PDF",
+        }.get(export_type, export_type)
         self._status_text = f"No se pudo generar {export_label}"
         self.stateChanged.emit()
         error_details = details

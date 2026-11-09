@@ -67,6 +67,7 @@ import pe.eduescale.mobile.data.SchoolComment
 import pe.eduescale.mobile.data.SchoolCoordinates
 import pe.eduescale.mobile.data.SchoolRecord
 import pe.eduescale.mobile.data.SchoolReminder
+import pe.eduescale.mobile.data.SchoolScheduleRow
 import pe.eduescale.mobile.data.distanceInMeters
 import pe.eduescale.mobile.ui.history.formatActivityDate
 import pe.eduescale.mobile.ui.history.isReminderPending
@@ -195,7 +196,7 @@ internal fun SchoolDetailsSheet(
                     school.niveles.forEach { level ->
                         AssistChip(
                             onClick = {},
-                            label = { Text(level.replaceFirstChar(Char::uppercase)) },
+                            label = { Text(schoolLevelLabel(level)) },
                         )
                     }
                 }
@@ -205,16 +206,17 @@ internal fun SchoolDetailsSheet(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                StatisticCard("Alumnos", school.alumnos ?: "—", Modifier.weight(1f))
-                StatisticCard("Secciones", school.secciones ?: "—", Modifier.weight(1f))
-            }
+            Text(
+                "Oferta educativa",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+            SchoolOfferTable(school.ofertaEducativa)
             HorizontalDivider()
             Text("Información del local", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
             DetailRow("Dirección", school.direccion)
             DetailRow("Localidad", school.localidad)
             DetailRow("Centro poblado", school.cp)
-            DetailRow("Turno", school.turno)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button(
                     onClick = { onDirections(school) },
@@ -497,6 +499,59 @@ internal fun StatisticCard(label: String, value: String, modifier: Modifier = Mo
 }
 
 @Composable
+private fun SchoolOfferTable(rows: List<SchoolScheduleRow>) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    MaterialTheme.colorScheme.surfaceVariant,
+                    RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp),
+                )
+                .padding(horizontal = 10.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SchoolOfferCell("Nivel", Modifier.weight(1.2f), header = true)
+            SchoolOfferCell("Aulas", Modifier.weight(0.8f), header = true)
+            SchoolOfferCell("Alumnos", Modifier.weight(0.9f), header = true)
+            SchoolOfferCell("Turno", Modifier.weight(1.1f), header = true)
+        }
+        rows.forEachIndexed { index, row ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                SchoolOfferCell(
+                    row.nivel?.let(::schoolLevelLabel) ?: "—",
+                    Modifier.weight(1.2f),
+                )
+                SchoolOfferCell(row.aulas ?: "—", Modifier.weight(0.8f))
+                SchoolOfferCell(row.alumnos ?: "—", Modifier.weight(0.9f))
+                SchoolOfferCell(row.turno ?: "—", Modifier.weight(1.1f))
+            }
+            if (index < rows.lastIndex) HorizontalDivider()
+        }
+    }
+}
+
+@Composable
+private fun SchoolOfferCell(value: String, modifier: Modifier, header: Boolean = false) {
+    Text(
+        text = value,
+        modifier = modifier.padding(end = 4.dp),
+        style = if (header) MaterialTheme.typography.labelSmall else MaterialTheme.typography.bodySmall,
+        fontWeight = if (header) FontWeight.SemiBold else FontWeight.Normal,
+        color = if (header) {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        } else {
+            MaterialTheme.colorScheme.onSurface
+        },
+    )
+}
+
+@Composable
 internal fun DetailRow(label: String, value: String?) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -532,3 +587,10 @@ internal fun managementLabel(value: String): String = when (value) {
     "privada" -> "Privada"
     else -> value.replaceFirstChar(Char::uppercase)
 }
+
+internal fun schoolLevelLabel(value: String): String =
+    if (value.equals("cetpro", ignoreCase = true)) {
+        "CETPRO"
+    } else {
+        value.replaceFirstChar(Char::uppercase)
+    }

@@ -79,12 +79,13 @@ def test_saves_one_excel_sheet_per_district_with_tables_per_level():
                 "DistrictTable0001",
                 "DistrictTable0002",
             ]
-            assert [table.ref for table in iquitos_tables] == ["A2:G3", "A6:G7"]
+            assert [table.ref for table in iquitos_tables] == ["A2:H3", "A6:H7"]
             assert iquitos_sheet["A1"].value == "Departamento: Loreto"
             assert iquitos_sheet["B1"].value == "Provincia: Maynas"
             assert iquitos_sheet["C1"].value == "Distrito: Iquitos"
             assert iquitos_sheet["D1"].value == "Nivel: Primaria"
             assert [cell.value for cell in iquitos_sheet[2]] == [
+                "#",
                 "Nombre del colegio",
                 "Dirección",
                 "Localidad",
@@ -93,23 +94,30 @@ def test_saves_one_excel_sheet_per_district_with_tables_per_level():
                 "Alumnos",
                 "Secciones",
             ]
-            assert iquitos_sheet.max_column == 7
-            assert iquitos_sheet["A3"].value == "Colegio Ejemplo"
-            assert iquitos_sheet["B3"].data_type == "s"
-            assert iquitos_sheet["B3"].value.startswith("=HYPERLINK")
-            assert iquitos_sheet["F3"].value == 10
-            assert iquitos_sheet["G3"].value == 1
+            assert iquitos_sheet.max_column == 8
+            assert iquitos_sheet["A3"].value == 1
+            assert iquitos_sheet["B3"].value == "Colegio Ejemplo"
+            assert iquitos_sheet["C3"].data_type == "s"
+            assert iquitos_sheet["C3"].value.startswith("=HYPERLINK")
+            assert iquitos_sheet["G3"].value == 10
+            assert iquitos_sheet["H3"].value == 1
+            assert iquitos_sheet.page_setup.orientation == "landscape"
+            assert iquitos_sheet.page_setup.fitToWidth == 1
+            assert iquitos_sheet.page_setup.fitToHeight == 0
+            assert iquitos_sheet.sheet_properties.pageSetUpPr.fitToPage
             assert iquitos_sheet["D5"].value == "Nivel: Secundaria"
-            assert iquitos_sheet["A7"].value == "Colegio Secundario"
+            assert iquitos_sheet["A7"].value == 1
+            assert iquitos_sheet["B7"].value == "Colegio Secundario"
 
             nauta_sheet = workbook["Nauta - Maynas - Loreto"]
             nauta_tables = list(nauta_sheet.tables.values())
             assert [table.displayName for table in nauta_tables] == [
                 "DistrictTable0003",
             ]
-            assert [table.ref for table in nauta_tables] == ["A2:G3"]
+            assert [table.ref for table in nauta_tables] == ["A2:H3"]
             assert nauta_sheet["D1"].value == "Nivel: CETPRO"
-            assert nauta_sheet["A3"].value == "Colegio CETPRO"
+            assert nauta_sheet["A3"].value == 1
+            assert nauta_sheet["B3"].value == "Colegio CETPRO"
         finally:
             workbook.close()
         android_json = android_path.read_text(encoding="utf-8")

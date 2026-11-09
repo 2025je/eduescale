@@ -196,7 +196,7 @@ internal fun SchoolListCard(
                 ManagementBadge(school.gestion)
                 school.niveles.forEach { level ->
                     Text(
-                        level.replaceFirstChar(Char::uppercase),
+                        schoolLevelLabel(level),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

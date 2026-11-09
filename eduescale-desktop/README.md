@@ -4,9 +4,10 @@ Aplicación de escritorio en Python para extraer los servicios educativos public
 el [Padrón de IIEE de ESCALE](https://escale.minedu.gob.pe/padron-de-iiee).
 La app usa Scrapy con `AsyncioSelectorReactor` para consultar la API del buscador
 oficial y guardar los resultados temporalmente. Desde la interfaz puedes exportar
-los datos a Excel o a un archivo `.eduescale` para la app Android. La interfaz está hecha con QML y PySide6
-Essentials, que incluye los componentes Qt Quick usados por la app sin empaquetar
-los módulos opcionales de WebEngine y PDF. La interfaz usa Roboto, incluida con
+los datos a Excel, PDF o a un archivo `.eduescale` para la app Android. La
+interfaz está hecha con QML y PySide6 Essentials, que incluye los componentes Qt
+Quick usados por la app sin empaquetar los módulos opcionales de WebEngine y
+visor PDF. La interfaz usa Roboto, incluida con
 la licencia SIL Open Font License, y adapta a Qt Quick Controls los tokens
 visuales de [Material Style](https://materialstyle.github.io/).
 
@@ -67,26 +68,29 @@ esa búsqueda y repite el proceso para agregar otras ubicaciones o criterios.
 Cada combinación debe tener al menos una opción de Gestión y una de Nivel
 educativo. Puedes quitar combinaciones antes de iniciar. Al pulsar
 **Ejecutar búsqueda**, solo se consultan y guardan temporalmente los resultados;
-no se crean archivos de exportación. Al finalizar, usa **Exportar Excel** o
-**Exportar .eduescale** para abrir un diálogo y elegir la carpeta y el nombre del
-archivo; se sugiere la última carpeta utilizada y un nombre predeterminado. Al
-confirmar, se genera únicamente el formato elegido y se abre con la aplicación
-predeterminada del sistema. El nombre sugerido incluye la fecha y hora en que
+no se crean archivos de exportación. Al finalizar, usa **Exportar Excel**,
+**Exportar PDF** o **Exportar .eduescale** para abrir un diálogo y elegir la
+carpeta y el nombre del archivo; se sugiere la última carpeta utilizada y un
+nombre predeterminado. Al confirmar, se genera únicamente el formato elegido y
+se abre con la aplicación predeterminada del sistema. El nombre sugerido incluye la fecha y hora en que
 finalizó la descarga de datos, por ejemplo
 `colegios_escale_2026-11-04_16-09-53.xlsx`; ambos formatos usan el mismo nombre
 base. Los colegios repetidos se guardan una sola vez. El Excel crea una hoja por
 distrito y, dentro de cada hoja, una tabla por cada nivel presente (Primaria,
 Secundaria o CETPRO). Cada tabla indica el nivel y el distrito en su cabecera;
 sus columnas incluyen nombre del colegio, dirección, localidad, centro poblado
-(CP), turno, alumnos y secciones. Departamento, provincia y distrito solo
+(CP), turno, alumnos y secciones. La primera columna indica el orden de los
+colegios dentro de cada tabla, empezando en 1. Departamento, provincia y distrito solo
 aparecen en la cabecera de la tabla. No incluye coordenadas ni enlaces de Google
-Maps.
+Maps. El Excel se prepara en orientación horizontal y ajustado al ancho de página.
+El PDF conserva esta organización; cuando una tabla continúa en otra página,
+repite sus encabezados y mantiene cada fila de colegio completa.
 
-Si se exportan ambos formatos, comparten el mismo nombre base y solo cambia la
-extensión.
+Las exportaciones Excel, PDF y `.eduescale` comparten el mismo nombre base y
+solo cambia la extensión.
 El `.eduescale` es un archivo JSON UTF-8 versionado con departamento, provincia,
-distrito, los campos del Excel, el código del local y longitud/latitud, sin el
-enlace de Maps. Por ejemplo,
+distrito, los datos de cada colegio, el código del local y longitud/latitud, sin
+la columna de orden del reporte ni el enlace de Maps. Por ejemplo,
 `colegios_escale.xlsx` produce `colegios_escale.eduescale`:
 
 ```json

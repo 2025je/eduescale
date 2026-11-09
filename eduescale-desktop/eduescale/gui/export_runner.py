@@ -4,6 +4,7 @@ from pathlib import Path
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal
 
 from eduescale.exports import export_eduescale, export_excel
+from eduescale.pdf_exports import export_pdf
 
 LOGGER = logging.getLogger(__name__)
 
@@ -25,6 +26,8 @@ class _ExportJob(QRunnable):
         try:
             if self.export_type == "excel":
                 export_excel(self.database_path, self.output_path)
+            elif self.export_type == "pdf":
+                export_pdf(self.database_path, self.output_path)
             elif self.export_type == "eduescale":
                 export_eduescale(self.database_path, self.output_path)
             else:

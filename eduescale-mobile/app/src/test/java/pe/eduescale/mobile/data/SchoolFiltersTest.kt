@@ -17,12 +17,12 @@ class SchoolFiltersTest {
         ),
         school(
             id = 2,
-            nombre = "San Martín Inicial",
+            nombre = "San Martín CETPRO",
             departamento = "Lima",
             provincia = "Huarochirí",
             distrito = "Matucana",
             gestion = "privada",
-            niveles = listOf("inicial"),
+            niveles = listOf("cetpro"),
         ),
         school(
             id = 3,
@@ -67,6 +67,18 @@ class SchoolFiltersTest {
                 schools,
                 "",
                 SchoolFilters(niveles = setOf("secundaria")),
+            ),
+        )
+    }
+
+    @Test
+    fun filtersCetproSchools() {
+        assertEquals(
+            listOf(schools[1]),
+            filterSchools(
+                schools,
+                "",
+                SchoolFilters(niveles = setOf("cetpro")),
             ),
         )
     }

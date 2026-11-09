@@ -114,8 +114,10 @@ empty_state = child("emptySearchState")
 brand_title = child("brandTitle")
 brand_logo = child("brandLogo")
 excel_button = child("downloadExcelButton")
+pdf_button = child("downloadPdfButton")
 eduescale_button = child("downloadEduScaleButton")
 excel_dialog = child("excelSaveDialog")
+pdf_dialog = child("pdfSaveDialog")
 eduescale_dialog = child("eduScaleSaveDialog")
 download_button = child("scrapeButton")
 combos = [child(name) for name in ("regionFilter", "provinceFilter", "districtFilter")]
@@ -124,10 +126,13 @@ logo_source = brand_logo.property("source")
 assert QImageReader(logo_source.toLocalFile()).canRead()
 assert download_button.property("text") == "Ejecutar búsqueda"
 assert excel_button.property("text") == "Exportar Excel"
+assert pdf_button.property("text") == "Exportar PDF"
 assert eduescale_button.property("text") == "Exportar .eduescale"
 assert excel_button.property("visible")
+assert pdf_button.property("visible")
 assert eduescale_button.property("visible")
 assert not excel_button.property("enabled")
+assert not pdf_button.property("enabled")
 assert not eduescale_button.property("enabled")
 assert not progress_indicator.property("visible")
 assert status_label.property("visible")
@@ -135,8 +140,10 @@ assert source_bar.property("visible")
 assert source_label.property("visible")
 assert "Fuente: Padrón de IIEE de ESCALE" in source_label.property("text")
 assert not excel_dialog.property("visible")
+assert not pdf_dialog.property("visible")
 assert not eduescale_dialog.property("visible")
 assert excel_dialog.property("defaultSuffix") == "xlsx"
+assert pdf_dialog.property("defaultSuffix") == "pdf"
 assert eduescale_dialog.property("defaultSuffix") == "eduescale"
 
 for width, height in ((560, 600), (1280, 720), (1366, 768), (1600, 900), (1920, 1080)):
@@ -184,7 +191,7 @@ for width, height in ((560, 600), (1280, 720), (1366, 768), (1600, 900), (1920, 
         action_bar.property("y") + action_bar.property("height")
         <= window.height() + 1
     )
-    for button in (download_button, excel_button, eduescale_button):
+    for button in (download_button, excel_button, pdf_button, eduescale_button):
         assert button.property("visible")
         assert button.property("height") >= 48
         assert button.property("x") + button.property("width") <= (
@@ -227,7 +234,13 @@ for width, expected_action_columns in ((560, 2), (1280, 3)):
         action_buttons.property("y") + 1
     )
     assert action_buttons.property("columns") == expected_action_columns
-    for button in (download_button, excel_button, eduescale_button, cancel_button):
+    for button in (
+        download_button,
+        excel_button,
+        pdf_button,
+        eduescale_button,
+        cancel_button,
+    ):
         assert button.property("visible")
         assert button.property("x") + button.property("width") <= (
             action_buttons.property("width") + 1
@@ -246,6 +259,7 @@ application.processEvents()
 assert excel_button.property("visible")
 assert eduescale_button.property("visible")
 assert excel_button.property("enabled")
+assert pdf_button.property("enabled")
 assert eduescale_button.property("enabled")
 assert progress_indicator.property("visible")
 assert "Datos listos para exportar" in status_label.property("text")
@@ -260,6 +274,9 @@ assert Path(excel_dialog.property("currentFile").toLocalFile()) == (
 )
 assert Path(eduescale_dialog.property("currentFile").toLocalFile()) == (
     default_export_path.with_suffix(".eduescale")
+)
+assert Path(pdf_dialog.property("currentFile").toLocalFile()) == (
+    default_export_path.with_suffix(".pdf")
 )
 
 assert export_runner.started_requests == []
@@ -278,6 +295,15 @@ assert export_runner.started_requests[-1] == (
     "eduescale",
     database_path,
     eduescale_path,
+)
+controller._export_running = False
+controller.stateChanged.emit()
+pdf_path = default_export_path.parent / "colegios-informe.pdf"
+controller.exportPdfFile(QUrl.fromLocalFile(str(pdf_path)).toString())
+assert export_runner.started_requests[-1] == (
+    "pdf",
+    database_path,
+    pdf_path,
 )
 
 controller.shutdown()

@@ -1,14 +1,16 @@
 import json
+import os
 import sqlite3
 from pathlib import Path
 
 from openpyxl import load_workbook
-from PySide6.QtCore import QCoreApplication, QEventLoop, QTimer
+from PySide6.QtCore import QEventLoop, QTimer
+from PySide6.QtGui import QGuiApplication
 
 from eduescale.gui.export_runner import ExportRunner
 
 
-def _create_database(path: Path):
+def _create_database(path: Path, record_count: int = 1):
     database = sqlite3.connect(path)
     try:
         database.execute(
@@ -21,33 +23,40 @@ def _create_database(path: Path):
             )
             """
         )
-        database.execute(
+        database.executemany(
             """
             INSERT INTO records (region, province, district, payload)
             VALUES (?, ?, ?, ?)
             """,
-            (
-                "Loreto",
-                "Maynas",
-                "Iquitos",
-                json.dumps(
-                    {
-                        "nombre": "Colegio Ejemplo",
-                        "direccion": "Av. Principal",
-                        "localidad": "Localidad",
-                        "cp": "Centro Poblado",
-                        "turno": "Mañana",
-                        "alumnos": 10,
-                        "secciones": 1,
-                        "gestion": "publica",
-                        "nivel": "primaria",
-                        "codigo_local": "000123",
-                        "longitud": -77.2,
-                        "latitud": -12.1,
-                    },
-                    ensure_ascii=False,
-                ),
-            ),
+            [
+                (
+                    "Loreto",
+                    "Maynas",
+                    "Iquitos",
+                    json.dumps(
+                        {
+                            "nombre": (
+                                "Colegio Ejemplo"
+                                if index == 0
+                                else f"Colegio Ejemplo {index}"
+                            ),
+                            "direccion": "Av. Principal",
+                            "localidad": "Localidad",
+                            "cp": "Centro Poblado",
+                            "turno": "Mañana",
+                            "alumnos": 10,
+                            "secciones": 1,
+                            "gestion": "publica",
+                            "nivel": "primaria",
+                            "codigo_local": "000123",
+                            "longitud": -77.2,
+                            "latitud": -12.1,
+                        },
+                        ensure_ascii=False,
+                    ),
+                )
+                for index in range(record_count)
+            ],
         )
         database.commit()
     finally:
@@ -55,7 +64,8 @@ def _create_database(path: Path):
 
 
 def _run_export(runner, export_type, database_path, output_path):
-    application = QCoreApplication.instance() or QCoreApplication([])
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    application = QGuiApplication.instance() or QGuiApplication([])
     loop = QEventLoop()
     timer = QTimer()
     timer.setSingleShot(True)
@@ -87,7 +97,8 @@ def test_export_runner_generates_each_requested_format(tmp_path):
     database_path = tmp_path / "schools.sqlite3"
     excel_path = tmp_path / "schools.xlsx"
     eduescale_path = tmp_path / "schools.eduescale"
-    _create_database(database_path)
+    pdf_path = tmp_path / "schools.pdf"
+    _create_database(database_path, record_count=60)
     runner = ExportRunner()
 
     try:
@@ -101,13 +112,25 @@ def test_export_runner_generates_each_requested_format(tmp_path):
             "eduescale",
             str(eduescale_path),
         )
+        assert _run_export(runner, "pdf", database_path, pdf_path) == (
+            "completed",
+            "pdf",
+            str(pdf_path),
+        )
 
         workbook = load_workbook(excel_path, read_only=True)
         try:
-            assert workbook["Iquitos - Maynas - Loreto"]["A3"].value == "Colegio Ejemplo"
+            worksheet = workbook["Iquitos - Maynas - Loreto"]
+            assert worksheet["A2"].value == "#"
+            assert worksheet["A3"].value == 1
+            assert worksheet["B3"].value == "Colegio Ejemplo"
+            assert worksheet["A62"].value == 60
         finally:
             workbook.close()
         document = json.loads(eduescale_path.read_text(encoding="utf-8"))
         assert document["colegios"][0]["nombre"] == "Colegio Ejemplo"
+        pdf_bytes = pdf_path.read_bytes()
+        assert pdf_bytes.startswith(b"%PDF-")
+        assert pdf_bytes.count(b"/Type /Page") >= 2
     finally:
         runner.shutdown()

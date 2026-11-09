@@ -65,7 +65,7 @@ internal fun ActiveFilterChips(filters: SchoolFilters, modifier: Modifier = Modi
         filters.provincia?.let { add(it) }
         filters.distrito?.let { add(it) }
         filters.gestiones.forEach { add(managementLabel(it)) }
-        filters.niveles.forEach { add(it.replaceFirstChar(Char::uppercase)) }
+        filters.niveles.forEach { add(schoolLevelLabel(it)) }
     }
     if (labels.isNotEmpty()) {
         androidx.compose.foundation.lazy.LazyRow(
@@ -141,7 +141,7 @@ internal fun SchoolFiltersDialog(
                     Text("Nivel educativo", style = MaterialTheme.typography.titleSmall)
                     allLevels.forEach { option ->
                         FilterCheckbox(
-                            label = option.replaceFirstChar(Char::uppercase),
+                            label = schoolLevelLabel(option),
                             checked = option in levels,
                             onCheckedChange = {
                                 levels = if (it) levels + option else levels - option

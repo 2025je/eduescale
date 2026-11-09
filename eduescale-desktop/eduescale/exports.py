@@ -13,8 +13,10 @@ from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 from openpyxl.utils.exceptions import WorkbookAlreadySaved
 from openpyxl.worksheet.table import Table, TableColumn, TableStyleInfo
+from openpyxl.worksheet.worksheet import Worksheet
 
 HEADERS = (
+    "#",
     "Nombre del colegio",
     "Dirección",
     "Localidad",
@@ -68,14 +70,24 @@ def export_excel(database_path: Path, output_path: Path) -> None:
     def create_sheet_state(sheet_name):
         worksheet = workbook.create_sheet(sheet_name)
         worksheets.append(worksheet)
+        worksheet.page_setup.orientation = "landscape"
+        worksheet.page_setup.paperSize = Worksheet.PAPERSIZE_A4
+        worksheet.page_setup.fitToWidth = 1
+        worksheet.page_setup.fitToHeight = 0
+        worksheet.sheet_properties.pageSetUpPr.fitToPage = True
+        worksheet.page_margins.left = 0.25
+        worksheet.page_margins.right = 0.25
+        worksheet.page_margins.top = 0.4
+        worksheet.page_margins.bottom = 0.4
         for column, width in (
-            ("A", 45),
-            ("B", 55),
-            ("C", 30),
+            ("A", 8),
+            ("B", 45),
+            ("C", 55),
             ("D", 30),
-            ("E", 20),
-            ("F", 14),
+            ("E", 30),
+            ("F", 20),
             ("G", 14),
+            ("H", 14),
         ):
             worksheet.column_dimensions[column].width = width
         return {
@@ -83,6 +95,7 @@ def export_excel(database_path: Path, output_path: Path) -> None:
             "current_level": None,
             "table_start_row": 0,
             "sheet_row_count": 0,
+            "table_order": 0,
         }
 
     def append_row(state, values):
@@ -164,12 +177,19 @@ def export_excel(database_path: Path, output_path: Path) -> None:
                     )
                     current_state["table_start_row"] = current_state["sheet_row_count"]
                     current_state["current_level"] = level
+                    current_state["table_order"] = 0
 
+                current_state["table_order"] += 1
                 append_row(
                     current_state,
                     [
-                        _safe_cell(current_state["worksheet"], value)
-                        for value in (item[field] for field in EXCEL_FIELDS)
+                        _safe_cell(
+                            current_state["worksheet"], current_state["table_order"]
+                        ),
+                        *(
+                            _safe_cell(current_state["worksheet"], item[field])
+                            for field in EXCEL_FIELDS
+                        ),
                     ],
                 )
 

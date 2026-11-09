@@ -707,6 +707,17 @@ ApplicationWindow {
                 }
 
                 Button {
+                    objectName: "downloadPdfButton"
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Layout.minimumHeight: 48
+                    text: "Exportar PDF"
+                    enabled: controller.exportsAvailable && !controller.exportRunning
+                    onClicked: pdfSaveDialog.open()
+                    Material.foreground: window.primaryColor
+                }
+
+                Button {
                     objectName: "downloadEduScaleButton"
                     Layout.fillWidth: true
                     Layout.fillHeight: true
@@ -752,6 +763,17 @@ ApplicationWindow {
         defaultSuffix: "xlsx"
         currentFile: controller.defaultOutputUrl
         onAccepted: controller.exportExcelFile(selectedFile.toString())
+    }
+
+    FileDialog {
+        id: pdfSaveDialog
+        objectName: "pdfSaveDialog"
+        title: "Exportar PDF"
+        fileMode: FileDialog.SaveFile
+        nameFilters: ["Documento PDF (*.pdf)"]
+        defaultSuffix: "pdf"
+        currentFile: controller.defaultPdfOutputUrl
+        onAccepted: controller.exportPdfFile(selectedFile.toString())
     }
 
     FileDialog {

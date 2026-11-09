@@ -27,6 +27,8 @@ data class SchoolRecord(
     val niveles: List<String>,
     val longitud: Double?,
     val latitud: Double?,
+    val estadisticasPorNivel: Map<String, SchoolLevelStatistics> = emptyMap(),
+    val ofertaEducativa: List<SchoolScheduleRow> = emptyList(),
 ) {
     val coordinates: SchoolCoordinates?
         get() {
@@ -38,6 +40,18 @@ data class SchoolRecord(
     val hasCoordinates: Boolean
         get() = coordinates != null
 }
+
+data class SchoolLevelStatistics(
+    val alumnos: String?,
+    val secciones: String?,
+)
+
+data class SchoolScheduleRow(
+    val nivel: String?,
+    val aulas: String?,
+    val alumnos: String?,
+    val turno: String?,
+)
 
 data class SchoolFile(
     // Both counts refer to source rows, before grouping by local.
@@ -234,6 +248,10 @@ object SchoolDataReader {
             null
         }
 
+        val distinctLevels = niveles.distinct()
+        if (distinctLevels.any { it.contains("inicial", ignoreCase = true) }) {
+            throw IllegalArgumentException("El archivo contiene un nivel no admitido.")
+        }
         return SchoolRecord(
             id = id,
             departamento = departamento,
@@ -248,9 +266,20 @@ object SchoolDataReader {
             secciones = secciones,
             gestion = gestion,
             codigoLocal = codigoLocal,
-            niveles = niveles.distinct(),
+            niveles = distinctLevels,
             longitud = coordinates?.longitude,
             latitud = coordinates?.latitude,
+            estadisticasPorNivel = distinctLevels.singleOrNull()?.let { nivel ->
+                mapOf(nivel to SchoolLevelStatistics(alumnos, secciones))
+            } ?: emptyMap(),
+            ofertaEducativa = listOf(
+                SchoolScheduleRow(
+                    nivel = distinctLevels.joinToString(" / ").takeIf(String::isNotBlank),
+                    aulas = secciones,
+                    alumnos = alumnos,
+                    turno = turno?.takeIf(String::isNotBlank),
+                ),
+            ),
         )
     }
 
@@ -288,6 +317,34 @@ object SchoolDataReader {
                 .sortedBy { levelOrder.indexOf(it).let { index -> if (index < 0) Int.MAX_VALUE else index } },
             longitud = group.firstOrNull(SchoolRecord::hasCoordinates)?.longitud,
             latitud = group.firstOrNull(SchoolRecord::hasCoordinates)?.latitud,
+            estadisticasPorNivel = group
+                .flatMap { it.estadisticasPorNivel.entries }
+                .groupBy({ it.key }, { it.value })
+                .mapValues { (_, statistics) ->
+                    SchoolLevelStatistics(
+                        alumnos = sumValues(statistics.map { it.alumnos }),
+                        secciones = sumValues(statistics.map { it.secciones }),
+                    )
+                },
+            ofertaEducativa = group
+                .flatMap { it.ofertaEducativa }
+                .groupBy { it.nivel to it.turno }
+                .map { (key, rows) ->
+                    SchoolScheduleRow(
+                        nivel = key.first,
+                        aulas = sumValues(rows.map(SchoolScheduleRow::aulas)),
+                        alumnos = sumValues(rows.map(SchoolScheduleRow::alumnos)),
+                        turno = key.second,
+                    )
+                }
+                .sortedWith(
+                    compareBy<SchoolScheduleRow> {
+                        levelOrder.indexOf(it.nivel).let { index ->
+                            if (index < 0) Int.MAX_VALUE else index
+                        }
+                    }.thenBy { it.nivel.orEmpty() }
+                        .thenBy { it.turno.orEmpty() },
+                ),
         )
     }
 
@@ -343,6 +400,6 @@ object SchoolDataReader {
             }
         }
 
-    private val levelOrder = listOf("inicial", "primaria", "secundaria")
+    private val levelOrder = listOf("primaria", "secundaria", "cetpro")
     private val ZIP_SIGNATURE = byteArrayOf(0x50, 0x4b, 0x03, 0x04)
 }

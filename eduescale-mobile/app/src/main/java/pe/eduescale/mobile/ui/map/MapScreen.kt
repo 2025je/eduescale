@@ -152,7 +152,7 @@ internal fun MapScreen(
                         LegendRow(EduGray, "Gestión desconocida")
                         HorizontalDivider(Modifier.padding(vertical = 4.dp))
                         Text(
-                            "Tamaño: inicial · primaria · secundaria",
+                            "Tamaño: primaria · secundaria · CETPRO",
                             style = MaterialTheme.typography.labelSmall,
                         )
                     }
