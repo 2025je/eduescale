@@ -92,6 +92,26 @@ servicio se ofrece «tal cual» y no tiene SLA; revisa los
 [términos de OpenFreeMap](https://openfreemap.org/terms) antes de distribuir la
 app o realizar descargas.
 
+## Estructura del código
+
+Paquete base `pe.eduescale.mobile`:
+
+- `di/`: módulo Hilt (`AppModule`) con OkHttp, almacenamiento y OfflineManager.
+- `data/`: modelos, Room (`SchoolActivityRepository`), lectura de archivos,
+  `SchoolImportController` (importar/restaurar el archivo) y
+  `ActivityBackupController` (copia JSON).
+- `activity/`: `SchoolActivityController` (comentarios e historial).
+- `map/`: estilo, cámara, marcadores y `OfflineMapController`.
+- `location/`: `LocationController` (permisos y ubicación).
+- `navigation/`: enlaces de navegación.
+- `reminders/`: alarmas, `ReminderController` (flujo de recordatorios y permisos)
+  y `ReminderDialogs` (selector de fecha y diálogos de permisos).
+- `ui/`: `EduEscaleApp` (navegación) y pantallas en `map`, `schools`,
+  `history`, `files`, `components` y `theme`.
+
+La inyección de dependencias usa Hilt (`MainActivity`, receivers y
+`EduEscaleApplication`).
+
 ## Abrir y ejecutar
 
 Abre esta carpeta (`eduescale-mobile`) en Android Studio y sincroniza Gradle.

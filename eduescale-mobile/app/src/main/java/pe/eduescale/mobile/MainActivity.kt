@@ -1,23 +1,13 @@
 package pe.eduescale.mobile
 
-import android.Manifest
 import android.app.AlertDialog
-import android.app.DatePickerDialog
-import android.app.TimePickerDialog
 import android.content.ActivityNotFoundException
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.database.sqlite.SQLiteException
 import android.graphics.Color
 import android.graphics.PointF
 import android.graphics.RectF
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.provider.OpenableColumns
-import android.provider.Settings
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.ViewGroup
@@ -28,25 +18,14 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.ui.platform.ComposeView
-import androidx.core.app.NotificationManagerCompat
-import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import com.google.gson.Gson
-import com.google.gson.JsonParseException
 import dagger.hilt.android.AndroidEntryPoint
-import java.io.IOException
-import java.io.InputStreamReader
-import java.io.OutputStreamWriter
-import java.nio.charset.StandardCharsets
-import java.util.Calendar
-import java.util.concurrent.Executors
 import javax.inject.Inject
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
@@ -66,22 +45,20 @@ import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.Point
-import pe.eduescale.mobile.data.SchoolActivityBackup
+import pe.eduescale.mobile.activity.SchoolActivityController
+import pe.eduescale.mobile.data.ActivityBackupController
 import pe.eduescale.mobile.data.SchoolActivityRepository
-import pe.eduescale.mobile.data.SchoolComment
 import pe.eduescale.mobile.data.SchoolFile
 import pe.eduescale.mobile.data.SchoolFileStorage
+import pe.eduescale.mobile.data.SchoolImportController
 import pe.eduescale.mobile.data.SchoolRecord
-import pe.eduescale.mobile.data.SchoolReminder
-import pe.eduescale.mobile.data.activityKey
 import pe.eduescale.mobile.location.LocationController
 import pe.eduescale.mobile.map.MapCameraStore
 import pe.eduescale.mobile.map.MapStyle
 import pe.eduescale.mobile.map.OfflineMapController
 import pe.eduescale.mobile.map.SchoolMarkerStyle
 import pe.eduescale.mobile.navigation.SchoolNavigationLinks
-import pe.eduescale.mobile.reminders.PendingReminder
-import pe.eduescale.mobile.reminders.SchoolReminderAlarms
+import pe.eduescale.mobile.reminders.ReminderController
 import pe.eduescale.mobile.ui.EduEscaleApp
 import pe.eduescale.mobile.ui.EduEscaleViewModel
 import pe.eduescale.mobile.ui.OfflineMapBounds
@@ -93,15 +70,58 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var schoolFileStorage: SchoolFileStorage
     @Inject lateinit var schoolActivityRepository: SchoolActivityRepository
     @Inject lateinit var offlineManager: OfflineManager
-    private var schoolActivityLoadJob: Job? = null
-    private var activityHistoryLoadJob: Job? = null
-    private var pendingReminder: PendingReminder? = null
     private var selectedSchoolCameraFocusInProgress = false
     private var pendingSchoolSheetAlignment: PendingSchoolSheetAlignment? = null
 
-    private val importExecutor = Executors.newSingleThreadExecutor()
-    private val mainHandler = Handler(Looper.getMainLooper())
+    private val schoolImport by lazy {
+        SchoolImportController(
+            contentResolver = contentResolver,
+            storage = schoolFileStorage,
+            preferences = getSharedPreferences(
+                SchoolImportController.FILE_PREFERENCES,
+                MODE_PRIVATE,
+            ),
+            isActive = { !isFinishing && !isDestroyed },
+            onLoaded = { file, fileName, fromUser ->
+                if (fromUser) {
+                    hasPendingUserFileImport = true
+                    shouldFocusOnNextMapDataUpdate = true
+                }
+                viewModel.setSchoolFile(file, fileName)
+            },
+            onImporting = { viewModel.setImporting(true) },
+            onError = viewModel::setImportError,
+        )
+    }
     private val mapCameraStore by lazy { MapCameraStore(this) }
+    private val reminderController = ReminderController(
+        activity = this,
+        viewModel = viewModel,
+        repositoryProvider = { schoolActivityRepository },
+        activityProvider = { activityController },
+        showReminderMessage = ::showReminderMessage,
+    )
+    private val activityController by lazy {
+        SchoolActivityController(
+            scope = lifecycleScope,
+            repository = schoolActivityRepository,
+            viewModel = viewModel,
+            showMessage = ::showReminderMessage,
+        )
+    }
+    private val activityBackup by lazy {
+        ActivityBackupController(
+            scope = lifecycleScope,
+            contentResolver = contentResolver,
+            repository = schoolActivityRepository,
+            showMessage = ::showReminderMessage,
+            onRestored = {
+                reminderController.restorePendingReminders(showPermissionMessage = true)
+                val state = viewModel.state.value
+                state.selectedSchool?.let { activityController.refreshSchoolActivity(it, state.commentSearchQuery) }
+            },
+        )
+    }
     private var map: MapLibreMap? = null
     private var style: Style? = null
     private val locationController = LocationController(this, viewModel, { map }, { style })
@@ -120,46 +140,23 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.OpenDocument(),
     ) { uri ->
         if (uri != null) {
-            importFile(uri)
+            schoolImport.import(uri)
         }
     }
 
     private val createActivityBackup = registerForActivityResult(
         ActivityResultContracts.CreateDocument("application/json"),
     ) { uri ->
-        uri?.let(::exportActivityBackup)
+        uri?.let(activityBackup::export)
     }
 
     private val openActivityBackup = registerForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { uri ->
-        uri?.let(::importActivityBackup)
+        uri?.let(activityBackup::import)
     }
 
-    private val requestNotificationPermission = registerForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        val reminder = pendingReminder ?: return@registerForActivityResult
-        if (granted) {
-            requestExactAlarmPermission(reminder)
-        } else {
-            pendingReminder = null
-            showNotificationSettings()
-        }
-    }
 
-    private val requestExactAlarmSettings = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult(),
-    ) {
-        val reminder = pendingReminder ?: return@registerForActivityResult
-        if (SchoolReminderAlarms.canScheduleExactAlarms(this)) {
-            restorePendingReminders()
-            saveAndScheduleReminder(reminder)
-        } else {
-            pendingReminder = null
-            showReminderMessage("No se concedió el permiso para programar alarmas exactas.")
-        }
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -214,12 +211,12 @@ class MainActivity : ComponentActivity() {
                         },
                         onDirections = ::showNavigationOptions,
                         onShare = ::shareSchoolLocation,
-                        onAddComment = ::addSchoolComment,
-                        onDeleteComment = ::deleteSchoolComment,
-                        onEditComment = ::editSchoolComment,
-                        onSearchComments = ::searchSchoolComments,
-                        onAddReminder = ::createSchoolReminder,
-                        onDeleteReminder = ::deleteSchoolReminder,
+                        onAddComment = activityController::addComment,
+                        onDeleteComment = activityController::deleteComment,
+                        onEditComment = activityController::editComment,
+                        onSearchComments = activityController::searchComments,
+                        onAddReminder = reminderController::createSchoolReminder,
+                        onDeleteReminder = reminderController::deleteSchoolReminder,
                         onExportActivityBackup = {
                             createActivityBackup.launch("EduEscale-copia.json")
                         },
@@ -229,10 +226,10 @@ class MainActivity : ComponentActivity() {
                         onDownloadVisibleArea = offlineMapController::downloadVisibleMapArea,
                         onToggleOfflineMapArea = offlineMapController::setOfflineMapAreaDownloadState,
                         onDeleteOfflineMapArea = offlineMapController::deleteOfflineMapArea,
-                        onRefreshActivityHistory = ::refreshActivityHistory,
-                        onEditHistoryComment = ::editHistoryComment,
-                        onEditHistoryReminder = ::editHistoryReminder,
-                        onPickReminderDateTime = ::pickReminderDateTime,
+                        onRefreshActivityHistory = activityController::refreshActivityHistory,
+                        onEditHistoryComment = activityController::editHistoryComment,
+                        onEditHistoryReminder = reminderController::editHistoryReminder,
+                        onPickReminderDateTime = reminderController::pickReminderDateTime,
                         onClearSelection = {
                             selectedSchoolCameraFocusInProgress = false
                             pendingSchoolSheetAlignment = null
@@ -281,9 +278,9 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-        restoreSavedFile()
+        schoolImport.restore()
         handleIncomingIntent(intent)
-        restorePendingReminders()
+        reminderController.restorePendingReminders()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -297,65 +294,10 @@ class MainActivity : ComponentActivity() {
             incomingIntent.action == Intent.ACTION_VIEW
         }
         externalFileBackCallback.isEnabled = uri != null
-        uri?.let(::importFile)
+        uri?.let(schoolImport::import)
         return uri != null
     }
 
-    private fun restoreSavedFile() {
-        importExecutor.execute {
-            try {
-                val parsed = schoolFileStorage.restore() ?: return@execute
-                val fileName = getSharedPreferences(FILE_PREFERENCES, MODE_PRIVATE)
-                    .getString(LAST_FILE_NAME, null)
-                    ?: "Archivo EduScale"
-                mainHandler.post {
-                    if (isFinishing || isDestroyed) {
-                        return@post
-                    }
-                    viewModel.setSchoolFile(parsed, fileName)
-                }
-            } catch (error: IOException) {
-                showImportError(error.message ?: "No se pudo restaurar el archivo guardado.")
-            } catch (error: IllegalArgumentException) {
-                showImportError(error.message ?: "El archivo guardado no es válido.")
-            }
-        }
-    }
-
-    private fun restorePendingReminders(showPermissionMessage: Boolean = false) {
-        lifecycleScope.launch {
-            try {
-                val reminders = schoolActivityRepository.pendingReminders()
-                if (
-                    reminders.isNotEmpty() &&
-                    !NotificationManagerCompat.from(this@MainActivity).areNotificationsEnabled()
-                ) {
-                    if (showPermissionMessage) {
-                        showNotificationSettings()
-                    }
-                    return@launch
-                }
-                if (
-                    reminders.isNotEmpty() &&
-                    !SchoolReminderAlarms.canScheduleExactAlarms(this@MainActivity)
-                ) {
-                    if (showPermissionMessage) {
-                        showExactAlarmSettings()
-                    }
-                    return@launch
-                }
-                reminders.forEach { reminder ->
-                    SchoolReminderAlarms.schedule(this@MainActivity, reminder)
-                }
-            } catch (error: IOException) {
-                showReminderMessage(error.message ?: "No se pudieron restaurar las alarmas.")
-            } catch (error: SQLiteException) {
-                showReminderMessage(error.message ?: "No se pudieron leer los recordatorios guardados.")
-            } catch (error: SecurityException) {
-                showReminderMessage(error.message ?: "Android no permitió restaurar las alarmas.")
-            }
-        }
-    }
 
     private fun configureMap(mapLibreMap: MapLibreMap) {
         map = mapLibreMap
@@ -465,7 +407,7 @@ class MainActivity : ComponentActivity() {
 
     private fun showSchoolDetails(school: SchoolRecord) {
         viewModel.selectSchool(school)
-        refreshSchoolActivity(school, "")
+        activityController.refreshSchoolActivity(school, "")
     }
 
     private fun focusSelectedSchoolFromList(school: SchoolRecord) {
@@ -538,596 +480,21 @@ class MainActivity : ComponentActivity() {
         currentMap.animateCamera(CameraUpdateFactory.newLatLng(cameraTarget))
     }
 
-    private fun addSchoolComment(school: SchoolRecord, text: String) {
-        lifecycleScope.launch {
-            try {
-                schoolActivityRepository.addComment(school.activityKey(), text)
-                refreshSchoolActivity(school, viewModel.state.value.commentSearchQuery)
-            } catch (error: IllegalArgumentException) {
-                showReminderMessage(error.message ?: "No se pudo guardar el comentario.")
-            } catch (error: IOException) {
-                showReminderMessage(error.message ?: "No se pudo guardar el comentario.")
-            } catch (error: SQLiteException) {
-                showReminderMessage(error.message ?: "No se pudo guardar el comentario.")
-            }
-        }
-    }
 
-    private fun deleteSchoolComment(school: SchoolRecord, commentId: String) {
-        lifecycleScope.launch {
-            try {
-                schoolActivityRepository.deleteComment(school.activityKey(), commentId)
-                refreshSchoolActivity(school, viewModel.state.value.commentSearchQuery)
-            } catch (error: IOException) {
-                showReminderMessage(error.message ?: "No se pudo eliminar el comentario.")
-            } catch (error: SQLiteException) {
-                showReminderMessage(error.message ?: "No se pudo eliminar el comentario.")
-            }
-        }
-    }
 
-    private fun editSchoolComment(school: SchoolRecord, commentId: String, text: String) {
-        lifecycleScope.launch {
-            try {
-                schoolActivityRepository.updateComment(school.activityKey(), commentId, text)
-                refreshSchoolActivity(school, viewModel.state.value.commentSearchQuery)
-            } catch (error: IllegalArgumentException) {
-                showReminderMessage(error.message ?: "No se pudo editar el comentario.")
-            } catch (error: IOException) {
-                showReminderMessage(error.message ?: "No se pudo editar el comentario.")
-            } catch (error: SQLiteException) {
-                showReminderMessage(error.message ?: "No se pudo editar el comentario.")
-            }
-        }
-    }
 
-    private fun searchSchoolComments(school: SchoolRecord, query: String) {
-        viewModel.setCommentSearchQuery(query)
-        refreshSchoolActivity(school, query)
-    }
 
-    private fun refreshSchoolActivity(school: SchoolRecord, query: String) {
-        val schoolKey = school.activityKey()
-        schoolActivityLoadJob?.cancel()
-        schoolActivityLoadJob = lifecycleScope.launch {
-            try {
-                val comments = schoolActivityRepository.commentsFor(schoolKey, query)
-                val reminders = schoolActivityRepository.remindersFor(schoolKey)
-                val current = viewModel.state.value
-                if (
-                    current.selectedSchool?.activityKey() == schoolKey &&
-                    current.commentSearchQuery == query
-                ) {
-                    viewModel.setSchoolActivity(comments, reminders)
-                }
-            } catch (error: IOException) {
-                showReminderMessage(error.message ?: "No se pudieron leer los datos del colegio.")
-            } catch (error: SQLiteException) {
-                showReminderMessage(error.message ?: "No se pudieron leer los datos del colegio.")
-            }
-        }
-    }
 
-    private fun refreshActivityHistory() {
-        activityHistoryLoadJob?.cancel()
-        activityHistoryLoadJob = lifecycleScope.launch {
-            viewModel.setActivityHistoryLoading(true)
-            try {
-                schoolActivityRepository.expirePastReminders()
-                val comments = schoolActivityRepository.allComments()
-                val reminders = schoolActivityRepository.allReminders()
-                viewModel.setActivityHistory(comments, reminders)
-            } catch (error: IOException) {
-                viewModel.setActivityHistoryError(
-                    error.message ?: "No se pudo cargar el historial.",
-                )
-            } catch (error: SQLiteException) {
-                viewModel.setActivityHistoryError(
-                    error.message ?: "No se pudo leer el historial guardado.",
-                )
-            }
-        }
-    }
 
-    private fun editHistoryComment(comment: SchoolComment, text: String) {
-        lifecycleScope.launch {
-            try {
-                schoolActivityRepository.updateComment(comment.schoolKey, comment.id, text)
-                refreshActivityHistory()
-                viewModel.state.value.selectedSchool
-                    ?.takeIf { it.activityKey() == comment.schoolKey }
-                    ?.let { refreshSchoolActivity(it, viewModel.state.value.commentSearchQuery) }
-                showReminderMessage("Comentario actualizado.")
-            } catch (error: IllegalArgumentException) {
-                showReminderMessage(error.message ?: "No se pudo editar el comentario.")
-            } catch (error: IOException) {
-                showReminderMessage(error.message ?: "No se pudo editar el comentario.")
-            } catch (error: SQLiteException) {
-                showReminderMessage(error.message ?: "No se pudo editar el comentario.")
-            }
-        }
-    }
 
-    private fun editHistoryReminder(
-        reminder: SchoolReminder,
-        message: String,
-        scheduledAtMillis: Long,
-    ) {
-        val normalizedMessage = message.trim()
-        if (normalizedMessage.isEmpty()) {
-            showReminderMessage("Escribe qué debes recordar.")
-            return
-        }
-        if (scheduledAtMillis <= System.currentTimeMillis()) {
-            showReminderMessage("Elige una fecha y hora futuras.")
-            return
-        }
-        if (
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ContextCompat.checkSelfPermission(
-                this,
-                Manifest.permission.POST_NOTIFICATIONS,
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
-            showNotificationSettings()
-            return
-        }
-        if (!NotificationManagerCompat.from(this).areNotificationsEnabled()) {
-            showNotificationSettings()
-            return
-        }
-        if (!SchoolReminderAlarms.canScheduleExactAlarms(this)) {
-            showHistoryExactAlarmSettings()
-            return
-        }
 
-        lifecycleScope.launch {
-            var updatedReminder: SchoolReminder? = null
-            try {
-                SchoolReminderAlarms.cancel(this@MainActivity, reminder.id)
-                updatedReminder = schoolActivityRepository.updateReminder(
-                    reminderId = reminder.id,
-                    message = normalizedMessage,
-                    scheduledAtMillis = scheduledAtMillis,
-                )
-                SchoolReminderAlarms.createNotificationChannel(this@MainActivity)
-                SchoolReminderAlarms.schedule(this@MainActivity, updatedReminder)
-            } catch (error: IllegalArgumentException) {
-                showHistoryReminderEditFailure(
-                    reminder,
-                    updatedReminder,
-                    error.message ?: "No se pudo actualizar la alarma.",
-                )
-                return@launch
-            } catch (error: IllegalStateException) {
-                showHistoryReminderEditFailure(
-                    reminder,
-                    updatedReminder,
-                    error.message ?: "No se pudo actualizar la alarma.",
-                )
-                return@launch
-            } catch (error: IOException) {
-                showHistoryReminderEditFailure(
-                    reminder,
-                    updatedReminder,
-                    error.message ?: "No se pudo guardar la alarma.",
-                )
-                return@launch
-            } catch (error: SQLiteException) {
-                showHistoryReminderEditFailure(
-                    reminder,
-                    updatedReminder,
-                    error.message ?: "No se pudo guardar la alarma.",
-                )
-                return@launch
-            } catch (error: SecurityException) {
-                showHistoryReminderEditFailure(
-                    reminder,
-                    updatedReminder,
-                    error.message ?: "Android no permitió programar la alarma.",
-                )
-                return@launch
-            }
 
-            refreshActivityHistory()
-            viewModel.state.value.selectedSchool
-                ?.takeIf { it.activityKey() == reminder.schoolKey }
-                ?.let { refreshSchoolActivity(it, viewModel.state.value.commentSearchQuery) }
-            showReminderMessage("Alarma reactivada con la nueva fecha.")
-        }
-    }
-
-    private suspend fun showHistoryReminderEditFailure(
-        originalReminder: SchoolReminder,
-        updatedReminder: SchoolReminder?,
-        message: String,
-    ) {
-        val rollbackError = rollbackHistoryReminderEdit(originalReminder, updatedReminder)
-        refreshActivityHistory()
-        showReminderMessage(
-            if (rollbackError == null) {
-                message
-            } else {
-                "$message No se pudo restaurar correctamente la alarma anterior: $rollbackError"
-            },
-        )
-    }
-
-    private suspend fun rollbackHistoryReminderEdit(
-        originalReminder: SchoolReminder,
-        updatedReminder: SchoolReminder?,
-    ): String? {
-        var oldRecordRestored = updatedReminder == null
-        var rollbackError: String? = null
-        if (updatedReminder != null) {
-            try {
-                schoolActivityRepository.restoreReminder(originalReminder)
-                oldRecordRestored = true
-            } catch (error: IOException) {
-                rollbackError = error.message ?: "Error de lectura o escritura."
-            } catch (error: SQLiteException) {
-                rollbackError = error.message ?: "Error de base de datos."
-            } catch (error: IllegalStateException) {
-                rollbackError = error.message ?: "El registro anterior ya no está disponible."
-            }
-        }
-        SchoolReminderAlarms.cancel(this, originalReminder.id)
-        if (
-            oldRecordRestored &&
-            originalReminder.status == SchoolReminder.STATUS_PENDING &&
-            originalReminder.scheduledAtMillis > System.currentTimeMillis()
-        ) {
-            try {
-                SchoolReminderAlarms.schedule(this, originalReminder)
-            } catch (error: SecurityException) {
-                rollbackError = error.message ?: "No se pudo reprogramar la alarma anterior."
-            }
-        }
-        return rollbackError
-    }
-
-    private fun showHistoryExactAlarmSettings() {
-        AlertDialog.Builder(this)
-            .setTitle("Permitir alarmas exactas")
-            .setMessage(
-                "EduEscale necesita acceso a “Alarmas y recordatorios” para reactivar esta alarma.",
-            )
-            .setPositiveButton("Abrir configuración") { _, _ ->
-                val intent = Intent(
-                    Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
-                    Uri.parse("package:$packageName"),
-                )
-                try {
-                    startActivity(intent)
-                } catch (error: ActivityNotFoundException) {
-                    showReminderMessage("No se pudo abrir la configuración de alarmas exactas.")
-                }
-            }
-            .setNegativeButton("Ahora no", null)
-            .show()
-    }
-
-    private fun createSchoolReminder(school: SchoolRecord, message: String) {
-        val normalizedMessage = message.trim()
-        if (normalizedMessage.isEmpty()) {
-            showReminderMessage("Escribe qué debes recordar.")
-            return
-        }
-
-        pickReminderDateTime(System.currentTimeMillis()) { scheduledAt ->
-            prepareReminder(
-                PendingReminder(
-                    schoolKey = school.activityKey(),
-                    schoolName = school.nombre?.takeIf(String::isNotBlank)
-                        ?: "Colegio sin nombre",
-                    message = normalizedMessage,
-                    scheduledAtMillis = scheduledAt,
-                ),
-            )
-        }
-    }
-
-    private fun pickReminderDateTime(
-        initialScheduledAtMillis: Long,
-        onSelected: (Long) -> Unit,
-    ) {
-        val now = Calendar.getInstance()
-        val initial = Calendar.getInstance().apply {
-            timeInMillis = maxOf(initialScheduledAtMillis, now.timeInMillis)
-        }
-        DatePickerDialog(
-            this,
-            { _, year, month, dayOfMonth ->
-                TimePickerDialog(
-                    this,
-                    { _, hourOfDay, minute ->
-                        val scheduledAt = Calendar.getInstance().apply {
-                            set(year, month, dayOfMonth, hourOfDay, minute, 0)
-                            set(Calendar.MILLISECOND, 0)
-                        }.timeInMillis
-                        if (scheduledAt <= System.currentTimeMillis()) {
-                            showReminderMessage("Elige una fecha y hora futuras.")
-                            return@TimePickerDialog
-                        }
-                        onSelected(scheduledAt)
-                    },
-                    initial.get(Calendar.HOUR_OF_DAY),
-                    initial.get(Calendar.MINUTE),
-                    android.text.format.DateFormat.is24HourFormat(this),
-                ).show()
-            },
-            initial.get(Calendar.YEAR),
-            initial.get(Calendar.MONTH),
-            initial.get(Calendar.DAY_OF_MONTH),
-        ).apply {
-            datePicker.minDate = now.timeInMillis
-        }.show()
-    }
-
-    private fun prepareReminder(reminder: PendingReminder) {
-        pendingReminder = reminder
-        if (
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ContextCompat.checkSelfPermission(
-                this,
-                Manifest.permission.POST_NOTIFICATIONS,
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
-            AlertDialog.Builder(this)
-                .setTitle("Permitir notificaciones")
-                .setMessage(
-                    "EduEscale necesita mostrar una notificación cuando llegue la hora del recordatorio.",
-                )
-                .setPositiveButton("Continuar") { _, _ ->
-                    requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-                }
-                .setNegativeButton("Ahora no") { _, _ -> pendingReminder = null }
-                .show()
-            return
-        }
-        if (!NotificationManagerCompat.from(this).areNotificationsEnabled()) {
-            pendingReminder = null
-            showNotificationSettings()
-            return
-        }
-        requestExactAlarmPermission(reminder)
-    }
-
-    private fun requestExactAlarmPermission(reminder: PendingReminder) {
-        if (!NotificationManagerCompat.from(this).areNotificationsEnabled()) {
-            pendingReminder = null
-            showNotificationSettings()
-            return
-        }
-        if (!SchoolReminderAlarms.canScheduleExactAlarms(this)) {
-            showExactAlarmSettings()
-            return
-        }
-        saveAndScheduleReminder(reminder)
-    }
-
-    private fun saveAndScheduleReminder(pending: PendingReminder) {
-        if (!NotificationManagerCompat.from(this).areNotificationsEnabled()) {
-            pendingReminder = null
-            showNotificationSettings()
-            return
-        }
-        lifecycleScope.launch {
-            val reminder = try {
-                schoolActivityRepository.addReminder(
-                    schoolKey = pending.schoolKey,
-                    schoolName = pending.schoolName,
-                    message = pending.message,
-                    scheduledAtMillis = pending.scheduledAtMillis,
-                )
-            } catch (error: IllegalArgumentException) {
-                pendingReminder = null
-                showReminderMessage(error.message ?: "No se pudo crear el recordatorio.")
-                return@launch
-            } catch (error: IOException) {
-                pendingReminder = null
-                showReminderMessage(error.message ?: "No se pudo guardar el recordatorio.")
-                return@launch
-            } catch (error: SQLiteException) {
-                pendingReminder = null
-                showReminderMessage(error.message ?: "No se pudo guardar el recordatorio.")
-                return@launch
-            }
-
-            try {
-                SchoolReminderAlarms.createNotificationChannel(this@MainActivity)
-                SchoolReminderAlarms.schedule(this@MainActivity, reminder)
-            } catch (error: SecurityException) {
-                try {
-                    schoolActivityRepository.deleteReminder(reminder.id)
-                } catch (cleanupError: IOException) {
-                    error.addSuppressed(cleanupError)
-                } catch (cleanupError: SQLiteException) {
-                    error.addSuppressed(cleanupError)
-                }
-                pendingReminder = null
-                showReminderMessage(error.message ?: "Android no permitió programar la alarma.")
-                return@launch
-            }
-
-            pendingReminder = null
-            viewModel.state.value.selectedSchool
-                ?.takeIf { it.activityKey() == pending.schoolKey }
-                ?.let { refreshSchoolActivity(it, viewModel.state.value.commentSearchQuery) }
-            showReminderMessage("Alarma programada.")
-        }
-    }
-
-    private fun deleteSchoolReminder(school: SchoolRecord, reminderId: String) {
-        lifecycleScope.launch {
-            try {
-                schoolActivityRepository.cancelReminder(reminderId)
-                SchoolReminderAlarms.cancel(this@MainActivity, reminderId)
-                viewModel.state.value.selectedSchool
-                    ?.takeIf { it.activityKey() == school.activityKey() }
-                    ?.let { refreshSchoolActivity(it, viewModel.state.value.commentSearchQuery) }
-                showReminderMessage("Alarma cancelada y conservada en el historial.")
-            } catch (error: IOException) {
-                showReminderMessage(error.message ?: "No se pudo cancelar el recordatorio.")
-            } catch (error: SQLiteException) {
-                showReminderMessage(error.message ?: "No se pudo cancelar el recordatorio.")
-            }
-        }
-    }
 
     private fun showReminderMessage(message: String) {
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
     }
 
-    private fun exportActivityBackup(uri: Uri) {
-        lifecycleScope.launch {
-            try {
-                val backup = schoolActivityRepository.exportBackup()
-                val output = contentResolver.openOutputStream(uri)
-                    ?: throw IOException("No se pudo crear el archivo de respaldo.")
-                OutputStreamWriter(output, StandardCharsets.UTF_8).use { writer ->
-                    Gson().toJson(backup, writer)
-                }
-                showReminderMessage("Copia exportada correctamente.")
-            } catch (error: IOException) {
-                showReminderMessage(error.message ?: "No se pudo exportar la copia.")
-            } catch (error: SQLiteException) {
-                showReminderMessage(error.message ?: "No se pudo leer el historial para exportarlo.")
-            } catch (error: SecurityException) {
-                showReminderMessage("Android no permitió escribir el archivo de respaldo.")
-            }
-        }
-    }
 
-    private fun importActivityBackup(uri: Uri) {
-        lifecycleScope.launch {
-            try {
-                val backup = contentResolver.openInputStream(uri)?.use { input ->
-                    InputStreamReader(input, StandardCharsets.UTF_8).use { reader ->
-                        Gson().fromJson(reader, SchoolActivityBackup::class.java)
-                    }
-                } ?: throw IOException("No se pudo abrir el archivo de respaldo.")
-                schoolActivityRepository.importBackup(backup)
-                restorePendingReminders(showPermissionMessage = true)
-                val state = viewModel.state.value
-                state.selectedSchool?.let {
-                    refreshSchoolActivity(it, state.commentSearchQuery)
-                }
-                showReminderMessage("Copia restaurada; los registros se combinaron con los actuales.")
-            } catch (error: JsonParseException) {
-                showReminderMessage("El archivo de respaldo no contiene un JSON válido.")
-            } catch (error: IllegalArgumentException) {
-                showReminderMessage(error.message ?: "El archivo de respaldo no es compatible.")
-            } catch (error: IOException) {
-                showReminderMessage(error.message ?: "No se pudo leer el archivo de respaldo.")
-            } catch (error: SQLiteException) {
-                showReminderMessage(error.message ?: "No se pudo guardar la copia restaurada.")
-            } catch (error: SecurityException) {
-                showReminderMessage("Android no permitió leer el archivo de respaldo.")
-            }
-        }
-    }
-
-    private fun showNotificationSettings() {
-        AlertDialog.Builder(this)
-            .setTitle("Notificaciones desactivadas")
-            .setMessage(
-                "Activa las notificaciones de EduEscale para que las alarmas puedan avisarte.",
-            )
-            .setPositiveButton("Abrir configuración") { _, _ ->
-                val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-                        .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
-                } else {
-                    Intent(
-                        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                        Uri.parse("package:$packageName"),
-                    )
-                }
-                try {
-                    startActivity(intent)
-                } catch (error: ActivityNotFoundException) {
-                    showReminderMessage("No se pudo abrir la configuración de notificaciones.")
-                }
-            }
-            .setNegativeButton("Ahora no", null)
-            .show()
-    }
-
-    private fun showExactAlarmSettings() {
-        AlertDialog.Builder(this)
-            .setTitle("Permitir alarmas exactas")
-            .setMessage(
-                "EduEscale necesita acceso a “Alarmas y recordatorios” para avisarte a la hora elegida, incluso si la app está cerrada.",
-            )
-            .setPositiveButton("Abrir configuración") { _, _ ->
-                val intent = Intent(
-                    Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
-                    Uri.parse("package:$packageName"),
-                )
-                try {
-                    requestExactAlarmSettings.launch(intent)
-                } catch (error: ActivityNotFoundException) {
-                    pendingReminder = null
-                    showReminderMessage("No se pudo abrir la configuración de alarmas exactas.")
-                }
-            }
-            .setNegativeButton("Ahora no") { _, _ -> pendingReminder = null }
-            .show()
-    }
-
-    private fun importFile(uri: Uri) {
-        viewModel.setImporting(true)
-        importExecutor.execute {
-            try {
-                val fileName = displayName(uri)
-                val input = contentResolver.openInputStream(uri)
-                    ?: throw IOException("No se pudo abrir el archivo seleccionado.")
-                val parsed = input.use(schoolFileStorage::save)
-                getSharedPreferences(FILE_PREFERENCES, MODE_PRIVATE)
-                    .edit()
-                    .putString(LAST_FILE_NAME, fileName)
-                    .apply()
-                mainHandler.post {
-                    if (isFinishing || isDestroyed) {
-                        return@post
-                    }
-                    hasPendingUserFileImport = true
-                    shouldFocusOnNextMapDataUpdate = true
-                    viewModel.setSchoolFile(parsed, fileName)
-                }
-            } catch (error: IOException) {
-                showImportError(error.message ?: "No se pudo leer el archivo.")
-            } catch (error: IllegalArgumentException) {
-                showImportError(error.message ?: "El archivo no es v\u00e1lido.")
-            } catch (error: SecurityException) {
-                showImportError("Android no permiti\u00f3 leer el archivo seleccionado.")
-            }
-        }
-    }
-
-    private fun displayName(uri: Uri): String {
-        contentResolver.query(
-            uri,
-            arrayOf(OpenableColumns.DISPLAY_NAME),
-            null,
-            null,
-            null,
-        )?.use { cursor ->
-            val nameColumn = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-            if (nameColumn >= 0 && cursor.moveToFirst()) {
-                cursor.getString(nameColumn)?.takeIf(String::isNotBlank)?.let { return it }
-            }
-        }
-        return uri.lastPathSegment
-            ?.substringAfterLast('/')
-            ?.takeIf(String::isNotBlank)
-            ?: "Archivo EduScale"
-    }
-
-    private fun showImportError(message: String) {
-        viewModel.setImportError(message)
-    }
 
     private fun updateMapData() {
         val currentMap = map ?: return
@@ -1316,10 +683,10 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         mapView.onResume()
         locationController.refreshLocationServices()
-        restorePendingReminders()
-        refreshActivityHistory()
+        reminderController.restorePendingReminders()
+        activityController.refreshActivityHistory()
         val state = viewModel.state.value
-        state.selectedSchool?.let { refreshSchoolActivity(it, state.commentSearchQuery) }
+        state.selectedSchool?.let { activityController.refreshSchoolActivity(it, state.commentSearchQuery) }
     }
 
     override fun onPause() {
@@ -1346,7 +713,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        importExecutor.shutdownNow()
+        schoolImport.shutdown()
         offlineMapController.release()
         mapView.onDestroy()
         super.onDestroy()
@@ -1413,8 +780,6 @@ class MainActivity : ComponentActivity() {
     }
 
     private companion object {
-        const val FILE_PREFERENCES = "eduescale_file"
-        const val LAST_FILE_NAME = "last_file_name"
         const val SCHOOL_SOURCE = "eduescale-schools"
         const val SCHOOL_LAYER = "eduescale-school-markers"
         const val SELECTED_SCHOOL_SOURCE = "eduescale-selected-school"
