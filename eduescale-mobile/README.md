@@ -101,9 +101,9 @@ Paquete base `pe.eduescale.mobile`:
   `SchoolImportController` (importar/restaurar el archivo) y
   `ActivityBackupController` (copia JSON).
 - `activity/`: `SchoolActivityController` (comentarios e historial).
-- `map/`: estilo, cámara, marcadores y `OfflineMapController`.
+- `map/`: estilo, cámara, marcadores, `SchoolMapController` (mapa y selección) y `OfflineMapController`.
 - `location/`: `LocationController` (permisos y ubicación).
-- `navigation/`: enlaces de navegación.
+- `navigation/`: enlaces de navegación y `SchoolNavigator` (cómo llegar y compartir).
 - `reminders/`: alarmas, `ReminderController` (flujo de recordatorios y permisos)
   y `ReminderDialogs` (selector de fecha y diálogos de permisos).
 - `ui/`: `EduEscaleApp` (navegación) y pantallas en `map`, `schools`,
