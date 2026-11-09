@@ -71,13 +71,15 @@ class MainActivity : ComponentActivity() {
         )
     }
     private val mapCameraStore by lazy { MapCameraStore(this) }
-    private val reminderController = ReminderController(
-        activity = this,
-        viewModel = viewModel,
-        repositoryProvider = { schoolActivityRepository },
-        activityProvider = { activityController },
-        showReminderMessage = ::showReminderMessage,
-    )
+    private val reminderController by lazy {
+        ReminderController(
+            activity = this,
+            viewModel = viewModel,
+            repositoryProvider = { schoolActivityRepository },
+            activityProvider = { activityController },
+            showReminderMessage = ::showReminderMessage,
+        )
+    }
     private val activityController by lazy {
         SchoolActivityController(
             scope = lifecycleScope,
@@ -99,7 +101,9 @@ class MainActivity : ComponentActivity() {
             },
         )
     }
-    private val locationController = LocationController(this, viewModel, { mapController.map }, { mapController.style })
+    private val locationController by lazy {
+        LocationController(this, viewModel, { mapController.map }, { mapController.style })
+    }
     private val offlineMapController by lazy {
         OfflineMapController(this, viewModel, offlineManager) { mapController.style != null }
     }
@@ -127,6 +131,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Activity result launchers must be registered before STARTED, and need the ViewModel store.
+        reminderController
+        locationController
         externalFileBackCallback = object : OnBackPressedCallback(false) {
             override fun handleOnBackPressed() {
                 if (!moveTaskToBack(true)) {
