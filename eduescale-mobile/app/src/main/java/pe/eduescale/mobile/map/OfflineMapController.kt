@@ -37,6 +37,7 @@ internal class OfflineMapController(
 
     fun refreshOfflineMapAreas() {
         offlineManager.listOfflineRegions(object : OfflineManager.ListOfflineRegionsCallback {
+            @Suppress("PARAMETER_NAME_CHANGED_ON_OVERRIDE")
             override fun onList(regions: Array<OfflineRegion>?) {
                 if (regions == null) {
                     showOfflineMapMessage("MapLibre no devolvió la lista de mapas sin conexión.")
@@ -216,6 +217,7 @@ internal class OfflineMapController(
                 definition,
                 metadata.toBytes(),
                 object : OfflineManager.CreateOfflineRegionCallback {
+                    @Suppress("PARAMETER_NAME_CHANGED_ON_OVERRIDE")
                     override fun onCreate(region: OfflineRegion) {
                         mainHandler.post {
                             if (activity.isDestroyed) {

@@ -19,7 +19,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Alarm
-import androidx.compose.material.icons.filled.Comment
+import androidx.compose.material.icons.automirrored.filled.Comment
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
@@ -362,7 +362,7 @@ internal fun ActivityHistoryCard(entry: ActivityHistoryEntry, onEdit: () -> Unit
             verticalAlignment = Alignment.Top,
         ) {
             Icon(
-                if (entry.isReminder) Icons.Default.Alarm else Icons.Default.Comment,
+                if (entry.isReminder) Icons.Default.Alarm else Icons.AutoMirrored.Filled.Comment,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(top = 2.dp),

@@ -219,5 +219,5 @@ internal fun formatDistanceKm(distanceInMeters: Double): String =
     if (distanceInMeters < 50.0) {
         "<0,1 km"
     } else {
-        String.format(Locale("es", "PE"), "%.1f km", distanceInMeters / 1000.0)
+        String.format(Locale.forLanguageTag("es-PE"), "%.1f km", distanceInMeters / 1000.0)
     }

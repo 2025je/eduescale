@@ -209,15 +209,15 @@ abstract class SchoolActivityDatabase : RoomDatabase() {
     companion object {
         private const val DATABASE_NAME = "school-activity.db"
         private val MIGRATION_1_2 = object : Migration(1, 2) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL(
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
                     "ALTER TABLE school_comments ADD COLUMN updated_at_millis INTEGER",
                 )
             }
         }
         private val MIGRATION_2_3 = object : Migration(2, 3) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL(
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
                     "ALTER TABLE school_reminders ADD COLUMN status TEXT DEFAULT 'PENDING'",
                 )
             }

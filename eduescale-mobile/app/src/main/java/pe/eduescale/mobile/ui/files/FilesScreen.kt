@@ -259,10 +259,12 @@ internal fun OfflineMapAreaCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             LinearProgressIndicator(
-                progress = if (area.estimatedTiles > 0) {
-                    (area.completedTiles.toFloat() / area.estimatedTiles).coerceIn(0f, 1f)
-                } else {
-                    0f
+                progress = {
+                    if (area.estimatedTiles > 0) {
+                        (area.completedTiles.toFloat() / area.estimatedTiles).coerceIn(0f, 1f)
+                    } else {
+                        0f
+                    }
                 },
                 modifier = Modifier.fillMaxWidth(),
             )

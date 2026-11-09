@@ -6,7 +6,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -80,7 +80,7 @@ fun EduEscaleApp(
     }
     val destinations = listOf(
         Destination("map", "Mapa", Icons.Default.Map),
-        Destination("schools", "Colegios", Icons.Default.List),
+        Destination("schools", "Colegios", Icons.AutoMirrored.Filled.List),
         Destination("history", "Historial", Icons.Default.History),
         Destination("files", "Archivos", Icons.Default.FolderOpen),
     )

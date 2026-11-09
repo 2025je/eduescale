@@ -9,11 +9,12 @@ import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.SystemBarStyle
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.ui.platform.ComposeView
 import androidx.core.view.ViewCompat
-import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
@@ -143,9 +144,10 @@ class MainActivity : ComponentActivity() {
             }
         }
         onBackPressedDispatcher.addCallback(this, externalFileBackCallback)
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-        window.statusBarColor = Color.TRANSPARENT
-        window.navigationBarColor = Color.TRANSPARENT
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT),
+        )
 
         mapView = MapView(this)
         mapController = SchoolMapController(
@@ -233,7 +235,6 @@ class MainActivity : ComponentActivity() {
             insets
         }
         setContentView(root)
-        WindowCompat.getInsetsController(window, root).isAppearanceLightStatusBars = true
         mapView.getMapAsync(mapController::configureMap)
 
         var observedFile: SchoolFile? = null

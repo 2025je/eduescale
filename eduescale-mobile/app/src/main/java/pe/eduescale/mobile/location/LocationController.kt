@@ -9,15 +9,15 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.location.Location
-import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Build
-import android.os.Bundle
+import android.os.CancellationSignal
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.core.location.LocationManagerCompat
 import org.maplibre.android.location.LocationComponentActivationOptions
 import org.maplibre.android.location.LocationComponentOptions
 import org.maplibre.android.location.modes.CameraMode
@@ -39,19 +39,7 @@ internal class LocationController(
     private val locationManager by lazy { activity.getSystemService(LocationManager::class.java) }
     private var providerReceiverRegistered = false
 
-    private val currentLocationListener = object : LocationListener {
-        override fun onLocationChanged(location: Location) {
-            viewModel.setUserLocation(location.latitude, location.longitude)
-            locationManager.removeUpdates(this)
-        }
-
-        override fun onProviderEnabled(provider: String) = Unit
-
-        override fun onProviderDisabled(provider: String) = Unit
-
-        @Deprecated("Deprecated in Android")
-        override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) = Unit
-    }
+    private var currentLocationRequest: CancellationSignal? = null
 
     private val providerReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -87,7 +75,7 @@ internal class LocationController(
     }
 
     fun onPause() {
-        locationManager.removeUpdates(currentLocationListener)
+        cancelCurrentLocationRequest()
     }
 
     fun onStop() {
@@ -122,7 +110,7 @@ internal class LocationController(
                 enableMyLocation(trackCamera = false)
             }
         } else {
-            locationManager.removeUpdates(currentLocationListener)
+            cancelCurrentLocationRequest()
             currentMap()?.locationComponent?.let { locationComponent ->
                 if (locationComponent.isLocationComponentActivated) {
                     locationComponent.isLocationComponentEnabled = false
@@ -201,16 +189,29 @@ internal class LocationController(
             ?.let { location ->
                 viewModel.setUserLocation(location.latitude, location.longitude)
             }
+        cancelCurrentLocationRequest()
         if (providers.isNotEmpty()) {
-            locationManager.removeUpdates(currentLocationListener)
+            val cancellation = CancellationSignal()
+            currentLocationRequest = cancellation
             providers.forEach { provider ->
-                locationManager.requestSingleUpdate(
+                LocationManagerCompat.getCurrentLocation(
+                    locationManager,
                     provider,
-                    currentLocationListener,
-                    activity.mainLooper,
-                )
+                    cancellation,
+                    ContextCompat.getMainExecutor(activity),
+                ) { location ->
+                    if (location != null && !cancellation.isCanceled) {
+                        viewModel.setUserLocation(location.latitude, location.longitude)
+                        cancellation.cancel()
+                    }
+                }
             }
         }
+    }
+
+    private fun cancelCurrentLocationRequest() {
+        currentLocationRequest?.cancel()
+        currentLocationRequest = null
     }
 
     private fun hasLocationPermission(): Boolean =

@@ -206,7 +206,7 @@ internal fun MapScreen(
                             style = MaterialTheme.typography.labelSmall,
                         )
                         LinearProgressIndicator(
-                            progress = progress,
+                            progress = { progress },
                             modifier = Modifier.fillMaxWidth(),
                         )
                         TextButton(

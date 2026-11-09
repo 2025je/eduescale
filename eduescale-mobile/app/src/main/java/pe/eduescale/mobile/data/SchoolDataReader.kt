@@ -111,7 +111,7 @@ object SchoolDataReader {
 
     @Throws(IOException::class, IllegalArgumentException::class)
     fun read(source: Reader): SchoolFile {
-        val reader = JsonReader(source).apply { isLenient = false }
+        val reader = JsonReader(source)
         if (reader.peek() != JsonToken.BEGIN_OBJECT) {
             throw IllegalArgumentException("El archivo no contiene un objeto JSON.")
         }
