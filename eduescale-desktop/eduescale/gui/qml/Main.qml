@@ -27,6 +27,8 @@ ApplicationWindow {
     readonly property color mutedTextColor: "#65746C"
     readonly property int cardRadius: 20
     readonly property int controlRadius: 14
+    readonly property int compactButtonHeight: 36
+    readonly property int actionButtonHeight: 40
     property string filterNotice: ""
     property string mapLevel: "department"
     property var selectedDepartmentCodes: []
@@ -320,6 +322,9 @@ ApplicationWindow {
                         Button {
                             objectName: "mapBackButton"
                             text: "Volver"
+                            implicitHeight: window.compactButtonHeight
+                            font.pixelSize: 12
+                            padding: 6
                             visible: window.mapLevel !== "department"
                             enabled: !controller.scrapeRunning
                             onClicked: window.goBackMapLevel()
@@ -328,6 +333,9 @@ ApplicationWindow {
                             objectName: "mapAdvanceButton"
                             text: window.mapLevel === "department"
                                 ? "Ver provincias" : "Ver distritos"
+                            implicitHeight: window.compactButtonHeight
+                            font.pixelSize: 12
+                            padding: 6
                             visible: window.mapLevel !== "district"
                             enabled: !controller.scrapeRunning
                                 && (window.mapLevel === "department"
@@ -405,6 +413,9 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 Layout.maximumWidth: filterGrid.columns === 2
                                     ? 260 : 16777215
+                                implicitHeight: window.compactButtonHeight
+                                font.pixelSize: 12
+                                padding: 6
                                 text: "Limpiar selección"
                                 enabled: (window.mapLevel !== "department"
                                     || window.selectedDepartmentCodes.length > 0
@@ -502,7 +513,9 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 Layout.maximumWidth: filterGrid.columns === 2
                                     ? 260 : 16777215
-                                implicitHeight: 48
+                                implicitHeight: window.actionButtonHeight
+                                font.pixelSize: 12
+                                padding: 8
                                 text: "Agregar búsqueda"
                                 highlighted: true
                                 Material.foreground: enabled
@@ -656,6 +669,9 @@ ApplicationWindow {
                                     Button {
                                         text: "Quitar"
                                         flat: true
+                                        implicitHeight: 32
+                                        font.pixelSize: 11
+                                        padding: 4
                                         enabled: !controller.scrapeRunning
                                         Material.foreground: "#B42318"
                                         background: Rectangle {
@@ -736,8 +752,8 @@ ApplicationWindow {
         objectName: "actionBar"
         Layout.fillWidth: true
         Layout.preferredHeight: controller.progressVisible
-            ? window.width < 900 ? 300 : 244
-            : window.width < 900 ? 240 : 184
+            ? window.width < 900 ? 224 : 164
+            : window.width < 900 ? 216 : 152
         color: "white"
         border.color: window.borderColor
 
@@ -788,7 +804,7 @@ ApplicationWindow {
                 id: actionButtons
                 objectName: "actionButtons"
                 Layout.fillWidth: true
-                Layout.fillHeight: true
+                Layout.fillHeight: false
                 columns: window.width < 900 ? 2 : 3
                 columnSpacing: 8
                 rowSpacing: 8
@@ -799,8 +815,11 @@ ApplicationWindow {
                     Layout.columnSpan: actionButtons.columns
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    Layout.minimumHeight: 48
-                    implicitHeight: 54
+                    Layout.minimumHeight: window.actionButtonHeight
+                    implicitHeight: window.actionButtonHeight + 2
+                    font.pixelSize: 12
+                    padding: 8
+                    visible: !controller.scrapeRunning
                     text: controller.cancelRequested
                         ? "Cancelando extracción..."
                         : controller.scrapeRunning
@@ -837,46 +856,15 @@ ApplicationWindow {
                 }
 
                 Button {
-                    objectName: "downloadExcelButton"
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    Layout.minimumHeight: 48
-                    text: "Exportar Excel"
-                    enabled: controller.exportsAvailable && !controller.exportRunning
-                    onClicked: excelSaveDialog.open()
-                    Material.foreground: window.primaryColor
-                }
-
-                Button {
-                    objectName: "downloadPdfButton"
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    Layout.minimumHeight: 48
-                    text: "Exportar PDF"
-                    enabled: controller.exportsAvailable && !controller.exportRunning
-                    onClicked: pdfSaveDialog.open()
-                    Material.foreground: window.primaryColor
-                }
-
-                Button {
-                    objectName: "downloadEduScaleButton"
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    Layout.minimumHeight: 48
-                    text: "Exportar .eduescale"
-                    enabled: controller.exportsAvailable && !controller.exportRunning
-                    onClicked: eduScaleSaveDialog.open()
-                    Material.foreground: window.primaryColor
-                }
-
-                Button {
                     id: cancelScrapeButton
                     objectName: "cancelScrapeButton"
                     Layout.columnSpan: actionButtons.columns
                     Layout.fillWidth: true
-                    Layout.preferredWidth: 120
                     Layout.fillHeight: true
-                    Layout.minimumHeight: 48
+                    Layout.minimumHeight: window.actionButtonHeight
+                    implicitHeight: window.actionButtonHeight
+                    font.pixelSize: 12
+                    padding: 8
                     visible: controller.scrapeRunning
                     enabled: !controller.cancelRequested
                     text: controller.cancelRequested ? "Cancelando..." : "Cancelar"
@@ -893,6 +881,49 @@ ApplicationWindow {
                         border.color: "#E6B8B3"
                     }
                 }
+
+                Button {
+                    objectName: "downloadExcelButton"
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Layout.minimumHeight: window.actionButtonHeight
+                    implicitHeight: window.actionButtonHeight
+                    font.pixelSize: 12
+                    padding: 8
+                    text: "Exportar Excel"
+                    enabled: controller.exportsAvailable && !controller.exportRunning
+                    onClicked: excelSaveDialog.open()
+                    Material.foreground: window.primaryColor
+                }
+
+                Button {
+                    objectName: "downloadPdfButton"
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Layout.minimumHeight: window.actionButtonHeight
+                    implicitHeight: window.actionButtonHeight
+                    font.pixelSize: 12
+                    padding: 8
+                    text: "Exportar PDF"
+                    enabled: controller.exportsAvailable && !controller.exportRunning
+                    onClicked: pdfSaveDialog.open()
+                    Material.foreground: window.primaryColor
+                }
+
+                Button {
+                    objectName: "downloadEduScaleButton"
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Layout.minimumHeight: window.actionButtonHeight
+                    implicitHeight: window.actionButtonHeight
+                    font.pixelSize: 12
+                    padding: 8
+                    text: "Exportar .eduescale"
+                    enabled: controller.exportsAvailable && !controller.exportRunning
+                    onClicked: eduScaleSaveDialog.open()
+                    Material.foreground: window.primaryColor
+                }
+
             }
         }
     }
@@ -977,6 +1008,9 @@ ApplicationWindow {
             Button {
                 Layout.alignment: Qt.AlignRight
                 text: "Cerrar"
+                implicitHeight: window.compactButtonHeight
+                font.pixelSize: 12
+                padding: 6
                 onClicked: errorDialog.close()
                 Material.foreground: window.primaryColor
             }

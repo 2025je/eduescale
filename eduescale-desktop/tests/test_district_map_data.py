@@ -76,8 +76,22 @@ def test_maplibre_uses_unlabeled_basemap_and_centered_boundary_labels():
     assert "maplibre-gl.css" in map_page
     assert 'fetch("../districts_map_hierarchy.json")' in map_page
     assert 'fetch("../districts_map.json")' in map_page
-    assert 'https://tiles.openfreemap.org/styles/positron' in map_page
+    assert 'https://tiles.openfreemap.org/styles/liberty' in map_page
+    for style in ("bright", "positron", "dark", "fiord"):
+        assert f"https://tiles.openfreemap.org/styles/{style}" in map_page
+    assert "https://tile.openstreetmap.org/{z}/{x}/{y}.png" in map_page
+    assert "https://a.tile.opentopomap.org/{z}/{x}/{y}.png" in map_page
+    assert "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}" in map_page
+    assert 'type: "raster"' in map_page
+    assert "OpenStreetMap</a> contributors" in map_page
+    assert "OpenTopoMap</a>" in map_page
+    assert "Vantor, Earthstar Geographics, and the GIS User Community" in map_page
+    assert "window.setMapStyle = function(styleName)" in map_page
+    assert "map.setStyle(style)" in map_page
     assert 'layer.type === "symbol"' in map_page
+    assert '"fill-opacity": [' in map_page
+    assert '["boolean", ["feature-state", "selected"], false]' in map_page
+    assert "0.5" in map_page
     assert 'id: "boundary-labels"' in map_page
     assert '"text-field": ["get", "mapLabel"]' in map_page
     assert '"text-halo-color": "#FFFFFF"' in map_page

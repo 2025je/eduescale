@@ -145,10 +145,19 @@ Este comando también genera `colegios_escale.eduescale` en la misma carpeta.
 ### Límites del mapa
 
 El mapa usa MapLibre GL JS 5.24.0 y las capas GeoJSON incluidas localmente. Como
-fondo muestra el estilo Positron de OpenFreeMap y requiere conexión a Internet.
-Las etiquetas del mapa base se ocultan; los nombres de los elementos GeoJSON se
-muestran centrados sobre sus límites. La atribución de los datos del mapa
-permanece visible. MapLibre se distribuye bajo BSD-3-Clause; su licencia está en
+fondo muestra el estilo Liberty de OpenFreeMap, más colorido, y requiere
+conexión a Internet. El relleno de los límites GeoJSON es transparente; los
+contornos y etiquetas se mantienen para facilitar la selección.
+El selector sobre el mapa permite cambiar entre Liberty, Bright, Positron,
+Dark y Fiord, además de los mapas estándar de OpenStreetMap, topográfico de
+OpenTopoMap y satelital de Esri World Imagery. Estas capas externas requieren
+conexión a Internet y conservan la atribución de cada proveedor en el mapa.
+OpenStreetMap usa una caché persistente y un identificador de aplicación para
+respetar la política de uso de sus teselas. En los estilos de OpenFreeMap se
+ocultan las etiquetas del mapa base; los fondos raster conservan las etiquetas
+integradas por su proveedor. Los nombres de los elementos GeoJSON se muestran
+centrados sobre sus límites. La atribución de los datos del mapa permanece
+visible. MapLibre se distribuye bajo BSD-3-Clause; su licencia está en
 `eduescale/gui/assets/maplibre/LICENSE.txt`.
 
 La capa distrital descargable del INEI está actualizada al 2023 y contiene

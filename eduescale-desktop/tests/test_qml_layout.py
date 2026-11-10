@@ -160,6 +160,7 @@ district_map = child("districtMap")
 selection_controls = child("selectionControls")
 district_webview = child("districtMapWebView")
 map_level_label = child("mapLevelLabel")
+map_style_selector = child("mapStyleSelector")
 map_advance_button = child("mapAdvanceButton")
 map_back_button = child("mapBackButton")
 map_clear_button = child("mapClearButton")
@@ -188,6 +189,12 @@ assert district_map.property("mapReady"), (
     district_webview.property("loading"),
     district_webview.property("loadProgress"),
 )
+assert map_style_selector.property("count") == 8
+assert map_style_selector.property("currentText") == "Liberty"
+assert map_style_selector.property("enabled")
+assert map_style_selector.property("width") == 148
+assert map_style_selector.property("height") <= 40
+assert map_style_selector.property("background").property("color").alpha() == 255
 hierarchy_path = Path(sys.argv[1]).parents[1] / "assets" / "districts_map_hierarchy.json"
 department_features = json.loads(
     hierarchy_path.read_text(encoding="utf-8")
@@ -368,7 +375,11 @@ for width, height in ((560, 600), (1280, 720), (1366, 768), (1600, 900), (1920, 
     )
     for button in (download_button, excel_button, pdf_button, eduescale_button):
         assert button.property("visible")
-        assert button.property("height") >= 48
+        assert button.property("height") >= 40
+        assert button.property("height") <= 44, (
+            button.objectName(),
+            button.property("height"),
+        )
         assert button.property("x") + button.property("width") <= (
             action_buttons.property("width") + 1
         )
@@ -464,6 +475,7 @@ assert [item.district_code for item in scrape_runner.started_requests[0][1]] == 
 ]
 cancel_button = child("cancelScrapeButton")
 assert cancel_button.property("visible")
+assert not download_button.property("visible")
 for width, expected_action_columns in ((560, 2), (1280, 3)):
     window.resize(width, 600)
     application.processEvents()
@@ -477,7 +489,6 @@ for width, expected_action_columns in ((560, 2), (1280, 3)):
     )
     assert action_buttons.property("columns") == expected_action_columns
     for button in (
-        download_button,
         excel_button,
         pdf_button,
         eduescale_button,
@@ -490,6 +501,11 @@ for width, expected_action_columns in ((560, 2), (1280, 3)):
         assert button.property("y") + button.property("height") <= (
             action_buttons.property("height") + 1
         )
+    cancel_bottom = cancel_button.mapToItem(
+        action_bar,
+        QPointF(0, cancel_button.property("height")),
+    ).y()
+    assert cancel_bottom <= action_bar.property("height") + 1
 assert len(scrape_runner.started_requests) == 1
 scrape_output_path = scrape_runner.started_requests[0][0]
 assert scrape_output_path.name == "colegios_escale.xlsx"

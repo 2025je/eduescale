@@ -149,12 +149,20 @@ Rectangle {
         Component.onCompleted: registerObject("mapBridge", mapBridge)
     }
 
+    WebEngineProfile {
+        id: mapProfile
+        storageName: "eduescale-map"
+        httpCacheType: WebEngineProfile.DiskHttpCache
+        httpUserAgent: "EduEscaleDesktop/1.0 (+https://github.com/2025je/eduescale)"
+    }
+
     WebEngineView {
         id: webView
         objectName: "districtMapWebView"
         anchors.fill: parent
         anchors.margins: 1
         url: Qt.resolvedUrl("../assets/maplibre/map.html")
+        profile: mapProfile
         webChannel: districtChannel
         settings.localContentCanAccessFileUrls: true
         settings.localContentCanAccessRemoteUrls: true
@@ -164,6 +172,46 @@ Rectangle {
                 root.mapReady = false
                 root.loadingError = "No se pudo abrir el mapa local."
             }
+        }
+    }
+
+    ComboBox {
+        id: mapStyleSelector
+        objectName: "mapStyleSelector"
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.margins: 12
+        width: 148
+        implicitHeight: 36
+        z: 2
+        enabled: root.mapReady
+        font.pixelSize: 12
+        padding: 6
+        leftPadding: 9
+        rightPadding: 28
+        textRole: "label"
+        valueRole: "styleKey"
+        background: Rectangle {
+            radius: 8
+            color: "#FFFFFF"
+            border.width: 1
+            border.color: mapStyleSelector.enabled ? "#AFC7B8" : "#DCE6E0"
+        }
+        model: ListModel {
+            ListElement { label: "Liberty"; styleKey: "liberty" }
+            ListElement { label: "Bright"; styleKey: "bright" }
+            ListElement { label: "Positron"; styleKey: "positron" }
+            ListElement { label: "Dark"; styleKey: "dark" }
+            ListElement { label: "Fiord"; styleKey: "fiord" }
+            ListElement { label: "Estándar OSM"; styleKey: "osm" }
+            ListElement { label: "Topográfico"; styleKey: "topographic" }
+            ListElement { label: "Satélite"; styleKey: "satellite" }
+        }
+        onActivated: function(index) {
+            webView.runJavaScript(
+                "window.setMapStyle("
+                    + JSON.stringify(model.get(index).styleKey) + ")"
+            )
         }
     }
 

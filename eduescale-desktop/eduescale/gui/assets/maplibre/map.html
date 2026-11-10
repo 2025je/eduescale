@@ -38,8 +38,58 @@
         let currentFeatures = [];
         let selectedCodes = new Set();
         let currentRequestId = 0;
+        let currentParentCodes = [];
+        let currentSelectionCodes = [];
+        let currentMapStyle = "liberty";
+        let mapStyleChangeId = 0;
         let pendingError = "";
         let popup = null;
+        const MAP_STYLES = {
+            liberty: {
+                type: "style",
+                url: "https://tiles.openfreemap.org/styles/liberty"
+            },
+            bright: {
+                type: "style",
+                url: "https://tiles.openfreemap.org/styles/bright"
+            },
+            positron: {
+                type: "style",
+                url: "https://tiles.openfreemap.org/styles/positron"
+            },
+            dark: {
+                type: "style",
+                url: "https://tiles.openfreemap.org/styles/dark"
+            },
+            fiord: {
+                type: "style",
+                url: "https://tiles.openfreemap.org/styles/fiord"
+            },
+            osm: {
+                type: "raster",
+                tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+                attribution:
+                    '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            },
+            topographic: {
+                type: "raster",
+                tiles: [
+                    "https://a.tile.opentopomap.org/{z}/{x}/{y}.png",
+                    "https://b.tile.opentopomap.org/{z}/{x}/{y}.png",
+                    "https://c.tile.opentopomap.org/{z}/{x}/{y}.png"
+                ],
+                attribution:
+                    'Kartendaten: © <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>-Mitwirkende, SRTM | Kartendarstellung: © <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)'
+            },
+            satellite: {
+                type: "raster",
+                tiles: [
+                    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                ],
+                attribution:
+                    'Source: <a href="https://goto.arcgisonline.com/maps/World_Imagery">Esri</a>, Vantor, Earthstar Geographics, and the GIS User Community'
+            }
+        };
 
         function reportError(error) {
             const message = error && error.message ? error.message : String(error);
@@ -179,7 +229,12 @@
                         "#E8EFEB",
                         "#F3E7C8"
                     ],
-                    "fill-opacity": 0.55
+                    "fill-opacity": [
+                        "case",
+                        ["boolean", ["feature-state", "selected"], false],
+                        0.5,
+                        0
+                    ]
                 }
             });
             map.addLayer({
@@ -270,14 +325,22 @@
         }
 
         window.setSelectedCodes = function(codes) {
-            if (map && Array.isArray(codes))
-                applySelection(codes);
+            if (!map || !Array.isArray(codes))
+                return;
+            currentSelectionCodes = codes.map(String);
+            if (!map.getSource("boundaries")) {
+                selectedCodes = new Set(currentSelectionCodes);
+                return;
+            }
+            applySelection(currentSelectionCodes);
         };
 
         function setMapView(level, parentCodes, codes, requestId) {
             if (!map)
                 return;
             currentLevel = String(level);
+            currentParentCodes = parentCodes.map(String);
+            currentSelectionCodes = codes.map(String);
             currentRequestId = Number(requestId);
             getVisibleFeatures(currentLevel, parentCodes)
                 .then(features => {
@@ -285,13 +348,16 @@
                         return;
                     currentFeatures = features;
                     selectedCodes = new Set();
+                    const source = map.getSource("boundaries");
+                    if (!source)
+                        return;
                     const onBoundarySourceLoaded = event => {
                         if (event.sourceId !== "boundaries" || !event.isSourceLoaded)
                             return;
                         map.off("sourcedata", onBoundarySourceLoaded);
                         if (currentRequestId !== Number(requestId))
                             return;
-                        applySelection(codes);
+                        applySelection(currentSelectionCodes);
                         map.once("moveend", () => {
                             if (currentRequestId !== Number(requestId))
                                 return;
@@ -307,7 +373,7 @@
                         fitFeatures(features);
                     };
                     map.on("sourcedata", onBoundarySourceLoaded);
-                    map.getSource("boundaries").setData({
+                    source.setData({
                         type: "FeatureCollection",
                         features
                     });
@@ -316,6 +382,60 @@
         }
 
         window.setMapView = setMapView;
+
+        window.setMapStyle = function(styleName) {
+            const styleKey = String(styleName);
+            const styleConfig = MAP_STYLES[styleKey];
+            if (!styleConfig) {
+                reportError(new Error("El estilo de mapa seleccionado no es válido."));
+                return;
+            }
+            if (!map || styleKey === currentMapStyle)
+                return;
+
+            currentMapStyle = styleKey;
+            const changeId = ++mapStyleChangeId;
+            map.once("style.load", () => {
+                if (changeId !== mapStyleChangeId)
+                    return;
+                addBoundaryLayers();
+                selectedCodes = new Set();
+                const source = map.getSource("boundaries");
+                const restoreSelection = event => {
+                    if (event.sourceId !== "boundaries" || !event.isSourceLoaded)
+                        return;
+                    map.off("sourcedata", restoreSelection);
+                    if (changeId === mapStyleChangeId)
+                        applySelection(currentSelectionCodes);
+                };
+                map.on("sourcedata", restoreSelection);
+                source.setData({
+                    type: "FeatureCollection",
+                    features: currentFeatures
+                });
+            });
+            const style = styleConfig.type === "style"
+                ? styleConfig.url
+                : {
+                    version: 8,
+                    sources: {
+                        basemap: {
+                            type: "raster",
+                            tiles: styleConfig.tiles,
+                            tileSize: 256,
+                            attribution: styleConfig.attribution
+                        }
+                    },
+                    layers: [
+                        {
+                            id: "basemap",
+                            type: "raster",
+                            source: "basemap"
+                        }
+                    ]
+                };
+            map.setStyle(style);
+        };
 
         window.selectBoundary = function(code) {
             if (!map || !bridge)
@@ -351,7 +471,7 @@
                 dragRotate: false,
                 pitchWithRotate: false,
                 attributionControl: false,
-                style: "https://tiles.openfreemap.org/styles/positron"
+                style: "https://tiles.openfreemap.org/styles/liberty"
             });
             map.addControl(
                 new maplibregl.AttributionControl({compact: false}),
