@@ -25,7 +25,7 @@ jobs:
       - name: Smoke-test scraper executable
         run: .\dist\eduescale-scraper\eduescale-scraper.exe list
         working-directory: eduescale-desktop
-      - name: Verify packaged TLS and QML resources
+      - name: Verify packaged TLS, QML, MapLibre, and WebEngine resources
         shell: pwsh
         working-directory: eduescale-desktop
         run: |
@@ -38,8 +38,14 @@ jobs:
           if ($guiContents -notmatch "certifi.*cacert\.pem") {
             throw "The GUI certificate bundle is missing."
           }
-          if ($guiContents -match "Qt6WebEngine.*\.dll|QtWebEngineProcess\.exe") {
-            throw "Unused Qt WebEngine components were bundled into the GUI."
+          if ($guiContents -notmatch "Qt6WebEngineCore\.dll" -or
+              $guiContents -notmatch "QtWebEngineProcess\.exe") {
+            throw "Qt WebEngine components are missing from the GUI."
+          }
+          foreach ($resource in @("maplibre-gl\.js", "maplibre-gl\.css", "map\.html", "districts_map\.json", "districts_map_hierarchy\.json", "DistrictMap\.qml", "Main\.qml")) {
+            if ($guiContents -notmatch $resource) {
+              throw "Map resource $resource is missing from the GUI."
+            }
           }
           $scraperContents = (& $viewer -l ".\dist\eduescale-scraper\eduescale-scraper.exe") -join "`n"
           if ($LASTEXITCODE -ne 0) { throw "Could not inspect the scraper executable." }
