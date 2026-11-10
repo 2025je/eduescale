@@ -4,12 +4,13 @@ import sys
 from pathlib import Path
 
 QML_SMOKE_SCRIPT = r"""
+import json
 import re
 import sys
 import time
 from pathlib import Path
 
-from PySide6.QtCore import Q_ARG, QMetaObject, QObject, QSettings, Signal, QUrl
+from PySide6.QtCore import QPointF, Q_ARG, QMetaObject, QObject, QSettings, Signal, QUrl
 from PySide6.QtGui import QGuiApplication, QImageReader
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
@@ -144,6 +145,9 @@ search_workspace = child("searchWorkspace")
 criteria_card = child("criteriaCard")
 searches_card = child("searchesCard")
 scroll_view = child("filterScrollView")
+vertical_scrollbar = child("pageVerticalScrollBar")
+search_list_view = child("searchListView")
+search_list_scrollbar = child("searchListVerticalScrollBar")
 action_bar = child("actionBar")
 source_bar = child("sourceBar")
 source_label = child("sourceLabel")
@@ -153,6 +157,7 @@ status_label = child("statusLabel")
 help_text = child("searchHelpText")
 filter_sets = child("filterSetsModel")
 district_map = child("districtMap")
+selection_controls = child("selectionControls")
 district_webview = child("districtMapWebView")
 map_level_label = child("mapLevelLabel")
 map_advance_button = child("mapAdvanceButton")
@@ -168,7 +173,7 @@ excel_dialog = child("excelSaveDialog")
 pdf_dialog = child("pdfSaveDialog")
 eduescale_dialog = child("eduScaleSaveDialog")
 download_button = child("scrapeButton")
-assert district_map.property("featureCount") == 1892
+assert district_map.property("featureCount") == controller.property("districtCount")
 deadline = time.monotonic() + 35
 while (
     not district_map.property("mapReady")
@@ -183,6 +188,36 @@ assert district_map.property("mapReady"), (
     district_webview.property("loading"),
     district_webview.property("loadProgress"),
 )
+hierarchy_path = Path(sys.argv[1]).parents[1] / "assets" / "districts_map_hierarchy.json"
+department_features = json.loads(
+    hierarchy_path.read_text(encoding="utf-8")
+)["departments"]["features"]
+department_coordinates = []
+
+
+def collect_coordinates(value):
+    if isinstance(value[0], (int, float)):
+        department_coordinates.append(value)
+        return
+    for child in value:
+        collect_coordinates(child)
+
+
+for feature in department_features:
+    collect_coordinates(feature["geometry"]["coordinates"])
+department_bounds = (
+    min(point[0] for point in department_coordinates),
+    min(point[1] for point in department_coordinates),
+    max(point[0] for point in department_coordinates),
+    max(point[1] for point in department_coordinates),
+)
+map_bounds = json.loads(district_map.property("mapBoundsJson"))
+assert district_map.property("mapZoom") <= 4, district_map.property("mapZoom")
+assert district_map.property("mapMinimumZoom") == 1
+assert map_bounds[0][0] <= department_bounds[0], (map_bounds, department_bounds)
+assert map_bounds[0][1] <= department_bounds[1], (map_bounds, department_bounds)
+assert map_bounds[1][0] >= department_bounds[2], (map_bounds, department_bounds)
+assert map_bounds[1][1] >= department_bounds[3], (map_bounds, department_bounds)
 assert len(qml_value(controller, "mapDepartmentMetadata")) == 25
 assert len(qml_value(controller, "mapProvinceMetadata")) == 196
 assert qml_value(window, "mapLevel") == "department"
@@ -207,8 +242,8 @@ assert qml_value(window, "selectedProvinceCodes") == ["1501", "1301"]
 map_advance_button.click()
 application.processEvents()
 expected_district_count = sum(
-    district["provinceCode"] in {"1301", "1501"}
-    for district in qml_value(controller, "districtMetadata").values()
+    code[:4] in {"1301", "1501"}
+    for code in qml_value(controller, "districtCodes")
 )
 wait_for_map_count(district_map, expected_district_count)
 select_map_codes(district_webview, district_map, ("150101", "130112"))
@@ -262,7 +297,7 @@ for width, height in ((560, 600), (1280, 720), (1366, 768), (1600, 900), (1920, 
     application.processEvents()
 
     expected_columns = 1 if width < 720 else 2
-    expected_workspace_columns = 1 if width < 1040 else 2
+    expected_workspace_columns = 1 if width < 1100 else 2
     expected_action_columns = 2 if width < 900 else 3
     assert filter_grid.property("columns") == expected_columns, (
         width,
@@ -273,6 +308,28 @@ for width, height in ((560, 600), (1280, 720), (1366, 768), (1600, 900), (1920, 
         search_workspace.property("columns"),
     )
     assert action_buttons.property("columns") == expected_action_columns
+    assert vertical_scrollbar.property("visible")
+    assert vertical_scrollbar.property("interactive")
+    assert search_list_scrollbar.property("visible")
+    assert search_list_scrollbar.property("interactive")
+    page_scrollbar_right = vertical_scrollbar.mapToItem(
+        scroll_view,
+        QPointF(vertical_scrollbar.property("width"), 0),
+    ).x()
+    list_scrollbar_right = search_list_scrollbar.mapToItem(
+        search_list_view,
+        QPointF(search_list_scrollbar.property("width"), 0),
+    ).x()
+    assert page_scrollbar_right >= scroll_view.property("width") - 1, (
+        width,
+        page_scrollbar_right,
+        scroll_view.property("width"),
+    )
+    assert list_scrollbar_right >= search_list_view.property("width") - 1, (
+        width,
+        list_scrollbar_right,
+        search_list_view.property("width"),
+    )
     assert status_label.property("visible")
     assert status_label.property("y") + status_label.property("height") <= (
         action_buttons.property("y") + 1
@@ -294,13 +351,20 @@ for width, height in ((560, 600), (1280, 720), (1366, 768), (1600, 900), (1920, 
     assert abs(
         scroll_view.property("y")
         + scroll_view.property("height")
-        - source_bar.property("y")
+        - window.height()
     ) <= 1
-    assert abs(source_bar.property("y") + source_bar.property("height") - action_bar.property("y")) <= 1
+    assert (
+        source_bar.property("y") + source_bar.property("height")
+        <= action_bar.property("y") + 1
+    ), (
+        source_bar.property("y"),
+        source_bar.property("height"),
+        action_bar.property("y"),
+    )
     assert source_label.property("width") > 0
     assert (
         action_bar.property("y") + action_bar.property("height")
-        <= window.height() + 1
+        <= scroll_view.property("contentHeight") + 1
     )
     for button in (download_button, excel_button, pdf_button, eduescale_button):
         assert button.property("visible")
@@ -311,13 +375,66 @@ for width, height in ((560, 600), (1280, 720), (1366, 768), (1600, 900), (1920, 
         assert button.property("y") + button.property("height") <= (
             action_buttons.property("height") + 1
         )
+    assert download_button.property("width") > excel_button.property("width")
+    assert (
+        download_button.property("y") + download_button.property("height")
+        <= excel_button.property("y") + 1
+    )
     assert district_map.property("x") >= 0
     assert district_map.property("width") > 0
     assert (
         district_map.property("x") + district_map.property("width")
         <= filter_grid.property("width") + 1
     )
-
+    if filter_grid.property("columns") == 2:
+        map_right = district_map.mapToItem(
+            filter_grid,
+            QPointF(district_map.property("width"), 0),
+        ).x()
+        controls_left = selection_controls.mapToItem(
+            filter_grid,
+            QPointF(0, 0),
+        ).x()
+        controls_right = selection_controls.mapToItem(
+            filter_grid,
+            QPointF(selection_controls.property("width"), 0),
+        ).x()
+        assert map_right <= controls_left + 1
+        assert controls_right <= filter_grid.property("width") + 1
+        for control in (map_clear_button, child("addFilterSetButton")):
+            control_right = control.mapToItem(
+                selection_controls,
+                QPointF(control.property("width"), 0),
+            ).x()
+            assert control_right <= selection_controls.property("width") + 1, (
+                control.objectName(),
+                control_right,
+                selection_controls.property("width"),
+            )
+    if width == 1280 and height == 720:
+        viewport = scroll_view.property("contentItem")
+        viewport_height = scroll_view.property("availableHeight")
+        visible_controls = (
+            district_map,
+            map_level_label,
+            map_advance_button,
+            child("publicManagement"),
+            child("privateManagement"),
+            child("primaryLevel"),
+            child("secondaryLevel"),
+            child("cetproLevel"),
+            child("addFilterSetButton"),
+        )
+        for item in visible_controls:
+            bottom = item.mapToItem(
+                viewport,
+                QPointF(0, item.property("height")),
+            ).y()
+            assert bottom <= viewport_height + 1, (
+                item.objectName(),
+                bottom,
+                viewport_height,
+            )
 select_map_codes(district_webview, district_map, ("15", "13"))
 map_advance_button.click()
 application.processEvents()
@@ -430,6 +547,57 @@ assert export_runner.started_requests[-1] == (
     database_path,
     pdf_path,
 )
+
+for levels in (
+    (True, False, False),
+    (False, True, False),
+    (False, False, True),
+    (True, True, True),
+):
+    child("primaryLevel").setProperty("checked", levels[0])
+    child("secondaryLevel").setProperty("checked", levels[1])
+    child("cetproLevel").setProperty("checked", levels[2])
+    assert QMetaObject.invokeMethod(window, "addFilterSet")
+for management in ((False, True), (True, True)):
+    child("publicManagement").setProperty("checked", management[0])
+    child("privateManagement").setProperty("checked", management[1])
+    for levels in (
+        (True, False, False),
+        (False, True, False),
+        (False, False, True),
+    ):
+        child("primaryLevel").setProperty("checked", levels[0])
+        child("secondaryLevel").setProperty("checked", levels[1])
+        child("cetproLevel").setProperty("checked", levels[2])
+        assert QMetaObject.invokeMethod(window, "addFilterSet")
+application.processEvents()
+assert filter_sets.property("count") >= 20
+assert search_list_view.property("contentHeight") > search_list_view.property("height")
+search_list_view.setProperty(
+    "contentY",
+    search_list_view.property("contentHeight") - search_list_view.property("height"),
+)
+application.processEvents()
+assert search_list_view.property("contentY") > 0
+assert (
+    search_list_view.property("contentY") + search_list_view.property("height")
+    >= search_list_view.property("contentHeight") - 1
+)
+assert search_list_scrollbar.property("position") >= (
+    1 - search_list_scrollbar.property("size") - 0.01
+)
+
+page_flickable = scroll_view.property("contentItem")
+page_flickable.setProperty(
+    "contentY",
+    scroll_view.property("contentHeight") - scroll_view.property("availableHeight"),
+)
+application.processEvents()
+eduescale_bottom = eduescale_button.mapToItem(
+    page_flickable,
+    QPointF(0, eduescale_button.property("height")),
+).y()
+assert eduescale_bottom <= page_flickable.property("height") + 1
 
 controller.shutdown()
 """

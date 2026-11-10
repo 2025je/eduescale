@@ -144,9 +144,12 @@ Este comando también genera `colegios_escale.eduescale` en la misma carpeta.
 
 ### Límites del mapa
 
-El mapa usa MapLibre GL JS 5.24.0 con recursos incluidos localmente; no descarga
-mapas base ni depende de una conexión a Internet. MapLibre se distribuye bajo
-BSD-3-Clause; su licencia está en `eduescale/gui/assets/maplibre/LICENSE.txt`.
+El mapa usa MapLibre GL JS 5.24.0 y las capas GeoJSON incluidas localmente. Como
+fondo muestra el estilo Positron de OpenFreeMap y requiere conexión a Internet.
+Las etiquetas del mapa base se ocultan; los nombres de los elementos GeoJSON se
+muestran centrados sobre sus límites. La atribución de los datos del mapa
+permanece visible. MapLibre se distribuye bajo BSD-3-Clause; su licencia está en
+`eduescale/gui/assets/maplibre/LICENSE.txt`.
 
 La capa distrital descargable del INEI está actualizada al 2023 y contiene
 1.890 UBIGEO únicos. La consulta en vivo de ESCALE usada para esta versión
@@ -198,8 +201,9 @@ uv run --group nox nox
 ```
 
 Nox crea el entorno de pruebas con `uv`, instala el grupo `test` desde el
-`uv.lock` y ejecuta `pytest`. La suite incluye una prueba QML sin conexión que
-verifica el diseño en 1280 × 720, 1366 × 768, 1600 × 900 y 1920 × 1080.
+`uv.lock` y ejecuta `pytest`. La suite incluye una prueba QML que verifica la
+navegación jerárquica del mapa y el diseño en 1280 × 720, 1366 × 768, 1600 × 900
+y 1920 × 1080.
 
 ## Ejecutable para Windows
 

@@ -120,7 +120,7 @@ def test_restores_export_folder_and_window_size(tmp_path):
             tmp_path / "colegios_escale.xlsx"
         )
         assert controller.windowWidth == 560
-        assert controller.windowHeight == 860
+        assert controller.windowHeight == 760
 
         controller.saveWindowSize(900, 700)
 

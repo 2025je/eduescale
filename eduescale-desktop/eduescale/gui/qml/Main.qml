@@ -48,22 +48,11 @@ ApplicationWindow {
     }
 
     function effectiveDistrictCodes() {
-        if (selectedDistrictCodes.length)
-            return selectedDistrictCodes.slice()
-
-        var codes = Object.keys(controller.districtMetadata).sort()
-        var selected = []
-        for (var index = 0; index < codes.length; index++) {
-            var code = codes[index]
-            var properties = controller.districtMetadata[code]
-            if (selectedProvinceCodes.length) {
-                if (selectedProvinceCodes.indexOf(properties.provinceCode) >= 0)
-                    selected.push(code)
-            } else if (selectedDepartmentCodes.indexOf(properties.departmentCode) >= 0) {
-                selected.push(code)
-            }
-        }
-        return selected
+        return controller.effectiveDistrictCodes(
+            selectedDepartmentCodes,
+            selectedProvinceCodes,
+            selectedDistrictCodes
+        )
     }
 
     function advanceMapLevel() {
@@ -149,12 +138,12 @@ ApplicationWindow {
         var duplicates = 0
         for (var codeIndex = 0; codeIndex < selectedCodes.length; codeIndex++) {
             var districtCode = selectedCodes[codeIndex]
-            var feature = districtCode ? districtMap.featureForCode(districtCode) : null
-            if (districtCode && !feature) {
+            var properties = districtCode
+                ? controller.mapDistrictProperties(districtCode) : null
+            if (districtCode && !properties) {
                 filterNotice = "No se encontró la información de uno de los distritos seleccionados."
                 return
             }
-            var properties = feature ? feature.properties : null
             var filterSet = {
                 regionCode: "",
                 provinceCode: "",
@@ -212,21 +201,27 @@ ApplicationWindow {
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.bottom: sourceBar.top
-        padding: 20
+        anchors.bottom: parent.bottom
+        padding: 12
         clip: true
         contentWidth: availableWidth
         contentHeight: pageContent.implicitHeight
-        ScrollBar.vertical.policy: ScrollBar.AsNeeded
+        ScrollBar.vertical: ScrollBar {
+            objectName: "pageVerticalScrollBar"
+            anchors.right: parent.right
+            policy: ScrollBar.AlwaysOn
+            interactive: true
+            width: 12
+        }
 
         ColumnLayout {
             id: pageContent
             width: filterScrollView.availableWidth
-            spacing: 16
+            spacing: 10
 
             Frame {
                 Layout.fillWidth: true
-                padding: 20
+                padding: 10
                 background: Rectangle {
                     radius: window.cardRadius
                     color: "#FFFFFF"
@@ -236,16 +231,16 @@ ApplicationWindow {
 
                 ColumnLayout {
                     anchors.fill: parent
-                    spacing: 12
+                    spacing: 0
 
                     RowLayout {
                         Layout.fillWidth: true
-                        spacing: 14
+                        spacing: 10
 
                         Image {
                             objectName: "brandLogo"
-                            Layout.preferredWidth: 52
-                            Layout.preferredHeight: 52
+                            Layout.preferredWidth: 42
+                            Layout.preferredHeight: 42
                             source: Qt.resolvedUrl("../assets/edutrack-logo.png")
                             fillMode: Image.PreserveAspectFit
                         }
@@ -258,24 +253,16 @@ ApplicationWindow {
                                 objectName: "brandTitle"
                                 text: "EduEscale"
                                 color: window.textColor
-                                font.pixelSize: 26
+                                font.pixelSize: 22
                                 font.weight: Font.DemiBold
                             }
 
                             Label {
-                                text: "Instituciones educativas del Perú"
+                                text: "Instituciones educativas del Perú · Busca, filtra y exporta"
                                 color: window.mutedTextColor
-                                font.pixelSize: 13
+                                font.pixelSize: 12
                             }
                         }
-                    }
-
-                    Label {
-                        Layout.fillWidth: true
-                        text: "Combina ubicaciones y criterios para encontrar colegios y exportar sus datos."
-                        color: window.mutedTextColor
-                        font.pixelSize: 14
-                        wrapMode: Text.WordWrap
                     }
                 }
             }
@@ -284,9 +271,9 @@ ApplicationWindow {
                 id: searchWorkspace
                 objectName: "searchWorkspace"
                 Layout.fillWidth: true
-                columns: window.width < 1040 ? 1 : 2
-                columnSpacing: 16
-                rowSpacing: 16
+                columns: window.width < 1100 ? 1 : 2
+                columnSpacing: 12
+                rowSpacing: 12
 
             Frame {
                 id: criteriaCard
@@ -294,9 +281,9 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 Layout.alignment: Qt.AlignTop
                 Layout.preferredWidth: searchWorkspace.columns === 2
-                    ? filterScrollView.availableWidth * 0.58
+                    ? filterScrollView.availableWidth * 0.66
                     : filterScrollView.availableWidth
-                padding: 22
+                padding: 14
                 background: Rectangle {
                     radius: window.cardRadius
                     color: "white"
@@ -306,13 +293,48 @@ ApplicationWindow {
 
                 ColumnLayout {
                     anchors.fill: parent
-                    spacing: 14
+                    spacing: 8
 
                     Label {
-                        text: "Configura tu búsqueda"
+                        text: "Ubicación y criterios"
                         color: window.textColor
-                        font.pixelSize: 20
+                        font.pixelSize: 18
                         font.weight: Font.DemiBold
+                    }
+
+                    RowLayout {
+                        objectName: "mapNavigation"
+                        Layout.fillWidth: true
+                        Label {
+                            id: mapLevelLabel
+                            objectName: "mapLevelLabel"
+                            Layout.fillWidth: true
+                            color: window.textColor
+                            font.weight: Font.DemiBold
+                            text: window.mapLevel === "department"
+                                ? "Paso 1 de 3 · Departamentos"
+                                : window.mapLevel === "province"
+                                ? "Paso 2 de 3 · Provincias"
+                                : "Paso 3 de 3 · Distritos"
+                        }
+                        Button {
+                            objectName: "mapBackButton"
+                            text: "Volver"
+                            visible: window.mapLevel !== "department"
+                            enabled: !controller.scrapeRunning
+                            onClicked: window.goBackMapLevel()
+                        }
+                        Button {
+                            objectName: "mapAdvanceButton"
+                            text: window.mapLevel === "department"
+                                ? "Ver provincias" : "Ver distritos"
+                            visible: window.mapLevel !== "district"
+                            enabled: !controller.scrapeRunning
+                                && (window.mapLevel === "department"
+                                    ? window.selectedDepartmentCodes.length > 0
+                                    : window.selectedProvinceCodes.length > 0)
+                            onClicked: window.advanceMapLevel()
+                        }
                     }
 
                     GridLayout {
@@ -320,57 +342,18 @@ ApplicationWindow {
                         objectName: "filterGrid"
                         Layout.fillWidth: true
                         columns: window.width < 720 ? 1 : 2
-                        columnSpacing: window.width < 720 ? 0 : 18
-                        rowSpacing: window.width < 720 ? 4 : 10
+                        columnSpacing: 12
+                        rowSpacing: 6
 
-                        Label {
-                            text: "Ubicación · navega por el mapa desde departamentos "
-                                + "hasta provincias y distritos"
-                            color: window.mutedTextColor
-                            font.weight: Font.Medium
-                            Layout.columnSpan: filterGrid.columns
-                        }
-                        RowLayout {
-                            objectName: "mapNavigation"
-                            Layout.fillWidth: true
-                            Layout.columnSpan: filterGrid.columns
-
-                            Label {
-                                id: mapLevelLabel
-                                objectName: "mapLevelLabel"
-                                Layout.fillWidth: true
-                                color: window.textColor
-                                font.weight: Font.DemiBold
-                                text: window.mapLevel === "department"
-                                    ? "Paso 1 de 3 · Departamentos"
-                                    : window.mapLevel === "province"
-                                    ? "Paso 2 de 3 · Provincias"
-                                    : "Paso 3 de 3 · Distritos"
-                            }
-                            Button {
-                                objectName: "mapBackButton"
-                                text: "Volver"
-                                visible: window.mapLevel !== "department"
-                                enabled: !controller.scrapeRunning
-                                onClicked: window.goBackMapLevel()
-                            }
-                            Button {
-                                objectName: "mapAdvanceButton"
-                                text: window.mapLevel === "department"
-                                    ? "Ver provincias" : "Ver distritos"
-                                visible: window.mapLevel !== "district"
-                                enabled: !controller.scrapeRunning
-                                    && (window.mapLevel === "department"
-                                        ? window.selectedDepartmentCodes.length > 0
-                                        : window.selectedProvinceCodes.length > 0)
-                                onClicked: window.advanceMapLevel()
-                            }
-                        }
                         DistrictMap {
                             id: districtMap
+                            Layout.column: 0
+                            Layout.row: 0
                             Layout.fillWidth: true
-                            Layout.columnSpan: filterGrid.columns
+                            Layout.fillHeight: false
+                            Layout.minimumHeight: 300
                             Layout.preferredHeight: 340
+                            Layout.alignment: Qt.AlignTop
                             enabled: !controller.scrapeRunning
                             mapLevel: window.mapLevel
                             parentCodes: window.mapLevel === "province"
@@ -384,27 +367,45 @@ ApplicationWindow {
                                 : window.selectedDistrictCodes
                             departmentMetadata: controller.mapDepartmentMetadata
                             provinceMetadata: controller.mapProvinceMetadata
-                            districtMetadata: controller.districtMetadata
+                            districtCodes: controller.districtCodes
                             onSelectedCodesChanged: window.filterNotice = ""
                             onMapSelectionChanged: function(level, codes) {
                                 window.updateMapSelection(level, codes)
                             }
                         }
-                        RowLayout {
-                            Layout.fillWidth: true
-                            Layout.columnSpan: filterGrid.columns
+                        ColumnLayout {
+                            objectName: "selectionControls"
+                            Layout.column: filterGrid.columns === 2 ? 1 : 0
+                            Layout.row: filterGrid.columns === 2 ? 0 : 1
+                            Layout.fillWidth: filterGrid.columns === 1
+                            Layout.fillHeight: true
+                            Layout.preferredWidth: filterGrid.columns === 2
+                                ? 260 : filterGrid.width
+                            Layout.minimumWidth: filterGrid.columns === 2 ? 260 : 0
+                            Layout.maximumWidth: filterGrid.columns === 2
+                                ? 260 : 16777215
+                            Layout.alignment: Qt.AlignTop | Qt.AlignLeft
+                            spacing: 2
 
                             Label {
                                 Layout.fillWidth: true
+                                Layout.maximumWidth: filterGrid.columns === 2
+                                    ? 260 : 16777215
                                 color: window.mutedTextColor
-                                text: window.effectiveDistrictCodes().length
-                                    ? window.effectiveDistrictCodes().length
-                                        + " distritos incluidos en la búsqueda"
-                                    : "Sin selección: se buscará en todo el país"
+                                wrapMode: Text.WordWrap
+                                text: {
+                                    var count = window.effectiveDistrictCodes().length
+                                    return count
+                                        ? count + " distritos"
+                                        : "Todo el Perú"
+                                }
                             }
                             Button {
                                 objectName: "mapClearButton"
-                                text: "Limpiar"
+                                Layout.fillWidth: true
+                                Layout.maximumWidth: filterGrid.columns === 2
+                                    ? 260 : 16777215
+                                text: "Limpiar selección"
                                 enabled: (window.mapLevel !== "department"
                                     || window.selectedDepartmentCodes.length > 0
                                     || window.selectedProvinceCodes.length > 0
@@ -412,115 +413,121 @@ ApplicationWindow {
                                     && !controller.scrapeRunning
                                 onClicked: window.clearMapSelection()
                             }
-                        }
-                        Label {
-                            Layout.fillWidth: true
-                            Layout.columnSpan: filterGrid.columns
-                            text: "Límites INEI actualizados al 2023. Alto Trujillo y "
-                                + "Santa Rosa de Loreto se muestran en ocre con límites "
-                                + "aproximados derivados de las Leyes 31644 y 32403."
-                            color: window.mutedTextColor
-                            wrapMode: Text.WordWrap
-                            font.pixelSize: 11
-                        }
 
-                        Label {
-                            text: "Gestión"
-                            color: window.mutedTextColor
-                            font.weight: Font.Medium
-                            Layout.alignment: Qt.AlignTop
-                        }
-                        Flow {
-                            Layout.fillWidth: true
-                            spacing: 8
-                            CheckBox {
-                                id: publicManagement
-                                objectName: "publicManagement"
-                                text: "Pública"
-                                enabled: !controller.scrapeRunning
-                                onToggled: window.filterNotice = ""
+                            Label {
+                                text: "Gestión"
+                                color: window.mutedTextColor
+                                font.weight: Font.Medium
                             }
-                            CheckBox {
-                                id: privateManagement
-                                objectName: "privateManagement"
-                                text: "Privada"
-                                enabled: !controller.scrapeRunning
-                                onToggled: window.filterNotice = ""
+                            Flow {
+                                Layout.fillWidth: true
+                                Layout.maximumWidth: filterGrid.columns === 2
+                                    ? 260 : 16777215
+                                spacing: 4
+                                CheckBox {
+                                    id: publicManagement
+                                    objectName: "publicManagement"
+                                    text: "Pública"
+                                    enabled: !controller.scrapeRunning
+                                    onToggled: window.filterNotice = ""
+                                }
+                                CheckBox {
+                                    id: privateManagement
+                                    objectName: "privateManagement"
+                                    text: "Privada"
+                                    enabled: !controller.scrapeRunning
+                                    onToggled: window.filterNotice = ""
+                                }
                             }
-                        }
 
-                        Label {
-                            text: "Nivel educativo"
-                            color: window.mutedTextColor
-                            font.weight: Font.Medium
-                            Layout.alignment: Qt.AlignTop
-                        }
-                        Flow {
-                            Layout.fillWidth: true
-                            spacing: 8
-                            CheckBox {
-                                id: primaryLevel
-                                objectName: "primaryLevel"
-                                text: "Primaria"
-                                enabled: !controller.scrapeRunning
-                                onToggled: window.filterNotice = ""
+                            Label {
+                                text: "Nivel educativo"
+                                color: window.mutedTextColor
+                                font.weight: Font.Medium
                             }
-                            CheckBox {
-                                id: secondaryLevel
-                                objectName: "secondaryLevel"
-                                text: "Secundaria"
-                                enabled: !controller.scrapeRunning
-                                onToggled: window.filterNotice = ""
+                            Flow {
+                                Layout.fillWidth: true
+                                Layout.maximumWidth: filterGrid.columns === 2
+                                    ? 260 : 16777215
+                                spacing: 4
+                                CheckBox {
+                                    id: primaryLevel
+                                    objectName: "primaryLevel"
+                                    text: "Primaria"
+                                    enabled: !controller.scrapeRunning
+                                    onToggled: window.filterNotice = ""
+                                }
+                                CheckBox {
+                                    id: secondaryLevel
+                                    objectName: "secondaryLevel"
+                                    text: "Secundaria"
+                                    enabled: !controller.scrapeRunning
+                                    onToggled: window.filterNotice = ""
+                                }
+                                CheckBox {
+                                    id: cetproLevel
+                                    objectName: "cetproLevel"
+                                    text: "CETPRO"
+                                    enabled: !controller.scrapeRunning
+                                    onToggled: window.filterNotice = ""
+                                }
                             }
-                            CheckBox {
-                                id: cetproLevel
-                                objectName: "cetproLevel"
-                                text: "CETPRO"
-                                enabled: !controller.scrapeRunning
-                                onToggled: window.filterNotice = ""
-                            }
-                        }
 
-                        Label {
-                            objectName: "searchHelpText"
-                            Layout.fillWidth: true
-                            Layout.columnSpan: filterGrid.columns
-                            text: window.filterNotice.length
-                                ? window.filterNotice
-                                : "Selecciona uno o varios distritos en el mapa y marca al menos una opción en Gestión y Nivel educativo."
-                            color: window.mutedTextColor
-                            wrapMode: Text.WordWrap
-                            font.pixelSize: 12
-                        }
-                    }
+                            Label {
+                                Layout.fillWidth: true
+                                Layout.maximumWidth: filterGrid.columns === 2
+                                    ? 260 : 16777215
+                                text: "Límites INEI 2023; Alto Trujillo y Santa Rosa de Loreto son aproximados."
+                                color: window.mutedTextColor
+                                wrapMode: Text.WordWrap
+                                font.pixelSize: 10
+                            }
 
-                    Button {
-                        id: addFilterSetButton
-                        objectName: "addFilterSetButton"
-                        Layout.fillWidth: true
-                        implicitHeight: 52
-                        text: "Agregar a mis búsquedas"
-                        highlighted: true
-                        Material.foreground: enabled ? "#FFFFFF" : window.primaryEmphasisColor
-                        enabled: !controller.scrapeRunning
-                            && window.selectedManagement().length > 0
-                            && window.selectedLevels().length > 0
-                        onClicked: window.addFilterSet()
-                        background: Rectangle {
-                            radius: window.controlRadius
-                            color: !addFilterSetButton.enabled
-                                ? window.primarySubtleColor
-                                : addFilterSetButton.pressed
-                                    ? window.primaryActiveColor
-                                    : addFilterSetButton.hovered
-                                        ? window.primaryHoverColor
-                                        : window.primaryColor
-                            border.width: 1
-                            border.color: addFilterSetButton.enabled
-                                ? window.primaryBorderColor
-                                : window.primarySubtleColor
-                            Behavior on color {
-                                ColorAnimation { duration: 120 }
+                            Label {
+                                objectName: "searchHelpText"
+                                Layout.fillWidth: true
+                                Layout.maximumWidth: filterGrid.columns === 2
+                                    ? 260 : 16777215
+                                text: window.filterNotice.length
+                                    ? window.filterNotice
+                                    : "Selecciona ubicación, gestión y nivel educativo."
+                                color: window.mutedTextColor
+                                wrapMode: Text.WordWrap
+                                font.pixelSize: 11
+                            }
+
+                            Button {
+                                id: addFilterSetButton
+                                objectName: "addFilterSetButton"
+                                Layout.fillWidth: true
+                                Layout.maximumWidth: filterGrid.columns === 2
+                                    ? 260 : 16777215
+                                implicitHeight: 48
+                                text: "Agregar búsqueda"
+                                highlighted: true
+                                Material.foreground: enabled
+                                    ? "#FFFFFF" : window.primaryEmphasisColor
+                                enabled: !controller.scrapeRunning
+                                    && window.selectedManagement().length > 0
+                                    && window.selectedLevels().length > 0
+                                onClicked: window.addFilterSet()
+                                background: Rectangle {
+                                    radius: window.controlRadius
+                                    color: !addFilterSetButton.enabled
+                                        ? window.primarySubtleColor
+                                        : addFilterSetButton.pressed
+                                            ? window.primaryActiveColor
+                                            : addFilterSetButton.hovered
+                                                ? window.primaryHoverColor
+                                                : window.primaryColor
+                                    border.width: 1
+                                    border.color: addFilterSetButton.enabled
+                                        ? window.primaryBorderColor
+                                        : window.primarySubtleColor
+                                    Behavior on color {
+                                        ColorAnimation { duration: 120 }
+                                    }
+                                }
                             }
                         }
                     }
@@ -533,9 +540,9 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 Layout.alignment: Qt.AlignTop
                 Layout.preferredWidth: searchWorkspace.columns === 2
-                    ? filterScrollView.availableWidth * 0.42
+                    ? filterScrollView.availableWidth * 0.34
                     : filterScrollView.availableWidth
-                padding: 22
+                padding: 14
                 background: Rectangle {
                     radius: window.cardRadius
                     color: "white"
@@ -577,36 +584,29 @@ ApplicationWindow {
                         }
                     }
 
-                    ColumnLayout {
+                    Item {
+                        id: searchListViewport
+                        objectName: "searchListViewport"
                         Layout.fillWidth: true
-                        spacing: 6
+                        Layout.preferredHeight: Math.min(
+                            Math.max(
+                                searchListView.contentHeight,
+                                emptySearchState.implicitHeight
+                            ),
+                            Math.max(180, window.height * 0.45)
+                        )
+                        clip: true
 
-                        Rectangle {
-                            objectName: "emptySearchState"
-                            Layout.fillWidth: true
-                            implicitHeight: emptySearchLabel.implicitHeight + 24
-                            visible: filterSetsModel.count === 0
-                            radius: window.controlRadius
-                            color: "#F7FAF8"
-                            border.width: 1
-                            border.color: window.borderColor
-
-                            Label {
-                                id: emptySearchLabel
-                                anchors.left: parent.left
-                                anchors.right: parent.right
-                                anchors.top: parent.top
-                                anchors.margins: 12
-                                text: "Aún no agregas búsquedas. Elige los criterios y pulsa «Agregar a mis búsquedas»."
-                                color: window.mutedTextColor
-                                wrapMode: Text.WordWrap
-                            }
-                        }
-
-                        Repeater {
+                        ListView {
+                            id: searchListView
+                            objectName: "searchListView"
+                            anchors.fill: parent
+                            clip: true
                             model: filterSetsModel
+                            spacing: 6
+
                             delegate: Frame {
-                                Layout.fillWidth: true
+                                width: searchListView.width - searchListVerticalScrollBar.width
                                 padding: 12
 
                                 background: Rectangle {
@@ -670,25 +670,52 @@ ApplicationWindow {
                                     }
                                 }
                             }
+
+                            ScrollBar.vertical: ScrollBar {
+                                id: searchListVerticalScrollBar
+                                objectName: "searchListVerticalScrollBar"
+                                anchors.right: parent.right
+                                policy: ScrollBar.AlwaysOn
+                                interactive: true
+                                width: 12
+                            }
+                        }
+
+                        Rectangle {
+                            id: emptySearchState
+                            objectName: "emptySearchState"
+                            anchors.fill: parent
+                            implicitHeight: emptySearchLabel.implicitHeight + 24
+                            visible: filterSetsModel.count === 0
+                            radius: window.controlRadius
+                            color: "#F7FAF8"
+                            border.width: 1
+                            border.color: window.borderColor
+
+                            Label {
+                                id: emptySearchLabel
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.top: parent.top
+                                anchors.margins: 12
+                                text: "Aún no agregas búsquedas. Elige los criterios y pulsa «Agregar a mis búsquedas»."
+                                color: window.mutedTextColor
+                                wrapMode: Text.WordWrap
+                            }
                         }
                     }
                 }
             }
             }
 
-        }
-    }
-
     Rectangle {
         id: sourceBar
         objectName: "sourceBar"
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.bottom: actionBar.top
+        Layout.fillWidth: true
+        Layout.preferredHeight: 36
         height: 36
         color: "#F4F7F5"
         border.color: window.borderColor
-        z: 1
 
         Label {
             id: sourceLabel
@@ -707,15 +734,12 @@ ApplicationWindow {
     Rectangle {
         id: actionBar
         objectName: "actionBar"
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
-        height: controller.progressVisible
-            ? window.width < 900 ? 220 : 196
-            : window.width < 900 ? 184 : 124
+        Layout.fillWidth: true
+        Layout.preferredHeight: controller.progressVisible
+            ? window.width < 900 ? 300 : 244
+            : window.width < 900 ? 240 : 184
         color: "white"
         border.color: window.borderColor
-        z: 1
 
         ColumnLayout {
             anchors.fill: parent
@@ -772,10 +796,11 @@ ApplicationWindow {
                 Button {
                     id: scrapeButton
                     objectName: "scrapeButton"
+                    Layout.columnSpan: actionButtons.columns
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.minimumHeight: 48
-                    implicitHeight: 52
+                    implicitHeight: 54
                     text: controller.cancelRequested
                         ? "Cancelando extracción..."
                         : controller.scrapeRunning
@@ -847,6 +872,8 @@ ApplicationWindow {
                 Button {
                     id: cancelScrapeButton
                     objectName: "cancelScrapeButton"
+                    Layout.columnSpan: actionButtons.columns
+                    Layout.fillWidth: true
                     Layout.preferredWidth: 120
                     Layout.fillHeight: true
                     Layout.minimumHeight: 48
@@ -867,6 +894,9 @@ ApplicationWindow {
                     }
                 }
             }
+        }
+    }
+
         }
     }
 

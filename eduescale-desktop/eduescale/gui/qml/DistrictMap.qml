@@ -14,7 +14,7 @@ Rectangle {
 
     property var departmentMetadata: ({})
     property var provinceMetadata: ({})
-    property var districtMetadata: ({})
+    property var districtCodes: []
     property string mapLevel: "department"
     property var parentCodes: []
     property var selectionCodes: []
@@ -23,30 +23,32 @@ Rectangle {
     property bool mapReady: false
     property int mapRequestId: 0
     property int renderedFeatureCount: 0
-    readonly property int featureCount: Object.keys(districtMetadata).length
+    property real mapZoom: 0
+    property string mapBoundsJson: ""
+    property real mapMinimumZoom: 0
+    readonly property int featureCount: districtCodes.length
     readonly property int expectedFeatureCount: {
-        var metadata = mapLevel === "department" ? departmentMetadata
-            : mapLevel === "province" ? provinceMetadata : districtMetadata
-        var codes = Object.keys(metadata)
         if (mapLevel === "department")
-            return codes.length
+            return Object.keys(departmentMetadata).length
 
         var count = 0
-        for (var index = 0; index < codes.length; index++) {
-            var properties = metadata[codes[index]]
-            var parentCode = mapLevel === "province"
-                ? properties.departmentCode : properties.provinceCode
-            if (parentCodes.indexOf(parentCode) >= 0)
-                count++
+        if (mapLevel === "province") {
+            var provinceCodes = Object.keys(provinceMetadata)
+            for (var index = 0; index < provinceCodes.length; index++) {
+                var province = provinceMetadata[provinceCodes[index]]
+                if (parentCodes.indexOf(province.departmentCode) >= 0)
+                    count++
+            }
+            return count
+        }
+        for (var parentIndex = 0; parentIndex < parentCodes.length; parentIndex++) {
+            var selectedProvince = provinceMetadata[parentCodes[parentIndex]]
+            if (selectedProvince)
+                count += selectedProvince.districtCount
         }
         return count
     }
     signal mapSelectionChanged(string level, var codes)
-
-    function featureForCode(code) {
-        var properties = districtMetadata[code]
-        return properties ? {properties: properties} : null
-    }
 
     function syncMapView() {
         if (!mapReady)
@@ -101,13 +103,15 @@ Rectangle {
 
             var metadata = root.mapLevel === "department"
                 ? root.departmentMetadata
-                : root.mapLevel === "province"
-                ? root.provinceMetadata : root.districtMetadata
+                : root.provinceMetadata
             var uniqueCodes = []
             for (var index = 0; index < codes.length; index++) {
                 var code = String(codes[index])
-                if (!metadata[code]) {
-                    root.loadingError = "El mapa devolvió un código desconocido."
+                var knownCode = root.mapLevel === "district"
+                    ? root.districtCodes.indexOf(code) >= 0 : Boolean(metadata[code])
+                if (!knownCode) {
+                    root.loadingError = "El mapa devolvió un código desconocido: "
+                        + code + " (nivel " + root.mapLevel + ")."
                     return
                 }
                 if (uniqueCodes.indexOf(code) < 0)
@@ -118,7 +122,7 @@ Rectangle {
             root.mapSelectionChanged(root.mapLevel, uniqueCodes)
         }
 
-        function reportMapReady(level, count, requestId) {
+        function reportMapReady(level, count, requestId, zoom, boundsJson, minZoom) {
             if (Number(requestId) !== root.mapRequestId
                     || String(level) !== root.mapLevel)
                 return
@@ -127,6 +131,9 @@ Rectangle {
                 return
             }
             root.renderedFeatureCount = Number(count)
+            root.mapZoom = Number(zoom)
+            root.mapBoundsJson = String(boundsJson)
+            root.mapMinimumZoom = Number(minZoom)
             root.loadingError = ""
             root.mapReady = true
         }
@@ -150,7 +157,7 @@ Rectangle {
         url: Qt.resolvedUrl("../assets/maplibre/map.html")
         webChannel: districtChannel
         settings.localContentCanAccessFileUrls: true
-        settings.localContentCanAccessRemoteUrls: false
+        settings.localContentCanAccessRemoteUrls: true
 
         onLoadingChanged: function(loadRequest) {
             if (loadRequest.status === WebEngineView.LoadFailedStatus) {

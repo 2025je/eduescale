@@ -33,6 +33,7 @@
         let map = null;
         let hierarchy = null;
         let districtFeatures = null;
+        let districtFeaturesPromise = null;
         let currentLevel = "department";
         let currentFeatures = [];
         let selectedCodes = new Set();
@@ -63,34 +64,68 @@
                 if (level === "district")
                     properties.provinceCode = String(code).slice(0, 4);
                 properties.mapId = String(code);
+                properties.mapLevel = level;
+                properties.mapLabel = level === "district"
+                    ? properties.district : properties.name;
                 return {...feature, properties};
             });
         }
 
         function getVisibleFeatures(level, parentCodes) {
             if (level === "department")
-                return normalizeFeatures(hierarchy.departments.features, level);
+                return Promise.resolve(
+                    normalizeFeatures(hierarchy.departments.features, level)
+                );
 
             if (level === "province") {
                 const departments = new Set(parentCodes.map(String));
-                return normalizeFeatures(
-                    hierarchy.provinces.features.filter(feature =>
-                        departments.has(String(feature.properties.departmentCode))
-                    ),
-                    level
+                return Promise.resolve(
+                    normalizeFeatures(
+                        hierarchy.provinces.features.filter(feature =>
+                            departments.has(String(feature.properties.departmentCode))
+                        ),
+                        level
+                    )
                 );
             }
 
             if (level === "district") {
                 const provinces = new Set(parentCodes.map(String));
-                return normalizeFeatures(
-                    districtFeatures.filter(feature =>
-                        provinces.has(String(feature.properties.ubigeo).slice(0, 4))
-                    ),
-                    level
+                if (!districtFeaturesPromise) {
+                    districtFeaturesPromise = fetch("../districts_map.json")
+                        .then(response => {
+                            if (!response.ok)
+                                throw new Error(
+                                    "No se pudo leer la capa geográfica de distritos."
+                                );
+                            return response.json();
+                        })
+                        .then(data => {
+                            if (data.type !== "FeatureCollection"
+                                    || !Array.isArray(data.features)
+                                    || data.features.length !== 1892) {
+                                throw new Error(
+                                    "La capa geográfica de distritos está incompleta."
+                                );
+                            }
+                            districtFeatures = data.features;
+                            return districtFeatures;
+                        })
+                        .catch(error => {
+                            districtFeaturesPromise = null;
+                            throw error;
+                        });
+                }
+                return districtFeaturesPromise.then(features =>
+                    normalizeFeatures(
+                        features.filter(feature =>
+                            provinces.has(String(feature.properties.ubigeo).slice(0, 4))
+                        ),
+                        level
+                    )
                 );
             }
-            throw new Error("Nivel geográfico desconocido.");
+            return Promise.reject(new Error("Nivel geográfico desconocido."));
         }
 
         function fitFeatures(features) {
@@ -107,11 +142,116 @@
                 extendCoordinates(feature.geometry.coordinates);
             if (bounds.isEmpty())
                 throw new Error("No hay geometrías para mostrar en este nivel.");
-            map.fitBounds(bounds, {padding: 24, duration: 250, maxZoom: 8});
+            map.resize();
+            const padding = currentLevel === "department" ? 40 : 24;
+            const camera = map.cameraForBounds(bounds, {padding});
+            if (currentLevel === "department")
+                camera.zoom = Math.min(camera.zoom, 4);
+            map.easeTo({...camera, duration: 250});
+        }
+
+        function addBoundaryLayers() {
+            for (const layer of map.getStyle().layers) {
+                if (layer.type === "symbol")
+                    map.setLayoutProperty(layer.id, "visibility", "none");
+            }
+            map.addSource("boundaries", {
+                type: "geojson",
+                data: {
+                    type: "FeatureCollection",
+                    features: normalizeFeatures(
+                        hierarchy.departments.features,
+                        "department"
+                    )
+                },
+                promoteId: "mapId"
+            });
+            map.addLayer({
+                id: "boundary-fill",
+                type: "fill",
+                source: "boundaries",
+                paint: {
+                    "fill-color": [
+                        "case",
+                        ["boolean", ["feature-state", "selected"], false],
+                        "#176B50",
+                        ["==", ["get", "boundary_quality"], "official"],
+                        "#E8EFEB",
+                        "#F3E7C8"
+                    ],
+                    "fill-opacity": 0.55
+                }
+            });
+            map.addLayer({
+                id: "boundary-outline",
+                type: "line",
+                source: "boundaries",
+                paint: {
+                    "line-color": [
+                        "case",
+                        ["boolean", ["feature-state", "selected"], false],
+                        "#104B39",
+                        ["==", ["get", "boundary_quality"], "official"],
+                        "#7E9188",
+                        "#B67A15"
+                    ],
+                    "line-width": [
+                        "interpolate",
+                        ["linear"],
+                        ["zoom"],
+                        2,
+                        [
+                            "case",
+                            ["boolean", ["feature-state", "selected"], false],
+                            1.6,
+                            0.35
+                        ],
+                        7,
+                        [
+                            "case",
+                            ["boolean", ["feature-state", "selected"], false],
+                            1.6,
+                            1
+                        ]
+                    ]
+                }
+            });
+            map.addLayer({
+                id: "boundary-labels",
+                type: "symbol",
+                source: "boundaries",
+                layout: {
+                    "symbol-placement": "point",
+                    "text-field": ["get", "mapLabel"],
+                    "text-font": ["Noto Sans Regular"],
+                    "text-size": [
+                        "match",
+                        ["get", "mapLevel"],
+                        "department",
+                        12,
+                        "province",
+                        11,
+                        9
+                    ],
+                    "text-anchor": "center",
+                    "text-max-width": 9,
+                    "text-allow-overlap": true,
+                    "text-ignore-placement": true
+                },
+                paint: {
+                    "text-color": "#123B2E",
+                    "text-halo-color": "#FFFFFF",
+                    "text-halo-width": 2,
+                    "text-halo-blur": 0.2
+                }
+            });
         }
 
         function applySelection(codes) {
-            const nextCodes = new Set(codes.map(String));
+            const visibleCodes = new Set(currentFeatures.map(featureCode));
+            const nextCodes = new Set(
+                codes.map(String).filter(code => visibleCodes.has(code))
+            );
             for (const code of selectedCodes) {
                 if (!nextCodes.has(code))
                     map.setFeatureState(
@@ -139,21 +279,40 @@
                 return;
             currentLevel = String(level);
             currentRequestId = Number(requestId);
-            const features = getVisibleFeatures(currentLevel, parentCodes);
-            currentFeatures = features;
-            selectedCodes = new Set();
-            map.getSource("boundaries").setData({
-                type: "FeatureCollection",
-                features
-            });
-
-            map.once("idle", () => {
-                if (currentRequestId !== Number(requestId))
-                    return;
-                applySelection(codes);
-                fitFeatures(features);
-                bridge.reportMapReady(currentLevel, features.length, currentRequestId);
-            });
+            getVisibleFeatures(currentLevel, parentCodes)
+                .then(features => {
+                    if (currentRequestId !== Number(requestId))
+                        return;
+                    currentFeatures = features;
+                    selectedCodes = new Set();
+                    const onBoundarySourceLoaded = event => {
+                        if (event.sourceId !== "boundaries" || !event.isSourceLoaded)
+                            return;
+                        map.off("sourcedata", onBoundarySourceLoaded);
+                        if (currentRequestId !== Number(requestId))
+                            return;
+                        applySelection(codes);
+                        map.once("moveend", () => {
+                            if (currentRequestId !== Number(requestId))
+                                return;
+                            bridge.reportMapReady(
+                                currentLevel,
+                                features.length,
+                                currentRequestId,
+                                map.getZoom(),
+                                JSON.stringify(map.getBounds().toArray()),
+                                map.getMinZoom()
+                            );
+                        });
+                        fitFeatures(features);
+                    };
+                    map.on("sourcedata", onBoundarySourceLoaded);
+                    map.getSource("boundaries").setData({
+                        type: "FeatureCollection",
+                        features
+                    });
+                })
+                .catch(reportError);
         }
 
         window.setMapView = setMapView;
@@ -186,86 +345,18 @@
             map = new maplibregl.Map({
                 container: "map",
                 center: [-75, -9],
-                zoom: 4,
-                minZoom: 3,
+                zoom: 3,
+                minZoom: 1,
                 maxZoom: 13,
-                maxBounds: [[-83, -21], [-67, 2]],
                 dragRotate: false,
                 pitchWithRotate: false,
-                style: {
-                    version: 8,
-                    sources: {
-                        boundaries: {
-                            type: "geojson",
-                            data: {
-                                type: "FeatureCollection",
-                                features: normalizeFeatures(
-                                    hierarchy.departments.features,
-                                    "department"
-                                )
-                            },
-                            promoteId: "mapId"
-                        }
-                    },
-                    layers: [
-                        {
-                            id: "background",
-                            type: "background",
-                            paint: {"background-color": "#F4F7F5"}
-                        },
-                        {
-                            id: "boundary-fill",
-                            type: "fill",
-                            source: "boundaries",
-                            paint: {
-                                "fill-color": [
-                                    "case",
-                                    ["boolean", ["feature-state", "selected"], false],
-                                    "#176B50",
-                                    ["==", ["get", "boundary_quality"], "official"],
-                                    "#E8EFEB",
-                                    "#F3E7C8"
-                                ],
-                                "fill-opacity": 0.94
-                            }
-                        },
-                        {
-                            id: "boundary-outline",
-                            type: "line",
-                            source: "boundaries",
-                            paint: {
-                                "line-color": [
-                                    "case",
-                                    ["boolean", ["feature-state", "selected"], false],
-                                    "#104B39",
-                                    ["==", ["get", "boundary_quality"], "official"],
-                                    "#7E9188",
-                                    "#B67A15"
-                                ],
-                                "line-width": [
-                                    "interpolate",
-                                    ["linear"],
-                                    ["zoom"],
-                                    2,
-                                    [
-                                        "case",
-                                        ["boolean", ["feature-state", "selected"], false],
-                                        1.6,
-                                        0.35
-                                    ],
-                                    7,
-                                    [
-                                        "case",
-                                        ["boolean", ["feature-state", "selected"], false],
-                                        1.6,
-                                        1
-                                    ]
-                                ]
-                            }
-                        }
-                    ]
-                }
+                attributionControl: false,
+                style: "https://tiles.openfreemap.org/styles/positron"
             });
+            map.addControl(
+                new maplibregl.AttributionControl({compact: false}),
+                "bottom-right"
+            );
 
             map.addControl(
                 new maplibregl.NavigationControl({showCompass: false}),
@@ -278,6 +369,7 @@
             });
 
             map.on("load", () => {
+                addBoundaryLayers();
                 setMapView("department", [], [], 0);
             });
 
@@ -314,25 +406,24 @@
                 reportError(pendingError);
                 return;
             }
-            Promise.all([
-                fetch("../districts_map_hierarchy.json"),
-                fetch("../districts_map.json")
-            ])
-                .then(responses => {
-                    if (responses.some(response => !response.ok))
-                        throw new Error("No se pudieron leer las capas geográficas locales.");
-                    return Promise.all(responses.map(response => response.json()));
+            fetch("../districts_map_hierarchy.json")
+                .then(response => {
+                    if (!response.ok)
+                        throw new Error(
+                            "No se pudo leer la capa geográfica jerárquica local."
+                        );
+                    return response.json();
                 })
-                .then(([hierarchyData, districtData]) => {
+                .then(hierarchyData => {
                     if (hierarchyData.metadata.department_count !== 25
                             || hierarchyData.metadata.province_count !== 196
                             || hierarchyData.departments.features.length !== 25
-                            || hierarchyData.provinces.features.length !== 196
-                            || districtData.features.length !== 1892) {
-                        throw new Error("Las capas geográficas están incompletas.");
+                            || hierarchyData.provinces.features.length !== 196) {
+                        throw new Error(
+                            "La capa geográfica jerárquica está incompleta."
+                        );
                     }
                     hierarchy = hierarchyData;
-                    districtFeatures = districtData.features;
                     createMap();
                 })
                 .catch(reportError);

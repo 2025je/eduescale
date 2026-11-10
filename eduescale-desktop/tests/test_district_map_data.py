@@ -69,13 +69,19 @@ def test_hierarchy_map_covers_all_departments_and_provinces():
     )
 
 
-def test_maplibre_is_bundled_for_offline_rendering():
+def test_maplibre_uses_unlabeled_basemap_and_centered_boundary_labels():
     map_page = (MAPLIBRE_ASSETS_PATH / "map.html").read_text(encoding="utf-8")
 
     assert "maplibre-gl.js" in map_page
     assert "maplibre-gl.css" in map_page
     assert 'fetch("../districts_map_hierarchy.json")' in map_page
+    assert 'fetch("../districts_map.json")' in map_page
+    assert 'https://tiles.openfreemap.org/styles/positron' in map_page
+    assert 'layer.type === "symbol"' in map_page
+    assert 'id: "boundary-labels"' in map_page
+    assert '"text-field": ["get", "mapLabel"]' in map_page
+    assert '"text-halo-color": "#FFFFFF"' in map_page
+    assert 'properties.mapLabel = level === "district"' in map_page
     assert "window.setMapView" in map_page
-    assert "https://" not in map_page
     for asset in ("maplibre-gl.js", "maplibre-gl.css", "LICENSE.txt"):
         assert (MAPLIBRE_ASSETS_PATH / asset).is_file()

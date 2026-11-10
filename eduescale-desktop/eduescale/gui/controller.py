@@ -73,6 +73,10 @@ class SchoolFinderController(QObject):
             }
         if len(self._district_metadata) != 1892:
             raise ValueError(f"Incomplete district map data in {map_path}")
+        self._district_codes = sorted(self._district_metadata)
+        self._district_codes_by_province: dict[str, list[str]] = {}
+        for code in self._district_codes:
+            self._district_codes_by_province.setdefault(code[:4], []).append(code)
 
         hierarchy_path = map_path.with_name("districts_map_hierarchy.json")
         hierarchy_data = json.loads(hierarchy_path.read_text(encoding="utf-8"))
@@ -96,6 +100,11 @@ class SchoolFinderController(QObject):
                 "name": feature["properties"]["name"],
                 "department": feature["properties"]["department"],
                 "departmentCode": feature["properties"]["departmentCode"],
+                "districtCount": len(
+                    self._district_codes_by_province.get(
+                        feature["properties"]["code"], []
+                    )
+                ),
             }
             for feature in province_features
         }
@@ -104,6 +113,10 @@ class SchoolFinderController(QObject):
             or len(self._map_province_metadata) != 196
             or any(
                 province["departmentCode"] not in self._map_department_metadata
+                for province in self._map_province_metadata.values()
+            )
+            or any(
+                province["districtCount"] == 0
                 for province in self._map_province_metadata.values()
             )
         ):
@@ -151,9 +164,13 @@ class SchoolFinderController(QObject):
     def districts(self):
         return self._districts
 
-    @Property(dict, notify=stateChanged)
-    def districtMetadata(self):
-        return self._district_metadata
+    @Property(list, notify=stateChanged)
+    def districtCodes(self):
+        return self._district_codes
+
+    @Property(int, notify=stateChanged)
+    def districtCount(self):
+        return len(self._district_codes)
 
     @Property(dict, notify=stateChanged)
     def mapDepartmentMetadata(self):
@@ -162,6 +179,39 @@ class SchoolFinderController(QObject):
     @Property(dict, notify=stateChanged)
     def mapProvinceMetadata(self):
         return self._map_province_metadata
+
+    @Slot(list, list, list, result=list)
+    def effectiveDistrictCodes(
+        self,
+        department_codes: list[str],
+        province_codes: list[str],
+        district_codes: list[str],
+    ) -> list[str]:
+        if district_codes:
+            return list(dict.fromkeys(str(code) for code in district_codes))
+
+        selected_provinces = {str(code) for code in province_codes}
+        if not selected_provinces:
+            selected_departments = {str(code) for code in department_codes}
+            selected_provinces = {
+                code
+                for code, province in self._map_province_metadata.items()
+                if province["departmentCode"] in selected_departments
+            }
+        return [
+            district_code
+            for province_code in sorted(selected_provinces)
+            for district_code in self._district_codes_by_province.get(
+                province_code, []
+            )
+        ]
+
+    @Slot(str, result="QVariant")
+    def mapDistrictProperties(self, code: str) -> dict[str, str] | None:
+        properties = self._district_metadata.get(code)
+        if properties is None:
+            LOGGER.error("Requested metadata for unknown district code %s.", code)
+        return properties
 
     @Property(bool, notify=stateChanged)
     def regionsEnabled(self):
@@ -259,11 +309,11 @@ class SchoolFinderController(QObject):
 
     @Property(int, notify=stateChanged)
     def windowWidth(self):
-        return self._window_dimension("window/width", 820, 560)
+        return self._window_dimension("window/width", 1280, 560)
 
     @Property(int, notify=stateChanged)
     def windowHeight(self):
-        return self._window_dimension("window/height", 860, 600)
+        return self._window_dimension("window/height", 760, 600)
 
     def _window_dimension(self, key: str, default: int, minimum: int) -> int:
         value = self._settings.value(key, default)
