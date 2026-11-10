@@ -3,7 +3,14 @@ from PyInstaller.utils.hooks import collect_data_files
 
 datas = [
     ('eduescale/gui/qml/Main.qml', 'eduescale/gui/qml'),
+    ('eduescale/gui/qml/DistrictMap.qml', 'eduescale/gui/qml'),
     ('eduescale/gui/assets/edutrack-logo.png', 'eduescale/gui/assets'),
+    ('eduescale/gui/assets/districts_map.json', 'eduescale/gui/assets'),
+    ('eduescale/gui/assets/districts_map_hierarchy.json', 'eduescale/gui/assets'),
+    ('eduescale/gui/assets/maplibre/map.html', 'eduescale/gui/assets/maplibre'),
+    ('eduescale/gui/assets/maplibre/maplibre-gl.js', 'eduescale/gui/assets/maplibre'),
+    ('eduescale/gui/assets/maplibre/maplibre-gl.css', 'eduescale/gui/assets/maplibre'),
+    ('eduescale/gui/assets/maplibre/LICENSE.txt', 'eduescale/gui/assets/maplibre'),
     ('eduescale/gui/fonts/Roboto-Variable.ttf', 'eduescale/gui/fonts'),
     ('eduescale/gui/fonts/OFL.txt', 'eduescale/gui/fonts'),
 ]
@@ -15,7 +22,11 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=datas,
-    hiddenimports=[],
+    hiddenimports=[
+        'PySide6.QtWebChannel',
+        'PySide6.QtWebEngineCore',
+        'PySide6.QtWebEngineQuick',
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

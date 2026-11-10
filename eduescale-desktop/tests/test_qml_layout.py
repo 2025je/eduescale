@@ -6,12 +6,14 @@ from pathlib import Path
 QML_SMOKE_SCRIPT = r"""
 import re
 import sys
+import time
 from pathlib import Path
 
-from PySide6.QtCore import QMetaObject, QObject, QSettings, Signal, QUrl
+from PySide6.QtCore import Q_ARG, QMetaObject, QObject, QSettings, Signal, QUrl
 from PySide6.QtGui import QGuiApplication, QImageReader
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
+from PySide6.QtWebEngineQuick import QtWebEngineQuick
 
 from eduescale.gui.application import (
     configure_application_font,
@@ -69,6 +71,7 @@ class FakeExportRunner(QObject):
         pass
 
 
+QtWebEngineQuick.initialize()
 QQuickStyle.setStyle("Material")
 application = QGuiApplication([])
 assert configure_application_font(application), "Roboto font could not be loaded"
@@ -97,6 +100,45 @@ def child(name):
     return item
 
 
+def qml_value(item, name):
+    value = item.property(name)
+    return value.toVariant() if hasattr(value, "toVariant") else value
+
+
+def select_map_codes(webview, map_item, codes):
+    expected_codes = []
+    for code in codes:
+        expected_codes.append(code)
+        assert QMetaObject.invokeMethod(
+            webview,
+            "runJavaScript",
+            Q_ARG(str, "window.selectBoundary('" + code + "')"),
+        )
+        deadline = time.monotonic() + 5
+        while (
+            qml_value(map_item, "selectedCodes") != expected_codes
+            and time.monotonic() < deadline
+        ):
+            application.processEvents()
+            time.sleep(0.025)
+        assert qml_value(map_item, "selectedCodes") == expected_codes
+
+
+def wait_for_map_count(map_item, count):
+    deadline = time.monotonic() + 10
+    while (
+        map_item.property("renderedFeatureCount") != count
+        and time.monotonic() < deadline
+    ):
+        application.processEvents()
+        time.sleep(0.025)
+    assert map_item.property("renderedFeatureCount") == count, (
+        map_item.property("loadingError"),
+        map_item.property("renderedFeatureCount"),
+        count,
+    )
+
+
 filter_grid = child("filterGrid")
 search_workspace = child("searchWorkspace")
 criteria_card = child("criteriaCard")
@@ -110,6 +152,12 @@ progress_indicator = child("progressIndicator")
 status_label = child("statusLabel")
 help_text = child("searchHelpText")
 filter_sets = child("filterSetsModel")
+district_map = child("districtMap")
+district_webview = child("districtMapWebView")
+map_level_label = child("mapLevelLabel")
+map_advance_button = child("mapAdvanceButton")
+map_back_button = child("mapBackButton")
+map_clear_button = child("mapClearButton")
 empty_state = child("emptySearchState")
 brand_title = child("brandTitle")
 brand_logo = child("brandLogo")
@@ -120,7 +168,70 @@ excel_dialog = child("excelSaveDialog")
 pdf_dialog = child("pdfSaveDialog")
 eduescale_dialog = child("eduScaleSaveDialog")
 download_button = child("scrapeButton")
-combos = [child(name) for name in ("regionFilter", "provinceFilter", "districtFilter")]
+assert district_map.property("featureCount") == 1892
+deadline = time.monotonic() + 35
+while (
+    not district_map.property("mapReady")
+    and not district_map.property("loadingError")
+    and time.monotonic() < deadline
+):
+    application.processEvents()
+    time.sleep(0.025)
+assert district_map.property("mapReady"), (
+    district_map.property("loadingError"),
+    district_webview.property("url"),
+    district_webview.property("loading"),
+    district_webview.property("loadProgress"),
+)
+assert len(qml_value(controller, "mapDepartmentMetadata")) == 25
+assert len(qml_value(controller, "mapProvinceMetadata")) == 196
+assert qml_value(window, "mapLevel") == "department"
+assert map_level_label.property("text") == "Paso 1 de 3 · Departamentos"
+wait_for_map_count(district_map, 25)
+
+select_map_codes(district_webview, district_map, ("15", "13"))
+assert qml_value(window, "selectedDepartmentCodes") == ["15", "13"]
+assert qml_value(district_map, "selectedCodes") == ["15", "13"]
+assert map_advance_button.property("enabled")
+map_advance_button.click()
+application.processEvents()
+expected_province_count = sum(
+    province["departmentCode"] in {"13", "15"}
+    for province in qml_value(controller, "mapProvinceMetadata").values()
+)
+wait_for_map_count(district_map, expected_province_count)
+assert qml_value(window, "mapLevel") == "province"
+
+select_map_codes(district_webview, district_map, ("1501", "1301"))
+assert qml_value(window, "selectedProvinceCodes") == ["1501", "1301"]
+map_advance_button.click()
+application.processEvents()
+expected_district_count = sum(
+    district["provinceCode"] in {"1301", "1501"}
+    for district in qml_value(controller, "districtMetadata").values()
+)
+wait_for_map_count(district_map, expected_district_count)
+select_map_codes(district_webview, district_map, ("150101", "130112"))
+assert qml_value(window, "selectedDistrictCodes") == ["150101", "130112"]
+assert qml_value(district_map, "selectedCodes") == ["150101", "130112"]
+
+map_back_button.click()
+application.processEvents()
+wait_for_map_count(district_map, expected_province_count)
+assert qml_value(district_map, "selectedCodes") == ["1501", "1301"]
+map_advance_button.click()
+application.processEvents()
+wait_for_map_count(district_map, expected_district_count)
+assert qml_value(district_map, "selectedCodes") == ["150101", "130112"]
+
+map_clear_button.click()
+application.processEvents()
+wait_for_map_count(district_map, 25)
+assert qml_value(window, "mapLevel") == "department"
+assert qml_value(window, "selectedDepartmentCodes") == []
+assert qml_value(window, "selectedProvinceCodes") == []
+assert qml_value(window, "selectedDistrictCodes") == []
+assert qml_value(district_map, "selectedCodes") == []
 assert brand_title.property("font").family() == "Roboto"
 logo_source = brand_logo.property("source")
 assert QImageReader(logo_source.toLocalFile()).canRead()
@@ -200,26 +311,40 @@ for width, height in ((560, 600), (1280, 720), (1366, 768), (1600, 900), (1920, 
         assert button.property("y") + button.property("height") <= (
             action_buttons.property("height") + 1
         )
-    for combo in combos:
-        assert combo.property("x") >= 0
-        assert (
-            combo.property("x") + combo.property("width")
-            <= filter_grid.property("width") + 1
-        )
+    assert district_map.property("x") >= 0
+    assert district_map.property("width") > 0
+    assert (
+        district_map.property("x") + district_map.property("width")
+        <= filter_grid.property("width") + 1
+    )
 
+select_map_codes(district_webview, district_map, ("15", "13"))
+map_advance_button.click()
+application.processEvents()
+wait_for_map_count(district_map, expected_province_count)
+select_map_codes(district_webview, district_map, ("1501", "1301"))
+map_advance_button.click()
+application.processEvents()
+wait_for_map_count(district_map, expected_district_count)
+select_map_codes(district_webview, district_map, ("150101", "130112"))
+assert qml_value(district_map, "selectedCodes") == ["150101", "130112"]
 child("publicManagement").setProperty("checked", True)
 assert window.findChild(QObject, "initialLevel") is None
 child("primaryLevel").setProperty("checked", True)
 child("cetproLevel").setProperty("checked", True)
 assert QMetaObject.invokeMethod(window, "addFilterSet")
-assert filter_sets.property("count") == 1
+assert filter_sets.property("count") == 2
 assert QMetaObject.invokeMethod(window, "addFilterSet")
-assert filter_sets.property("count") == 1
+assert filter_sets.property("count") == 2
 assert "ya está en Mis búsquedas" in help_text.property("text")
 download_button.click()
 application.processEvents()
 assert controller.scrapeRunning
 assert scrape_runner.started_requests[0][1][0].level == ("primaria", "cetpro")
+assert [item.district_code for item in scrape_runner.started_requests[0][1]] == [
+    "150101",
+    "130112",
+]
 cancel_button = child("cancelScrapeButton")
 assert cancel_button.property("visible")
 for width, expected_action_columns in ((560, 2), (1280, 3)):
@@ -313,7 +438,12 @@ controller.shutdown()
 def test_main_qml_fits_supported_window_sizes(tmp_path):
     qml_path = Path(__file__).parents[1] / "eduescale" / "gui" / "qml" / "Main.qml"
     environment = os.environ.copy()
-    environment["QT_QPA_PLATFORM"] = "offscreen"
+    environment.setdefault("QT_QPA_PLATFORM", "offscreen")
+    environment.setdefault(
+        "QTWEBENGINE_CHROMIUM_FLAGS",
+        "--use-gl=angle --use-angle=swiftshader --enable-webgl "
+        "--enable-unsafe-swiftshader",
+    )
     result = subprocess.run(
         [
             sys.executable,
@@ -326,7 +456,7 @@ def test_main_qml_fits_supported_window_sizes(tmp_path):
         check=False,
         env=environment,
         text=True,
-        timeout=60,
+        timeout=90,
     )
 
     assert result.returncode == 0, f"{result.stdout}\n{result.stderr}"

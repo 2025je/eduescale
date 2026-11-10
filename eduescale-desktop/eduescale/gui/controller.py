@@ -1,3 +1,4 @@
+import json
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -46,7 +47,68 @@ class SchoolFinderController(QObject):
         self._districts_enabled = False
         self._selected_region_code = ""
         self._selected_province_code = ""
-        self._status_text = "Cargando departamentos desde ESCALE..."
+        map_path = Path(__file__).resolve().parent / "assets" / "districts_map.json"
+        map_data = json.loads(map_path.read_text(encoding="utf-8"))
+        features = map_data.get("features")
+        if map_data.get("type") != "FeatureCollection" or not isinstance(
+            features, list
+        ):
+            raise ValueError(f"Invalid district map data in {map_path}")
+
+        self._district_metadata: dict[str, dict[str, str]] = {}
+        for feature in features:
+            properties = feature["properties"]
+            code = properties["ubigeo"]
+            department_code = code[:2]
+            province_code = code[:4]
+            if code in self._district_metadata:
+                raise ValueError(f"Duplicate district code {code} in {map_path}")
+            self._district_metadata[code] = {
+                "department": properties["department"],
+                "departmentCode": department_code,
+                "province": properties["province"],
+                "provinceCode": province_code,
+                "district": properties["district"],
+                "boundary_quality": properties["boundary_quality"],
+            }
+        if len(self._district_metadata) != 1892:
+            raise ValueError(f"Incomplete district map data in {map_path}")
+
+        hierarchy_path = map_path.with_name("districts_map_hierarchy.json")
+        hierarchy_data = json.loads(hierarchy_path.read_text(encoding="utf-8"))
+        department_features = hierarchy_data["departments"]["features"]
+        province_features = hierarchy_data["provinces"]["features"]
+        if (
+            hierarchy_data.get("metadata", {}).get("department_count") != 25
+            or hierarchy_data.get("metadata", {}).get("province_count") != 196
+            or len(department_features) != 25
+            or len(province_features) != 196
+        ):
+            raise ValueError(f"Incomplete hierarchy map data in {hierarchy_path}")
+        self._map_department_metadata = {
+            feature["properties"]["code"]: {
+                "name": feature["properties"]["name"],
+            }
+            for feature in department_features
+        }
+        self._map_province_metadata = {
+            feature["properties"]["code"]: {
+                "name": feature["properties"]["name"],
+                "department": feature["properties"]["department"],
+                "departmentCode": feature["properties"]["departmentCode"],
+            }
+            for feature in province_features
+        }
+        if (
+            len(self._map_department_metadata) != 25
+            or len(self._map_province_metadata) != 196
+            or any(
+                province["departmentCode"] not in self._map_department_metadata
+                for province in self._map_province_metadata.values()
+            )
+        ):
+            raise ValueError(f"Invalid hierarchy map data in {hierarchy_path}")
+        self._status_text = "Límites distritales cargados."
         self._progress_visible = False
         self._progress_value = 0
         self._progress_maximum = 0
@@ -75,8 +137,7 @@ class SchoolFinderController(QObject):
         self._scrape_runner.warning.connect(self._scrape_warning)
         self._export_runner.completed.connect(self._export_completed)
         self._export_runner.failed.connect(self._export_failed)
-        self._location_service.load("regions")
-        LOGGER.info("Requested ESCALE departments.")
+        LOGGER.info("Loaded local district boundary data.")
 
     @Property(list, notify=regionsChanged)
     def regions(self):
@@ -89,6 +150,18 @@ class SchoolFinderController(QObject):
     @Property(list, notify=districtsChanged)
     def districts(self):
         return self._districts
+
+    @Property(dict, notify=stateChanged)
+    def districtMetadata(self):
+        return self._district_metadata
+
+    @Property(dict, notify=stateChanged)
+    def mapDepartmentMetadata(self):
+        return self._map_department_metadata
+
+    @Property(dict, notify=stateChanged)
+    def mapProvinceMetadata(self):
+        return self._map_province_metadata
 
     @Property(bool, notify=stateChanged)
     def regionsEnabled(self):

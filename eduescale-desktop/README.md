@@ -5,9 +5,8 @@ el [Padrón de IIEE de ESCALE](https://escale.minedu.gob.pe/padron-de-iiee).
 La app usa Scrapy con `AsyncioSelectorReactor` para consultar la API del buscador
 oficial y guardar los resultados temporalmente. Desde la interfaz puedes exportar
 los datos a Excel, PDF o a un archivo `.eduescale` para la app Android. La
-interfaz está hecha con QML y PySide6 Essentials, que incluye los componentes Qt
-Quick usados por la app sin empaquetar los módulos opcionales de WebEngine y
-visor PDF. La interfaz usa Roboto, incluida con
+interfaz está hecha con QML, PySide6 Essentials y Qt WebEngine para renderizar el
+mapa con MapLibre GL JS. La interfaz usa Roboto, incluida con
 la licencia SIL Open Font License, y adapta a Qt Quick Controls los tokens
 visuales de [Material Style](https://materialstyle.github.io/).
 
@@ -24,9 +23,14 @@ uv run eduescale-gui
 ```
 
 Se abrirá una ventana Material para crear combinaciones de ubicación, gestión y
-nivel educativo. Puedes agregar varias combinaciones antes de iniciar la
-extracción; se descargan y reúnen en un conjunto temporal. Los colegios repetidos
-entre combinaciones se guardan una sola vez. La extracción se ejecuta en
+nivel educativo. El mapa muestra primero los departamentos; selecciona uno o
+varios y pulsa «Ver provincias». Después selecciona provincias y pulsa
+«Ver distritos» para elegir las zonas finales. Puedes volver a un nivel anterior
+sin perder las selecciones que ya hiciste. Arrastra el mapa para moverlo y usa
+la rueda del ratón para acercar o alejar. Si no seleccionas una ubicación, la
+búsqueda cubre todo el país. Cada distrito
+seleccionado se consulta por separado y los colegios repetidos se guardan una
+sola vez. La extracción se ejecuta en
 segundo plano para mantener la interfaz receptiva. Puedes cancelarla desde la
 barra inferior; los archivos anteriores se conservan si la extracción se
 cancela o falla.
@@ -61,12 +65,12 @@ esa interfaz.
 
 ## Uso
 
-Selecciona, si lo deseas, departamento, provincia y distrito; una o ambas
-opciones de gestión pública/privada; y uno o varios niveles entre primaria,
-secundaria y CETPRO. Pulsa **Agregar combinación de filtros** para guardar
-esa búsqueda y repite el proceso para agregar otras ubicaciones o criterios.
-Cada combinación debe tener al menos una opción de Gestión y una de Nivel
-educativo. Puedes quitar combinaciones antes de iniciar. Al pulsar
+Selecciona cero o más distritos directamente en el mapa; una o ambas opciones
+de gestión pública/privada; y uno o varios niveles entre primaria, secundaria y
+CETPRO. Pulsa **Agregar a mis búsquedas** para guardar los filtros y repite el
+proceso para agregar otros criterios. Cada combinación debe tener al menos una
+opción de Gestión y una de Nivel educativo. Puedes quitar combinaciones antes
+de iniciar. Al pulsar
 **Ejecutar búsqueda**, solo se consultan y guardan temporalmente los resultados;
 no se crean archivos de exportación. Al finalizar, usa **Exportar Excel**,
 **Exportar PDF** o **Exportar .eduescale** para abrir un diálogo y elegir la
@@ -138,6 +142,34 @@ uv run --project . --directory eduescale scrapy crawl colegios -a output=colegio
 
 Este comando también genera `colegios_escale.eduescale` en la misma carpeta.
 
+### Límites del mapa
+
+El mapa usa MapLibre GL JS 5.24.0 con recursos incluidos localmente; no descarga
+mapas base ni depende de una conexión a Internet. MapLibre se distribuye bajo
+BSD-3-Clause; su licencia está en `eduescale/gui/assets/maplibre/LICENSE.txt`.
+
+La capa distrital descargable del INEI está actualizada al 2023 y contiene
+1.890 UBIGEO únicos. La consulta en vivo de ESCALE usada para esta versión
+devolvió 1.892 códigos; la cobertura exacta se conserva en
+`tests/data/escale_district_codes.txt` y se valida automáticamente. Los dos
+códigos ausentes en la capa del INEI son Alto Trujillo (`130112`) y Santa Rosa
+de Loreto (`160405`). Para mostrarlos en el mapa se añadieron geometrías
+aproximadas a partir de las leyes [31644](https://leyes.congreso.gob.pe/Documentos/2021_2026/ADLP/Texto_Consolidado/31644-TXM.pdf)
+y [32403](https://leyes.congreso.gob.pe/Documentos/2021_2026/ADLP/Texto_Consolidado/32403-TXM.pdf);
+aparecen en ocre y no representan límites oficiales ni deben usarse para fines
+legales o catastrales.
+
+El mapa se genera desde el GeoPackage distrital oficial extraído de
+<https://ide.inei.gob.pe/files/Distrito.rar>:
+
+```powershell
+uv run python scripts/build_district_map.py .\DISTRITO.gpkg
+```
+
+El generador también crea `eduescale/gui/assets/districts_map_hierarchy.json`
+con los límites disueltos por departamento y provincia que usa la navegación
+por etapas del mapa.
+
 Los filtros `region_code`, `province_code`, `district_code`, `management` y
 `level` son opcionales. Los valores para gestión son `publica` y `privada`; los
 valores para nivel son `primaria`, `secundaria` y `cetpro`. Para combinar
@@ -186,8 +218,7 @@ mantiene abierta la base de datos temporal.
 Nox usa `eduescale-gui.spec` y `eduescale-scraper.spec` como configuración de
 empaquetado. GitHub Actions ejecuta las pruebas, Ruff, mypy, ambos builds de
 Windows y una comprobación del comando `list` del scraper, los recursos QML de Material,
-los certificados incluidos y la ausencia de WebEngine innecesario en cada push
-y pull request.
+los certificados, MapLibre y Qt WebEngine incluidos en la GUI en cada push y pull request.
 También se puede ejecutar manualmente desde GitHub Actions; ese flujo permite
 descargar la interfaz y la carpeta del worker como artefacto durante siete días.
 

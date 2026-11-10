@@ -28,6 +28,10 @@ ApplicationWindow {
     readonly property int cardRadius: 20
     readonly property int controlRadius: 14
     property string filterNotice: ""
+    property string mapLevel: "department"
+    property var selectedDepartmentCodes: []
+    property var selectedProvinceCodes: []
+    property var selectedDistrictCodes: []
 
     Material.theme: Material.Light
     Material.primary: primaryColor
@@ -41,6 +45,69 @@ ApplicationWindow {
     ListModel {
         id: filterSetsModel
         objectName: "filterSetsModel"
+    }
+
+    function effectiveDistrictCodes() {
+        if (selectedDistrictCodes.length)
+            return selectedDistrictCodes.slice()
+
+        var codes = Object.keys(controller.districtMetadata).sort()
+        var selected = []
+        for (var index = 0; index < codes.length; index++) {
+            var code = codes[index]
+            var properties = controller.districtMetadata[code]
+            if (selectedProvinceCodes.length) {
+                if (selectedProvinceCodes.indexOf(properties.provinceCode) >= 0)
+                    selected.push(code)
+            } else if (selectedDepartmentCodes.indexOf(properties.departmentCode) >= 0) {
+                selected.push(code)
+            }
+        }
+        return selected
+    }
+
+    function advanceMapLevel() {
+        if (mapLevel === "department" && selectedDepartmentCodes.length) {
+            mapLevel = "province"
+            filterNotice = ""
+        } else if (mapLevel === "province" && selectedProvinceCodes.length) {
+            mapLevel = "district"
+            filterNotice = ""
+        }
+    }
+
+    function goBackMapLevel() {
+        if (mapLevel === "district")
+            mapLevel = "province"
+        else if (mapLevel === "province")
+            mapLevel = "department"
+        filterNotice = ""
+    }
+
+    function updateMapSelection(level, codes) {
+        if (level !== mapLevel) {
+            filterNotice = "La selección del mapa no coincide con el nivel actual."
+            return
+        }
+        if (level === "department") {
+            selectedDepartmentCodes = codes.slice()
+            selectedProvinceCodes = []
+            selectedDistrictCodes = []
+        } else if (level === "province") {
+            selectedProvinceCodes = codes.slice()
+            selectedDistrictCodes = []
+        } else {
+            selectedDistrictCodes = codes.slice()
+        }
+        filterNotice = ""
+    }
+
+    function clearMapSelection() {
+        mapLevel = "department"
+        selectedDepartmentCodes = []
+        selectedProvinceCodes = []
+        selectedDistrictCodes = []
+        filterNotice = ""
     }
 
     function selectedManagement() {
@@ -74,25 +141,54 @@ ApplicationWindow {
     }
 
     function addFilterSet() {
-        var filterSet = {
-            regionCode: regionFilter.currentValue || "",
-            provinceCode: provinceFilter.currentValue || "",
-            districtCode: districtFilter.currentValue || "",
-            regionLabel: regionFilter.currentValue ? regionFilter.currentText : "",
-            provinceLabel: provinceFilter.currentValue ? provinceFilter.currentText : "",
-            districtLabel: districtFilter.currentValue ? districtFilter.currentText : "",
-            management: selectedManagement(),
-            level: selectedLevels()
-        }
-        var key = filterSetKey(filterSet)
-        for (var index = 0; index < filterSetsModel.count; index++) {
-            if (filterSetKey(filterSetsModel.get(index)) === key) {
-                filterNotice = "Esta combinación ya está en Mis búsquedas."
+        var selectedCodes = effectiveDistrictCodes()
+        if (!selectedCodes.length)
+            selectedCodes.push("")
+
+        var added = 0
+        var duplicates = 0
+        for (var codeIndex = 0; codeIndex < selectedCodes.length; codeIndex++) {
+            var districtCode = selectedCodes[codeIndex]
+            var feature = districtCode ? districtMap.featureForCode(districtCode) : null
+            if (districtCode && !feature) {
+                filterNotice = "No se encontró la información de uno de los distritos seleccionados."
                 return
             }
+            var properties = feature ? feature.properties : null
+            var filterSet = {
+                regionCode: "",
+                provinceCode: "",
+                districtCode: districtCode,
+                regionLabel: properties ? properties.department : "",
+                provinceLabel: properties ? properties.province : "",
+                districtLabel: properties ? properties.district : "Todos los distritos",
+                management: selectedManagement(),
+                level: selectedLevels()
+            }
+            var key = filterSetKey(filterSet)
+            var alreadyAdded = false
+            for (var index = 0; index < filterSetsModel.count; index++) {
+                if (filterSetKey(filterSetsModel.get(index)) === key) {
+                    alreadyAdded = true
+                    break
+                }
+            }
+            if (alreadyAdded) {
+                duplicates++
+                continue
+            }
+            filterSetsModel.append(filterSet)
+            added++
         }
-        filterSetsModel.append(filterSet)
-        filterNotice = ""
+
+        if (!added) {
+            filterNotice = "Esta combinación ya está en Mis búsquedas."
+        } else if (duplicates) {
+            filterNotice = "Se agregaron " + added + " distritos; "
+                + duplicates + " combinaciones repetidas se omitieron."
+        } else {
+            filterNotice = ""
+        }
     }
 
     function selectedFilterSetsJson() {
@@ -228,84 +324,104 @@ ApplicationWindow {
                         rowSpacing: window.width < 720 ? 4 : 10
 
                         Label {
-                            text: "Departamento"
+                            text: "Ubicación · navega por el mapa desde departamentos "
+                                + "hasta provincias y distritos"
                             color: window.mutedTextColor
                             font.weight: Font.Medium
+                            Layout.columnSpan: filterGrid.columns
                         }
-                        ComboBox {
-                            id: regionFilter
-                            objectName: "regionFilter"
+                        RowLayout {
+                            objectName: "mapNavigation"
                             Layout.fillWidth: true
-                            implicitHeight: 52
-                            model: controller.regions
-                            textRole: "label"
-                            valueRole: "code"
-                            enabled: controller.regionsEnabled && !controller.scrapeRunning
-                            onActivated: {
-                                window.filterNotice = ""
-                                controller.selectRegion(currentValue)
-                            }
-                            background: Rectangle {
-                                radius: window.controlRadius
-                                color: regionFilter.enabled ? "#FFFFFF" : "#F2F6F3"
-                                border.width: regionFilter.activeFocus ? 2 : 1
-                                border.color: regionFilter.activeFocus
-                                    ? window.primaryColor
-                                    : window.borderColor
-                            }
-                        }
+                            Layout.columnSpan: filterGrid.columns
 
-                        Label {
-                            text: "Provincia"
-                            color: window.mutedTextColor
-                            font.weight: Font.Medium
+                            Label {
+                                id: mapLevelLabel
+                                objectName: "mapLevelLabel"
+                                Layout.fillWidth: true
+                                color: window.textColor
+                                font.weight: Font.DemiBold
+                                text: window.mapLevel === "department"
+                                    ? "Paso 1 de 3 · Departamentos"
+                                    : window.mapLevel === "province"
+                                    ? "Paso 2 de 3 · Provincias"
+                                    : "Paso 3 de 3 · Distritos"
+                            }
+                            Button {
+                                objectName: "mapBackButton"
+                                text: "Volver"
+                                visible: window.mapLevel !== "department"
+                                enabled: !controller.scrapeRunning
+                                onClicked: window.goBackMapLevel()
+                            }
+                            Button {
+                                objectName: "mapAdvanceButton"
+                                text: window.mapLevel === "department"
+                                    ? "Ver provincias" : "Ver distritos"
+                                visible: window.mapLevel !== "district"
+                                enabled: !controller.scrapeRunning
+                                    && (window.mapLevel === "department"
+                                        ? window.selectedDepartmentCodes.length > 0
+                                        : window.selectedProvinceCodes.length > 0)
+                                onClicked: window.advanceMapLevel()
+                            }
                         }
-                        ComboBox {
-                            id: provinceFilter
-                            objectName: "provinceFilter"
+                        DistrictMap {
+                            id: districtMap
                             Layout.fillWidth: true
-                            implicitHeight: 52
-                            model: controller.provinces
-                            textRole: "label"
-                            valueRole: "code"
-                            enabled: controller.provincesEnabled && !controller.scrapeRunning
-                            onActivated: {
-                                window.filterNotice = ""
-                                controller.selectProvince(currentValue)
-                            }
-                            background: Rectangle {
-                                radius: window.controlRadius
-                                color: provinceFilter.enabled ? "#FFFFFF" : "#F2F6F3"
-                                border.width: provinceFilter.activeFocus ? 2 : 1
-                                border.color: provinceFilter.activeFocus
-                                    ? window.primaryColor
-                                    : window.borderColor
+                            Layout.columnSpan: filterGrid.columns
+                            Layout.preferredHeight: 340
+                            enabled: !controller.scrapeRunning
+                            mapLevel: window.mapLevel
+                            parentCodes: window.mapLevel === "province"
+                                ? window.selectedDepartmentCodes
+                                : window.mapLevel === "district"
+                                ? window.selectedProvinceCodes : []
+                            selectionCodes: window.mapLevel === "department"
+                                ? window.selectedDepartmentCodes
+                                : window.mapLevel === "province"
+                                ? window.selectedProvinceCodes
+                                : window.selectedDistrictCodes
+                            departmentMetadata: controller.mapDepartmentMetadata
+                            provinceMetadata: controller.mapProvinceMetadata
+                            districtMetadata: controller.districtMetadata
+                            onSelectedCodesChanged: window.filterNotice = ""
+                            onMapSelectionChanged: function(level, codes) {
+                                window.updateMapSelection(level, codes)
                             }
                         }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.columnSpan: filterGrid.columns
 
-                        Label {
-                            text: "Distrito"
-                            color: window.mutedTextColor
-                            font.weight: Font.Medium
-                        }
-                        ComboBox {
-                            id: districtFilter
-                            objectName: "districtFilter"
-                            Layout.fillWidth: true
-                            implicitHeight: 52
-                            model: controller.districts
-                            textRole: "label"
-                            valueRole: "code"
-                            enabled: controller.districtsEnabled && !controller.scrapeRunning
-                            onActivated: window.filterNotice = ""
-                            background: Rectangle {
-                                radius: window.controlRadius
-                                color: districtFilter.enabled ? "#FFFFFF" : "#F2F6F3"
-                                border.width: districtFilter.activeFocus ? 2 : 1
-                                border.color: districtFilter.activeFocus
-                                    ? window.primaryColor
-                                    : window.borderColor
+                            Label {
+                                Layout.fillWidth: true
+                                color: window.mutedTextColor
+                                text: window.effectiveDistrictCodes().length
+                                    ? window.effectiveDistrictCodes().length
+                                        + " distritos incluidos en la búsqueda"
+                                    : "Sin selección: se buscará en todo el país"
                             }
+                            Button {
+                                objectName: "mapClearButton"
+                                text: "Limpiar"
+                                enabled: (window.mapLevel !== "department"
+                                    || window.selectedDepartmentCodes.length > 0
+                                    || window.selectedProvinceCodes.length > 0
+                                    || window.selectedDistrictCodes.length > 0)
+                                    && !controller.scrapeRunning
+                                onClicked: window.clearMapSelection()
+                            }
+                        }
+                        Label {
+                            Layout.fillWidth: true
+                            Layout.columnSpan: filterGrid.columns
+                            text: "Límites INEI actualizados al 2023. Alto Trujillo y "
+                                + "Santa Rosa de Loreto se muestran en ocre con límites "
+                                + "aproximados derivados de las Leyes 31644 y 32403."
+                            color: window.mutedTextColor
+                            wrapMode: Text.WordWrap
+                            font.pixelSize: 11
                         }
 
                         Label {
@@ -371,7 +487,7 @@ ApplicationWindow {
                             Layout.columnSpan: filterGrid.columns
                             text: window.filterNotice.length
                                 ? window.filterNotice
-                                : "Marca al menos una opción en Gestión y Nivel educativo para agregar esta combinación."
+                                : "Selecciona uno o varios distritos en el mapa y marca al menos una opción en Gestión y Nivel educativo."
                             color: window.mutedTextColor
                             wrapMode: Text.WordWrap
                             font.pixelSize: 12

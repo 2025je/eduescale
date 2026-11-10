@@ -7,6 +7,7 @@ from PySide6.QtCore import QUrl
 from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication, QIcon
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
+from PySide6.QtWebEngineQuick import QtWebEngineQuick
 
 from eduescale.gui.controller import SchoolFinderController
 from eduescale.gui.export_runner import ExportRunner
@@ -67,6 +68,7 @@ def create_controller(
 def main(
     controller_factory: Callable[[], SchoolFinderController] = create_controller,
 ) -> int:
+    QtWebEngineQuick.initialize()
     QQuickStyle.setStyle("Material")
     application = QGuiApplication(sys.argv)
     if not configure_application_font(application):

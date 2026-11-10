@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Mapa distrital</title>
+    <link rel="stylesheet" href="maplibre-gl.css">
+    <style>
+        html, body, #map {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        body {
+            background: #F4F7F5;
+            font-family: sans-serif;
+        }
+
+        .maplibregl-popup-content {
+            color: #1C262B;
+            font-size: 12px;
+        }
+    </style>
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+    <script src="maplibre-gl.js"></script>
+</head>
+<body>
+    <div id="map" aria-label="Mapa jerárquico para seleccionar departamentos, provincias y distritos"></div>
+    <script>
+        let bridge = null;
+        let map = null;
+        let hierarchy = null;
+        let districtFeatures = null;
+        let currentLevel = "department";
+        let currentFeatures = [];
+        let selectedCodes = new Set();
+        let currentRequestId = 0;
+        let pendingError = "";
+        let popup = null;
+
+        function reportError(error) {
+            const message = error && error.message ? error.message : String(error);
+            if (bridge)
+                bridge.reportMapError(message);
+            else
+                pendingError = message;
+        }
+
+        window.addEventListener("error", event => reportError(event.message));
+        window.addEventListener("unhandledrejection", event => reportError(event.reason));
+
+        function featureCode(feature) {
+            return String(feature.properties.mapId);
+        }
+
+        function normalizeFeatures(features, level) {
+            return features.map(feature => {
+                const properties = {...feature.properties};
+                const code = level === "district"
+                    ? properties.ubigeo : properties.code;
+                if (level === "district")
+                    properties.provinceCode = String(code).slice(0, 4);
+                properties.mapId = String(code);
+                return {...feature, properties};
+            });
+        }
+
+        function getVisibleFeatures(level, parentCodes) {
+            if (level === "department")
+                return normalizeFeatures(hierarchy.departments.features, level);
+
+            if (level === "province") {
+                const departments = new Set(parentCodes.map(String));
+                return normalizeFeatures(
+                    hierarchy.provinces.features.filter(feature =>
+                        departments.has(String(feature.properties.departmentCode))
+                    ),
+                    level
+                );
+            }
+
+            if (level === "district") {
+                const provinces = new Set(parentCodes.map(String));
+                return normalizeFeatures(
+                    districtFeatures.filter(feature =>
+                        provinces.has(String(feature.properties.ubigeo).slice(0, 4))
+                    ),
+                    level
+                );
+            }
+            throw new Error("Nivel geográfico desconocido.");
+        }
+
+        function fitFeatures(features) {
+            const bounds = new maplibregl.LngLatBounds();
+            function extendCoordinates(coordinates) {
+                if (typeof coordinates[0] === "number") {
+                    bounds.extend(coordinates);
+                    return;
+                }
+                for (const child of coordinates)
+                    extendCoordinates(child);
+            }
+            for (const feature of features)
+                extendCoordinates(feature.geometry.coordinates);
+            if (bounds.isEmpty())
+                throw new Error("No hay geometrías para mostrar en este nivel.");
+            map.fitBounds(bounds, {padding: 24, duration: 250, maxZoom: 8});
+        }
+
+        function applySelection(codes) {
+            const nextCodes = new Set(codes.map(String));
+            for (const code of selectedCodes) {
+                if (!nextCodes.has(code))
+                    map.setFeatureState(
+                        {source: "boundaries", id: code},
+                        {selected: false}
+                    );
+            }
+            for (const code of nextCodes) {
+                if (!selectedCodes.has(code))
+                    map.setFeatureState(
+                        {source: "boundaries", id: code},
+                        {selected: true}
+                    );
+            }
+            selectedCodes = nextCodes;
+        }
+
+        window.setSelectedCodes = function(codes) {
+            if (map && Array.isArray(codes))
+                applySelection(codes);
+        };
+
+        function setMapView(level, parentCodes, codes, requestId) {
+            if (!map)
+                return;
+            currentLevel = String(level);
+            currentRequestId = Number(requestId);
+            const features = getVisibleFeatures(currentLevel, parentCodes);
+            currentFeatures = features;
+            selectedCodes = new Set();
+            map.getSource("boundaries").setData({
+                type: "FeatureCollection",
+                features
+            });
+
+            map.once("idle", () => {
+                if (currentRequestId !== Number(requestId))
+                    return;
+                applySelection(codes);
+                fitFeatures(features);
+                bridge.reportMapReady(currentLevel, features.length, currentRequestId);
+            });
+        }
+
+        window.setMapView = setMapView;
+
+        window.selectBoundary = function(code) {
+            if (!map || !bridge)
+                return;
+            const normalizedCode = String(code);
+            const feature = currentFeatures.find(
+                item => featureCode(item) === normalizedCode
+            );
+            if (!feature)
+                return;
+
+            if (selectedCodes.has(normalizedCode))
+                selectedCodes.delete(normalizedCode);
+            else
+                selectedCodes.add(normalizedCode);
+            map.setFeatureState(
+                {source: "boundaries", id: normalizedCode},
+                {selected: selectedCodes.has(normalizedCode)}
+            );
+            bridge.setSelectionFromWeb(
+                currentLevel,
+                JSON.stringify(Array.from(selectedCodes))
+            );
+        };
+
+        function createMap() {
+            map = new maplibregl.Map({
+                container: "map",
+                center: [-75, -9],
+                zoom: 4,
+                minZoom: 3,
+                maxZoom: 13,
+                maxBounds: [[-83, -21], [-67, 2]],
+                dragRotate: false,
+                pitchWithRotate: false,
+                style: {
+                    version: 8,
+                    sources: {
+                        boundaries: {
+                            type: "geojson",
+                            data: {
+                                type: "FeatureCollection",
+                                features: normalizeFeatures(
+                                    hierarchy.departments.features,
+                                    "department"
+                                )
+                            },
+                            promoteId: "mapId"
+                        }
+                    },
+                    layers: [
+                        {
+                            id: "background",
+                            type: "background",
+                            paint: {"background-color": "#F4F7F5"}
+                        },
+                        {
+                            id: "boundary-fill",
+                            type: "fill",
+                            source: "boundaries",
+                            paint: {
+                                "fill-color": [
+                                    "case",
+                                    ["boolean", ["feature-state", "selected"], false],
+                                    "#176B50",
+                                    ["==", ["get", "boundary_quality"], "official"],
+                                    "#E8EFEB",
+                                    "#F3E7C8"
+                                ],
+                                "fill-opacity": 0.94
+                            }
+                        },
+                        {
+                            id: "boundary-outline",
+                            type: "line",
+                            source: "boundaries",
+                            paint: {
+                                "line-color": [
+                                    "case",
+                                    ["boolean", ["feature-state", "selected"], false],
+                                    "#104B39",
+                                    ["==", ["get", "boundary_quality"], "official"],
+                                    "#7E9188",
+                                    "#B67A15"
+                                ],
+                                "line-width": [
+                                    "interpolate",
+                                    ["linear"],
+                                    ["zoom"],
+                                    2,
+                                    [
+                                        "case",
+                                        ["boolean", ["feature-state", "selected"], false],
+                                        1.6,
+                                        0.35
+                                    ],
+                                    7,
+                                    [
+                                        "case",
+                                        ["boolean", ["feature-state", "selected"], false],
+                                        1.6,
+                                        1
+                                    ]
+                                ]
+                            }
+                        }
+                    ]
+                }
+            });
+
+            map.addControl(
+                new maplibregl.NavigationControl({showCompass: false}),
+                "top-right"
+            );
+            popup = new maplibregl.Popup({
+                closeButton: false,
+                closeOnClick: false,
+                offset: 8
+            });
+
+            map.on("load", () => {
+                setMapView("department", [], [], 0);
+            });
+
+            map.on("click", "boundary-fill", event => {
+                const feature = event.features && event.features[0];
+                if (feature)
+                    window.selectBoundary(featureCode(feature));
+            });
+
+            map.on("mousemove", "boundary-fill", event => {
+                const feature = event.features && event.features[0];
+                if (!feature || !feature.properties)
+                    return;
+                map.getCanvas().style.cursor = "pointer";
+                const properties = feature.properties;
+                const label = document.createElement("span");
+                label.textContent = currentLevel === "department"
+                    ? properties.name
+                    : currentLevel === "province"
+                    ? properties.name + " · " + properties.department
+                    : properties.district + " · " + properties.province;
+                popup.setLngLat(event.lngLat).setDOMContent(label).addTo(map);
+            });
+
+            map.on("mouseleave", "boundary-fill", () => {
+                map.getCanvas().style.cursor = "";
+                popup.remove();
+            });
+        }
+
+        new QWebChannel(qt.webChannelTransport, channel => {
+            bridge = channel.objects.mapBridge;
+            if (pendingError) {
+                reportError(pendingError);
+                return;
+            }
+            Promise.all([
+                fetch("../districts_map_hierarchy.json"),
+                fetch("../districts_map.json")
+            ])
+                .then(responses => {
+                    if (responses.some(response => !response.ok))
+                        throw new Error("No se pudieron leer las capas geográficas locales.");
+                    return Promise.all(responses.map(response => response.json()));
+                })
+                .then(([hierarchyData, districtData]) => {
+                    if (hierarchyData.metadata.department_count !== 25
+                            || hierarchyData.metadata.province_count !== 196
+                            || hierarchyData.departments.features.length !== 25
+                            || hierarchyData.provinces.features.length !== 196
+                            || districtData.features.length !== 1892) {
+                        throw new Error("Las capas geográficas están incompletas.");
+                    }
+                    hierarchy = hierarchyData;
+                    districtFeatures = districtData.features;
+                    createMap();
+                })
+                .catch(reportError);
+        });
+    </script>
+</body>
+</html>
