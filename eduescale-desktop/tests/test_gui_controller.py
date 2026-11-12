@@ -54,8 +54,18 @@ class FakeExportRunner(QObject):
         super().__init__()
         self.started_requests = []
 
-    def start(self, export_type, database_path, output_path):
-        self.started_requests.append((export_type, database_path, output_path))
+    def start(
+        self,
+        export_type,
+        database_path,
+        output_path,
+        password=None,
+        compressed=False,
+    ):
+        request = (export_type, database_path, output_path)
+        if password is not None or compressed:
+            request += (password, compressed)
+        self.started_requests.append(request)
 
     def shutdown(self):
         pass
@@ -133,6 +143,34 @@ def test_restores_export_folder_and_window_size(tmp_path):
         )
 
         assert settings.value("export/lastDirectory") == str(tmp_path)
+        assert application is not None
+    finally:
+        controller.shutdown()
+
+
+def test_restores_and_persists_dark_theme(tmp_path):
+    application = QCoreApplication.instance() or QCoreApplication([])
+    settings = QSettings(
+        str(tmp_path / "settings.ini"),
+        QSettings.Format.IniFormat,
+    )
+    settings.setValue("appearance/darkTheme", True)
+    controller = SchoolFinderController(
+        location_service=FakeLocationService(),
+        scrape_runner=FakeScrapeRunner(),
+        settings=settings,
+    )
+    changes = []
+    controller.darkThemeChanged.connect(lambda: changes.append(controller.darkTheme))
+
+    try:
+        assert controller.darkTheme is True
+
+        controller.setDarkTheme(False)
+
+        assert controller.darkTheme is False
+        assert settings.value("appearance/darkTheme", type=bool) is False
+        assert changes == [False]
         assert application is not None
     finally:
         controller.shutdown()
@@ -280,7 +318,7 @@ def test_export_buttons_generate_and_open_the_requested_file(
     output_path.write_bytes(b"Excel")
     export_runner.completed.emit("excel", str(output_path))
 
-    controller.exportEduScaleFile(QUrl.fromLocalFile(str(eduescale_path)).toString())
+    controller.exportEduEscaleFile(QUrl.fromLocalFile(str(eduescale_path)).toString())
     assert export_runner.started_requests[-1] == (
         "eduescale",
         controller._dataset_path,
@@ -302,4 +340,30 @@ def test_export_buttons_generate_and_open_the_requested_file(
         output_path,
         eduescale_path,
         pdf_path,
+    ]
+
+
+def test_starts_optional_compressed_and_protected_export(
+    controller_components, tmp_path
+):
+    controller, _scrape_runner, _errors = controller_components
+    controller._dataset_path = tmp_path / "schools.sqlite3"
+    controller._output_path = tmp_path / "schools.xlsx"
+    controller._exports_available = True
+    output_path = tmp_path / "schools.eduescale"
+
+    controller.exportEduEscaleFile(
+        QUrl.fromLocalFile(str(output_path)).toString(),
+        "contraseña segura",
+        True,
+    )
+
+    assert controller._export_runner.started_requests == [
+        (
+            "eduescale",
+            controller._dataset_path,
+            output_path,
+            "contraseña segura",
+            True,
+        )
     ]

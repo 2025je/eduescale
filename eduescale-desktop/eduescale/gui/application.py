@@ -1,9 +1,7 @@
 import logging
 import sys
 from collections.abc import Callable
-from pathlib import Path
 
-from PySide6.QtCore import QUrl
 from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication, QIcon
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
@@ -13,6 +11,7 @@ from eduescale.gui.controller import SchoolFinderController
 from eduescale.gui.export_runner import ExportRunner
 from eduescale.gui.location_service import LocationService
 from eduescale.gui.ports import ExportRunnerPort, LocationServicePort, ScrapeRunnerPort
+from eduescale.gui.resources import resource_path, resource_url
 from eduescale.gui.scrape_runner import ScrapeRunner
 from eduescale.logging_config import configure_logging
 
@@ -20,8 +19,22 @@ LOGGER = logging.getLogger(__name__)
 
 
 def configure_application_font(application: QGuiApplication) -> bool:
-    font_path = Path(__file__).resolve().parent / "fonts" / "Roboto-Variable.ttf"
-    font_id = QFontDatabase.addApplicationFont(str(font_path))
+    available_families = set(QFontDatabase.families())
+    fluent_font = next(
+        (
+            family
+            for family in ("Segoe UI Variable", "Segoe UI")
+            if family in available_families
+        ),
+        None,
+    )
+    if fluent_font is not None:
+        application.setFont(QFont(fluent_font))
+        LOGGER.info("Using Fluent UI system font %s.", fluent_font)
+        return True
+
+    font_path = resource_path("fonts/Roboto-Variable.ttf")
+    font_id = QFontDatabase.addApplicationFont(font_path)
     if font_id < 0:
         LOGGER.error("Could not load Roboto font from %s", font_path)
         return False
@@ -40,8 +53,8 @@ def configure_application_font(application: QGuiApplication) -> bool:
 
 
 def configure_application_icon(application: QGuiApplication) -> bool:
-    icon_path = Path(__file__).resolve().parent / "assets" / "edutrack-logo.png"
-    icon = QIcon(str(icon_path))
+    icon_path = resource_path("assets/edutrack-logo.png")
+    icon = QIcon(icon_path)
     if icon.isNull():
         LOGGER.error("Could not load application icon from %s", icon_path)
         return False
@@ -69,24 +82,24 @@ def main(
     controller_factory: Callable[[], SchoolFinderController] = create_controller,
 ) -> int:
     QtWebEngineQuick.initialize()
-    QQuickStyle.setStyle("Material")
+    QQuickStyle.setStyle("Universal")
     application = QGuiApplication(sys.argv)
     if not configure_application_font(application):
         return 1
     if not configure_application_icon(application):
         return 1
     application.setOrganizationName("2025je")
-    application.setApplicationName("EduScale")
+    application.setApplicationName("EduEscale")
     application.setApplicationDisplayName("Buscador de colegios - ESCALE")
     log_path = configure_logging()
-    LOGGER.info("Starting EduScale; log file: %s", log_path)
+    LOGGER.info("Starting EduEscale; log file: %s", log_path)
     engine = QQmlApplicationEngine()
     controller = controller_factory()
     engine.setInitialProperties({"controller": controller})
-    qml_path = Path(__file__).resolve().parent / "qml" / "Main.qml"
-    engine.load(QUrl.fromLocalFile(str(qml_path)))
+    qml_url = resource_url("qml/Main.qml")
+    engine.load(qml_url)
     if not engine.rootObjects():
-        LOGGER.error("Could not load the main QML interface from %s", qml_path)
+        LOGGER.error("Could not load the main QML interface from %s", qml_url.toString())
         controller.shutdown()
         return 1
     return application.exec()

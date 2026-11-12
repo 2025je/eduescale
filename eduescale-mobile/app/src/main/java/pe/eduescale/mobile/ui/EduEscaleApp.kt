@@ -1,11 +1,15 @@
 package pe.eduescale.mobile.ui
 
+import android.content.Context
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material3.Icon
@@ -17,9 +21,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
@@ -34,12 +41,15 @@ import pe.eduescale.mobile.ui.files.FilesScreen
 import pe.eduescale.mobile.ui.history.ActivityHistoryScreen
 import pe.eduescale.mobile.ui.map.MapScreen
 import pe.eduescale.mobile.ui.schools.SchoolsScreen
+import pe.eduescale.mobile.ui.theme.DARK_THEME_PREFERENCE_KEY
+import pe.eduescale.mobile.ui.theme.THEME_PREFERENCES_NAME
 import pe.eduescale.mobile.ui.theme.EduEscaleTheme
 
 @Composable
 fun EduEscaleApp(
     viewModel: EduEscaleViewModel,
     onMapTouchEnabled: (Boolean) -> Unit,
+    onThemeChanged: (Boolean) -> Unit,
     onMapTopOverlayBottomChanged: (Float) -> Unit,
     onSchoolDetailsSheetShown: (SchoolRecord, Float) -> Unit,
     onMapDownloadControlBoundsChanged: (Float, Float, Float, Float) -> Unit,
@@ -67,6 +77,16 @@ fun EduEscaleApp(
     onPickReminderDateTime: (Long, (Long) -> Unit) -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val themePreferences = remember(context) {
+        context.getSharedPreferences(THEME_PREFERENCES_NAME, Context.MODE_PRIVATE)
+    }
+    val systemDarkTheme = isSystemInDarkTheme()
+    var darkTheme by remember(themePreferences, systemDarkTheme) {
+        mutableStateOf(
+            themePreferences.getBoolean(DARK_THEME_PREFERENCE_KEY, systemDarkTheme),
+        )
+    }
     val navController = rememberNavController()
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route ?: "map"
@@ -85,7 +105,11 @@ fun EduEscaleApp(
         Destination("files", "Archivos", Icons.Default.FolderOpen),
     )
 
-    EduEscaleTheme {
+    LaunchedEffect(darkTheme) {
+        onThemeChanged(darkTheme)
+    }
+
+    EduEscaleTheme(darkTheme = darkTheme) {
         Scaffold(
             containerColor = Color.Transparent,
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -112,6 +136,30 @@ fun EduEscaleApp(
                             label = { Text(destination.label) },
                         )
                     }
+                    NavigationBarItem(
+                        selected = false,
+                        onClick = {
+                            darkTheme = !darkTheme
+                            themePreferences.edit()
+                                .putBoolean(DARK_THEME_PREFERENCE_KEY, darkTheme)
+                                .apply()
+                        },
+                        icon = {
+                            Icon(
+                                imageVector = if (darkTheme) {
+                                    Icons.Default.LightMode
+                                } else {
+                                    Icons.Default.DarkMode
+                                },
+                                contentDescription = if (darkTheme) {
+                                    "Cambiar a tema claro"
+                                } else {
+                                    "Cambiar a tema oscuro"
+                                },
+                            )
+                        },
+                        label = { Text(if (darkTheme) "Claro" else "Oscuro") },
+                    )
                 }
             },
         ) { padding ->

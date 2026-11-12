@@ -18,7 +18,7 @@ def _default_log_directory() -> Path:
                 str(Path.home() / ".local" / "state"),
             )
         )
-    return base_directory / "EduScale" / "logs"
+    return base_directory / "EduEscale" / "logs"
 
 
 def configure_logging(directory: Path | None = None) -> Path:

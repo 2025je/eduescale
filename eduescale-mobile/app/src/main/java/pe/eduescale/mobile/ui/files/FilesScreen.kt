@@ -90,7 +90,7 @@ internal fun FilesScreen(
                     )
                     Text("Importa tu archivo .eduescale", fontWeight = FontWeight.SemiBold)
                     Text(
-                        "Se admiten los archivos EduScale versionados y ZIP de versiones anteriores.",
+                        "Se admiten los archivos EduEscale versionados y ZIP de versiones anteriores.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -105,7 +105,7 @@ internal fun FilesScreen(
                 ) {
                     Text("Archivo actual", style = MaterialTheme.typography.labelLarge)
                     Text(
-                        fileName ?: "Archivo EduScale",
+                        fileName ?: "Archivo EduEscale",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                     )

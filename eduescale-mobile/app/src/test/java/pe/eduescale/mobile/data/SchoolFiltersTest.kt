@@ -84,6 +84,16 @@ class SchoolFiltersTest {
     }
 
     @Test
+    fun cetproLevelOptionIsAvailableWhenNoLoadedSchoolOffersIt() {
+        val schoolsWithoutCetpro = schools.filterNot { "cetpro" in it.niveles }
+
+        assertEquals(
+            listOf("cetpro", "primaria", "secundaria"),
+            schoolLevelOptions(schoolsWithoutCetpro),
+        )
+    }
+
+    @Test
     fun sortsSchoolsFromNearestToFarthestAndKeepsOriginalOrderWithoutLocation() {
         val origin = SchoolCoordinates(latitude = -12.0, longitude = -77.0)
         val nearest = schools[0].copy(latitud = -12.001, longitud = -77.001)

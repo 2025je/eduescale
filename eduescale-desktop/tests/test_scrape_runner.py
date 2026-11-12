@@ -170,7 +170,7 @@ def test_runner_completes_scrape_without_exporting_files(tmp_path, application):
     output_path = tmp_path / "schools.xlsx"
     android_path = android_data_path(output_path)
     output_path.write_bytes(b"previous workbook")
-    android_path.write_bytes(b"previous EduScale data")
+    android_path.write_bytes(b"previous EduEscale data")
     runner = ScrapeRunner()
     process = _replace_process(runner)
     completed = []
@@ -183,14 +183,14 @@ def test_runner_completes_scrape_without_exporting_files(tmp_path, application):
         )
         staging_directory = runner._staging_directory
         assert output_path.read_bytes() == b"previous workbook"
-        assert android_path.read_bytes() == b"previous EduScale data"
+        assert android_path.read_bytes() == b"previous EduEscale data"
         assert process.output_path is not None and process.output_path.is_file()
 
         process._state = QProcess.ProcessState.NotRunning
         runner._scrape_finished(0, QProcess.ExitStatus.NormalExit)
 
         assert output_path.read_bytes() == b"previous workbook"
-        assert android_path.read_bytes() == b"previous EduScale data"
+        assert android_path.read_bytes() == b"previous EduEscale data"
         assert staging_directory is not None and staging_directory.is_dir()
         assert process.output_path is not None and process.output_path.is_file()
         assert completed == [(str(process.output_path), 0, 0, 0)]
@@ -203,7 +203,7 @@ def test_runner_cancels_without_replacing_existing_excel(tmp_path, application):
     output_path = tmp_path / "schools.xlsx"
     android_path = android_data_path(output_path)
     output_path.write_bytes(b"previous workbook")
-    android_path.write_bytes(b"previous EduScale data")
+    android_path.write_bytes(b"previous EduEscale data")
     runner = ScrapeRunner()
     process = _replace_process(runner)
     cancelled = []
@@ -226,7 +226,7 @@ def test_runner_cancels_without_replacing_existing_excel(tmp_path, application):
 
         assert cancelled == [True]
         assert output_path.read_bytes() == b"previous workbook"
-        assert android_path.read_bytes() == b"previous EduScale data"
+        assert android_path.read_bytes() == b"previous EduEscale data"
         assert staging_directory is not None and not staging_directory.exists()
     finally:
         runner.shutdown()
@@ -239,7 +239,7 @@ def test_runner_rejects_missing_dataset_without_replacing_exports(
     output_path = tmp_path / "schools.xlsx"
     android_path = android_data_path(output_path)
     output_path.write_bytes(b"previous workbook")
-    android_path.write_bytes(b"previous EduScale data")
+    android_path.write_bytes(b"previous EduEscale data")
     runner = ScrapeRunner()
     process = _replace_process(runner)
     failures = []
@@ -257,7 +257,7 @@ def test_runner_rejects_missing_dataset_without_replacing_exports(
 
         assert failures and failures[0][0] == "No se guardaron los datos"
         assert output_path.read_bytes() == b"previous workbook"
-        assert android_path.read_bytes() == b"previous EduScale data"
+        assert android_path.read_bytes() == b"previous EduEscale data"
     finally:
         runner.shutdown()
     assert application is not None

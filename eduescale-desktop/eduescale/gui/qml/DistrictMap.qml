@@ -2,13 +2,14 @@ import QtQuick
 import QtQuick.Controls
 import QtWebChannel
 import QtWebEngine
+import "styles" as EduStyle
 
 Rectangle {
     id: root
     objectName: "districtMap"
-    color: "#F4F7F5"
-    radius: 12
-    border.color: "#DCE6E0"
+    color: EduStyle.Style.subtleSurfaceColor
+    radius: EduStyle.Style.cardRadius
+    border.color: EduStyle.Style.borderColor
     border.width: 1
     clip: true
 
@@ -149,11 +150,10 @@ Rectangle {
         Component.onCompleted: registerObject("mapBridge", mapBridge)
     }
 
-    WebEngineProfile {
-        id: mapProfile
+    WebEngineProfilePrototype {
+        id: mapProfilePrototype
         storageName: "eduescale-map"
         httpCacheType: WebEngineProfile.DiskHttpCache
-        httpUserAgent: "EduEscaleDesktop/1.0 (+https://github.com/2025je/eduescale)"
     }
 
     WebEngineView {
@@ -161,8 +161,6 @@ Rectangle {
         objectName: "districtMapWebView"
         anchors.fill: parent
         anchors.margins: 1
-        url: Qt.resolvedUrl("../assets/maplibre/map.html")
-        profile: mapProfile
         webChannel: districtChannel
         settings.localContentCanAccessFileUrls: true
         settings.localContentCanAccessRemoteUrls: true
@@ -175,28 +173,30 @@ Rectangle {
         }
     }
 
-    ComboBox {
+    Component.onCompleted: {
+        const profile = mapProfilePrototype.instance()
+        if (!profile) {
+            loadingError = "No se pudo crear el perfil del mapa."
+            return
+        }
+        profile.httpUserAgent =
+            "EduEscaleDesktop/1.0 (+https://github.com/2025je/eduescale)"
+        webView.profile = profile
+        webView.url = Qt.resolvedUrl("../assets/maplibre/map.html")
+    }
+
+    StyledComboBox {
         id: mapStyleSelector
         objectName: "mapStyleSelector"
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.margins: 12
-        width: 148
-        implicitHeight: 36
+        width: EduStyle.Style.mapStyleSelectorWidth
+        implicitHeight: EduStyle.Style.mapStyleSelectorHeight
         z: 2
         enabled: root.mapReady
-        font.pixelSize: 12
-        padding: 6
-        leftPadding: 9
-        rightPadding: 28
         textRole: "label"
         valueRole: "styleKey"
-        background: Rectangle {
-            radius: 8
-            color: "#FFFFFF"
-            border.width: 1
-            border.color: mapStyleSelector.enabled ? "#AFC7B8" : "#DCE6E0"
-        }
         model: ListModel {
             ListElement { label: "Liberty"; styleKey: "liberty" }
             ListElement { label: "Bright"; styleKey: "bright" }
@@ -232,7 +232,7 @@ Rectangle {
         width: parent.width - 32
         visible: !root.mapReady && !root.loadingError.length
         text: "Cargando mapa..."
-        color: "#65746C"
+        color: EduStyle.Style.mutedTextColor
         horizontalAlignment: Text.AlignHCenter
     }
 
@@ -241,7 +241,7 @@ Rectangle {
         width: parent.width - 32
         visible: root.loadingError.length > 0
         text: root.loadingError
-        color: "#A83232"
+        color: EduStyle.Style.dangerColor
         wrapMode: Text.WordWrap
         horizontalAlignment: Text.AlignHCenter
     }

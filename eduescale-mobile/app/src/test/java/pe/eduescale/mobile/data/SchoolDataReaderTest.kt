@@ -5,6 +5,7 @@ import java.io.ByteArrayOutputStream
 import java.io.StringReader
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
+import java.util.Base64
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import org.junit.Assert.assertEquals
@@ -14,7 +15,7 @@ import org.junit.Test
 
 class SchoolDataReaderTest {
     @Test
-    fun readsCompressedEduScaleZip() {
+    fun readsCompressedEduEscaleZip() {
         val json = """{"formato":"eduescale","version":1,"colegios":[{"nombre":"Colegio ZIP","longitud":-77.0,"latitud":-12.0}]}"""
         val archiveBytes = ByteArrayOutputStream()
         ZipOutputStream(archiveBytes).use { archive ->
@@ -39,6 +40,70 @@ class SchoolDataReaderTest {
 
         assertEquals(0, parsed.totalCount)
         assertEquals(emptyList<SchoolRecord>(), parsed.schools)
+    }
+
+    @Test
+    fun readsJsonWithMetadataAndRejectsMismatchedCount() {
+        val validJson = """
+            {
+              "formato": "eduescale",
+              "version": 1,
+              "metadatos": {
+                "generado_en": "2026-11-11T12:00:00Z",
+                "cantidad_colegios": 1,
+                "crs": "EPSG:4326",
+                "aplicacion": "EduEscale Desktop",
+                "version_aplicacion": "0.1.0"
+              },
+              "colegios": [{"nombre": "Con metadatos"}]
+            }
+        """.trimIndent()
+
+        assertEquals(
+            1,
+            SchoolDataReader.read(
+                ByteArrayInputStream(validJson.toByteArray(StandardCharsets.UTF_8)),
+            ).totalCount,
+        )
+
+        val invalidJson = validJson.replace("\"cantidad_colegios\": 1", "\"cantidad_colegios\": 2")
+        assertThrows(IllegalArgumentException::class.java) {
+            SchoolDataReader.read(
+                ByteArrayInputStream(invalidJson.toByteArray(StandardCharsets.UTF_8)),
+            )
+        }
+    }
+
+    @Test
+    fun readsDesktopEncryptedFileAndPersistsOnlyDecryptedData() {
+        val encryptedBytes = Base64.getDecoder().decode(ENCRYPTED_FIXTURE)
+        val directory = Files.createTempDirectory("eduescale-protected").toFile()
+        try {
+            val storage = SchoolFileStorage(directory)
+            val parsed = storage.save(
+                ByteArrayInputStream(encryptedBytes),
+                "fixture password",
+            )
+            assertEquals("Fixture cruzado", parsed.schools.single().nombre)
+            assertEquals(
+                "Fixture cruzado",
+                storage.restore()?.schools?.single()?.nombre,
+            )
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun rejectsIncorrectPasswordForEncryptedFile() {
+        val encryptedBytes = Base64.getDecoder().decode(ENCRYPTED_FIXTURE)
+
+        assertThrows(IllegalArgumentException::class.java) {
+            SchoolDataReader.read(
+                ByteArrayInputStream(encryptedBytes),
+                "incorrecta",
+            )
+        }
     }
 
     @Test
@@ -248,7 +313,7 @@ class SchoolDataReaderTest {
     }
 
     @Test
-    fun rejectsFilesWithoutTheEduScaleFormatMarker() {
+    fun rejectsFilesWithoutTheEduEscaleFormatMarker() {
         val json = """{"formato":"otro","version":1,"colegios":[]}"""
 
         assertThrows(IllegalArgumentException::class.java) {
@@ -298,5 +363,10 @@ class SchoolDataReaderTest {
         } finally {
             directory.deleteRecursively()
         }
+    }
+
+    private companion object {
+        const val ENCRYPTED_FIXTURE =
+            "RURVU0NFTkMBAAknwAABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhuYA6/Incsj+5T3yjd3UCEMxCpihXliZ5aDhl5w5jItsDaa3T1CluRSZn7lU/CLi8TezbCNbUXEXO2Y+/8lNIpQSnlvlUuJpPayef2q7QH+SM6sf9i96IU4d5bow5wx2DtiBa3lHQGRixSCE0kG4+dlj9ZHO+wgIcQ7hyxNPPGH6elqOtMKTB9R4CEdQ1avdNIN5/+QuZdtqpXjTqTlUllfOH7VxqrGDngRK3gFs6Y4K5uglStDQaiXDqxtCGrrGEQBaS7xRT4ikwJD0NMbVBZYR0AUFQlh1AU="
     }
 }

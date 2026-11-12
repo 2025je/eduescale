@@ -22,18 +22,20 @@ uv sync
 uv run eduescale-gui
 ```
 
-Se abrirá una ventana Material para crear combinaciones de ubicación, gestión y
-nivel educativo. El mapa muestra primero los departamentos; selecciona uno o
-varios y pulsa «Ver provincias». Después selecciona provincias y pulsa
-«Ver distritos» para elegir las zonas finales. Puedes volver a un nivel anterior
-sin perder las selecciones que ya hiciste. Arrastra el mapa para moverlo y usa
-la rueda del ratón para acercar o alejar. Si no seleccionas una ubicación, la
-búsqueda cubre todo el país. Cada distrito
+Se abrirá una ventana con diseño Fluent para crear combinaciones de ubicación,
+gestión y nivel educativo. La ubicación se puede seleccionar desde la pestaña
+«Mapa» o desde «Por ubicación», que contiene combobox encadenados de departamento,
+provincia y distrito. En el mapa, selecciona uno o varios departamentos y pulsa
+«Ver provincias»; después elige provincias y pulsa «Ver distritos». Puedes
+volver a un nivel anterior sin perder las selecciones. Arrastra el mapa para
+moverlo y usa la rueda del ratón para acercar o alejar. La búsqueda usa la
+pestaña activa; si no seleccionas una ubicación, cubre todo el país. Cada distrito
 seleccionado se consulta por separado y los colegios repetidos se guardan una
 sola vez. La extracción se ejecuta en
 segundo plano para mantener la interfaz receptiva. Puedes cancelarla desde la
 barra inferior; los archivos anteriores se conservan si la extracción se
-cancela o falla.
+cancela o falla. El botón «Tema oscuro»/«Tema claro» del encabezado alterna y
+recuerda la apariencia elegida.
 
 También se puede iniciar con `uv run python app.py` por compatibilidad.
 
@@ -61,13 +63,24 @@ es el punto de composición: crea los servicios predeterminados y los inyecta
 al controlador; también permite reemplazarlos por implementaciones propias.
 El controlador depende de contratos de servicio, no de sus implementaciones
 concretas. El comando `eduescale-gui` es el entry point instalado para iniciar
-esa interfaz.
+esa interfaz. Los tokens visuales compartidos por las vistas se definen en el
+singleton QML `eduescale/gui/qml/styles/Style.qml`; todos los desplegables usan
+el componente `eduescale/gui/qml/StyledComboBox.qml` para mantener el mismo
+estilo en su lista emergente. La interfaz, el mapa, sus datos, las imágenes y
+la fuente se compilan en `eduescale/gui/resources.rcc` a partir del manifiesto
+`eduescale/gui/resources.qrc`. Para regenerarlo desde `eduescale-desktop`,
+ejecuta:
+
+```shell
+uv run pyside6-rcc --binary eduescale/gui/resources.qrc -o eduescale/gui/resources.rcc
+```
 
 ## Uso
 
-Selecciona cero o más distritos directamente en el mapa; una o ambas opciones
-de gestión pública/privada; y uno o varios niveles entre primaria, secundaria y
-CETPRO. Pulsa **Agregar a mis búsquedas** para guardar los filtros y repite el
+Selecciona la ubicación desde la pestaña «Mapa» o con los tres combobox de
+departamento, provincia y distrito. Luego elige una o ambas opciones de gestión
+pública/privada y uno o varios niveles entre primaria, secundaria y CETPRO.
+Pulsa **Agregar a mis búsquedas** para guardar los filtros y repite el
 proceso para agregar otros criterios. Cada combinación debe tener al menos una
 opción de Gestión y una de Nivel educativo. Puedes quitar combinaciones antes
 de iniciar. Al pulsar
@@ -92,15 +105,27 @@ repite sus encabezados y mantiene cada fila de colegio completa.
 
 Las exportaciones Excel, PDF y `.eduescale` comparten el mismo nombre base y
 solo cambia la extensión.
-El `.eduescale` es un archivo JSON UTF-8 versionado con departamento, provincia,
-distrito, los datos de cada colegio, el código del local y longitud/latitud, sin
-la columna de orden del reporte ni el enlace de Maps. Por ejemplo,
+El `.eduescale` sin opciones de protección es un archivo JSON UTF-8 versionado
+con departamento, provincia, distrito, los datos de cada colegio, el código del
+local y longitud/latitud, sin la columna de orden del reporte ni el enlace de
+Maps. Incluye metadatos con la fecha UTC de generación, cantidad de registros y
+sistema de coordenadas (`EPSG:4326`). Los metadatos son aditivos: los lectores
+antiguos que ignoran campos desconocidos siguen pudiendo abrir el formato v1.
+Los cambios incompatibles requieren una nueva versión; se conservan los
+importadores de versiones anteriores. Por ejemplo,
 `colegios_escale.xlsx` produce `colegios_escale.eduescale`:
 
 ```json
 {
   "formato": "eduescale",
   "version": 1,
+  "metadatos": {
+    "generado_en": "2026-11-11T17:00:00Z",
+    "cantidad_colegios": 1,
+    "crs": "EPSG:4326",
+    "aplicacion": "EduEscale Desktop",
+    "version_aplicacion": "0.1.0"
+  },
   "colegios": [
     {
       "departamento": "Loreto",
@@ -123,9 +148,20 @@ la columna de orden del reporte ni el enlace de Maps. Por ejemplo,
 }
 ```
 
-Puedes enviar el `.eduescale` como documento por WhatsApp; en Android, al tocar
-el archivo, el sistema ofrecerá abrirlo con EduEscale si la app está instalada.
-Android también sigue admitiendo archivos `.eduescale` antiguos en ZIP.
+En el diálogo de exportación puedes comprimir el JSON como ZIP o protegerlo con
+contraseña. La compresión no cifra el contenido. El archivo protegido usa
+AES-256-GCM, una clave derivada con PBKDF2-HMAC-SHA-256 (600.000 iteraciones) y
+una contraseña de al menos 8 caracteres; el contenido se comprime antes de
+cifrarse. La aplicación no guarda la contraseña. Al importar un archivo
+protegido, Android la solicita y conserva una copia descifrada únicamente en el
+almacenamiento privado de la app para restaurar la sesión. Comparte la contraseña
+por un canal distinto al archivo.
+
+Los tres tipos siguen usando la extensión `.eduescale`: JSON plano, ZIP con
+`colegios.json` o el contenedor cifrado EduEscale. Android detecta cada formato,
+admite ZIP antiguos y continúa leyendo JSON v1 sin metadatos. Puedes enviar el
+archivo como documento por WhatsApp; al tocarlo, Android ofrecerá abrirlo con
+EduEscale si la app está instalada.
 
 `gestion` identifica colegios públicos o privados y `nivel` clasifica el servicio como primaria, secundaria o CETPRO.
 `codigo_local` identifica el local educativo.
@@ -201,7 +237,7 @@ Las consultas directas de ubicación reintentan errores temporales de red y
 respuestas HTTP recuperables con backoff acotado y respetan `Retry-After`.
 La aplicación recuerda el tamaño de la ventana y la última carpeta de exportación
 en las preferencias locales. En Windows, los logs rotativos se guardan en
-`%LOCALAPPDATA%\EduScale\logs` (5 MiB por archivo y tres respaldos).
+`%LOCALAPPDATA%\EduEscale\logs` (5 MiB por archivo y tres respaldos).
 
 ## Pruebas
 

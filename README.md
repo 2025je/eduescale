@@ -1,6 +1,6 @@
-# EduScale
+# EduEscale
 
-Repositorio con los proyectos de escritorio y móvil de EduScale:
+Repositorio con los proyectos de escritorio y móvil de EduEscale:
 
 - [Aplicación de escritorio](./eduescale-desktop/README.md): aplicación Python
   para consultar el padrón ESCALE y exportar Excel y archivos `.eduescale`.

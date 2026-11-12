@@ -25,6 +25,13 @@ def format(session: Session) -> None:
 @session(uv_groups=["build"])
 def build(session: Session) -> None:
     session.run(
+        "pyside6-rcc",
+        "--binary",
+        "eduescale/gui/resources.qrc",
+        "-o",
+        "eduescale/gui/resources.rcc",
+    )
+    session.run(
         "pyinstaller",
         "--noconfirm",
         "--clean",

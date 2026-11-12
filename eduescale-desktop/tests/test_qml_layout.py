@@ -28,7 +28,14 @@ class FakeLocationService(QObject):
     failed = Signal(str, str, str)
 
     def load(self, kind, parent_code=""):
-        pass
+        locations = {
+            ("regions", ""): [("15", "Lima"), ("13", "La Libertad")],
+            ("provinces", "15"): [("1501", "Lima")],
+            ("provinces", "13"): [("1301", "Trujillo")],
+            ("districts", "1501"): [("150101", "Lima")],
+            ("districts", "1301"): [("130112", "Huanchaco")],
+        }
+        self.loaded.emit(kind, parent_code, locations.get((kind, parent_code), []))
 
     def shutdown(self):
         pass
@@ -65,17 +72,29 @@ class FakeExportRunner(QObject):
         super().__init__()
         self.started_requests = []
 
-    def start(self, export_type, database_path, output_path):
-        self.started_requests.append((export_type, database_path, output_path))
+    def start(
+        self,
+        export_type,
+        database_path,
+        output_path,
+        password=None,
+        compressed=False,
+    ):
+        request = (export_type, database_path, output_path)
+        if password is not None or compressed:
+            request += (password, compressed)
+        self.started_requests.append(request)
 
     def shutdown(self):
         pass
 
 
 QtWebEngineQuick.initialize()
-QQuickStyle.setStyle("Material")
+QQuickStyle.setStyle("Universal")
 application = QGuiApplication([])
-assert configure_application_font(application), "Roboto font could not be loaded"
+assert configure_application_font(application), (
+    "No Fluent-compatible UI font could be loaded"
+)
 assert configure_application_icon(application), "Application icon could not be loaded"
 assert not application.windowIcon().isNull()
 settings = QSettings(sys.argv[2], QSettings.Format.IniFormat)
@@ -89,9 +108,13 @@ controller = SchoolFinderController(
     export_runner=export_runner,
 )
 engine = QQmlApplicationEngine()
+qml_warnings = []
+engine.warnings.connect(lambda warnings: qml_warnings.extend(warnings))
 engine.setInitialProperties({"controller": controller})
-engine.load(QUrl.fromLocalFile(sys.argv[1]))
-assert engine.rootObjects(), "Main.qml did not load"
+engine.load(QUrl(sys.argv[1]))
+assert engine.rootObjects(), "\n".join(
+    warning.toString() for warning in qml_warnings
+) or "Main.qml did not load"
 window = engine.rootObjects()[0]
 
 
@@ -158,22 +181,41 @@ help_text = child("searchHelpText")
 filter_sets = child("filterSetsModel")
 district_map = child("districtMap")
 selection_controls = child("selectionControls")
+location_tabs = child("locationTabs")
+map_location_tab = child("mapLocationTab")
+combo_location_tab = child("comboLocationTab")
+map_location_tab_label = child("mapLocationTabLabel")
+combo_location_tab_label = child("comboLocationTabLabel")
+map_location_tab_indicator = child("mapLocationTabIndicator")
+combo_location_tab_indicator = child("comboLocationTabIndicator")
+department_combo = child("departmentCombo")
+province_combo = child("provinceCombo")
+district_combo = child("districtCombo")
+selected_district_count = child("selectedDistrictCountLabel")
 district_webview = child("districtMapWebView")
+map_profile = district_webview.property("profile")
 map_level_label = child("mapLevelLabel")
 map_style_selector = child("mapStyleSelector")
 map_advance_button = child("mapAdvanceButton")
+map_advance_button_label = child("mapAdvanceButtonLabel")
 map_back_button = child("mapBackButton")
 map_clear_button = child("mapClearButton")
+map_clear_button_label = child("mapClearButtonLabel")
 empty_state = child("emptySearchState")
 brand_title = child("brandTitle")
 brand_logo = child("brandLogo")
 excel_button = child("downloadExcelButton")
+excel_button_label = child("downloadExcelButtonLabel")
 pdf_button = child("downloadPdfButton")
-eduescale_button = child("downloadEduScaleButton")
+pdf_button_label = child("downloadPdfButtonLabel")
+eduescale_button = child("downloadEduEscaleButton")
+eduescale_button_label = child("downloadEduEscaleButtonLabel")
 excel_dialog = child("excelSaveDialog")
 pdf_dialog = child("pdfSaveDialog")
-eduescale_dialog = child("eduScaleSaveDialog")
+eduescale_dialog = child("eduEscaleSaveDialog")
 download_button = child("scrapeButton")
+scrape_button_label = child("scrapeButtonLabel")
+add_filter_button_label = child("addFilterSetButtonLabel")
 assert district_map.property("featureCount") == controller.property("districtCount")
 deadline = time.monotonic() + 35
 while (
@@ -189,13 +231,33 @@ assert district_map.property("mapReady"), (
     district_webview.property("loading"),
     district_webview.property("loadProgress"),
 )
+assert map_profile.property("storageName") == "eduescale-map"
+assert map_profile.property("httpUserAgent") == (
+    "EduEscaleDesktop/1.0 (+https://github.com/2025je/eduescale)"
+)
 assert map_style_selector.property("count") == 8
 assert map_style_selector.property("currentText") == "Liberty"
 assert map_style_selector.property("enabled")
 assert map_style_selector.property("width") == 148
 assert map_style_selector.property("height") <= 40
 assert map_style_selector.property("background").property("color").alpha() == 255
-hierarchy_path = Path(sys.argv[1]).parents[1] / "assets" / "districts_map_hierarchy.json"
+for popup_name in (
+    "departmentComboPopup",
+    "provinceComboPopup",
+    "districtComboPopup",
+    "mapStyleSelectorPopup",
+):
+    popup = window.findChild(QObject, popup_name)
+    assert popup is not None
+    assert popup.property("background").property("color").name() == "#ffffff"
+    assert popup.property("background").property("radius") == 8
+map_style_popup = window.findChild(QObject, "mapStyleSelectorPopup")
+assert QMetaObject.invokeMethod(map_style_popup, "open")
+application.processEvents()
+assert map_style_popup.property("visible")
+assert QMetaObject.invokeMethod(map_style_popup, "close")
+application.processEvents()
+hierarchy_path = Path(sys.argv[3]) / "districts_map_hierarchy.json"
 department_features = json.loads(
     hierarchy_path.read_text(encoding="utf-8")
 )["departments"]["features"]
@@ -230,6 +292,49 @@ assert len(qml_value(controller, "mapProvinceMetadata")) == 196
 assert qml_value(window, "mapLevel") == "department"
 assert map_level_label.property("text") == "Paso 1 de 3 · Departamentos"
 wait_for_map_count(district_map, 25)
+assert location_tabs.property("currentIndex") == 0
+assert map_location_tab.property("text") == "Mapa"
+assert combo_location_tab.property("text") == "Por ubicación"
+assert map_location_tab_indicator.property("visible")
+assert not combo_location_tab_indicator.property("visible")
+assert map_location_tab_label.property("color").name() == "#174c39"
+assert combo_location_tab_label.property("color").name() == "#1a1a1a"
+assert map_advance_button_label.property("color").name() == "#4d5852"
+assert map_clear_button_label.property("color").name() == "#4d5852"
+assert add_filter_button_label.property("color").name() == "#4d5852"
+assert scrape_button_label.property("color").name() == "#4d5852"
+assert excel_button_label.property("color").name() == "#4d5852"
+assert pdf_button_label.property("color").name() == "#4d5852"
+assert eduescale_button_label.property("color").name() == "#4d5852"
+assert department_combo.property("enabled")
+assert department_combo.property("count") == 3
+
+combo_location_tab.click()
+application.processEvents()
+assert location_tabs.property("currentIndex") == 1
+assert not map_location_tab_indicator.property("visible")
+assert combo_location_tab_indicator.property("visible")
+assert map_location_tab_label.property("color").name() == "#1a1a1a"
+assert combo_location_tab_label.property("color").name() == "#174c39"
+department_combo.setProperty("currentIndex", 1)
+assert QMetaObject.invokeMethod(department_combo, "activated", Q_ARG(int, 1))
+application.processEvents()
+assert province_combo.property("enabled")
+assert province_combo.property("count") == 2
+province_combo.setProperty("currentIndex", 1)
+assert QMetaObject.invokeMethod(province_combo, "activated", Q_ARG(int, 1))
+application.processEvents()
+assert district_combo.property("enabled")
+assert district_combo.property("count") == 2
+district_combo.setProperty("currentIndex", 1)
+assert QMetaObject.invokeMethod(district_combo, "activated", Q_ARG(int, 1))
+application.processEvents()
+assert district_combo.property("currentValue") == "150101"
+assert selected_district_count.property("text") == "1 distritos"
+map_location_tab.click()
+application.processEvents()
+assert location_tabs.property("currentIndex") == 0
+assert selected_district_count.property("text") == "Todo el Perú"
 
 select_map_codes(district_webview, district_map, ("15", "13"))
 assert qml_value(window, "selectedDepartmentCodes") == ["15", "13"]
@@ -274,9 +379,16 @@ assert qml_value(window, "selectedDepartmentCodes") == []
 assert qml_value(window, "selectedProvinceCodes") == []
 assert qml_value(window, "selectedDistrictCodes") == []
 assert qml_value(district_map, "selectedCodes") == []
-assert brand_title.property("font").family() == "Roboto"
+assert department_combo.property("currentIndex") == 0
+assert province_combo.property("currentIndex") == 0
+assert district_combo.property("currentIndex") == 0
+assert brand_title.property("font").family() in (
+    "Segoe UI Variable",
+    "Segoe UI",
+    "Roboto",
+)
 logo_source = brand_logo.property("source")
-assert QImageReader(logo_source.toLocalFile()).canRead()
+assert QImageReader(":" + logo_source.path()).canRead()
 assert download_button.property("text") == "Ejecutar búsqueda"
 assert excel_button.property("text") == "Exportar Excel"
 assert pdf_button.property("text") == "Exportar PDF"
@@ -460,11 +572,13 @@ child("publicManagement").setProperty("checked", True)
 assert window.findChild(QObject, "initialLevel") is None
 child("primaryLevel").setProperty("checked", True)
 child("cetproLevel").setProperty("checked", True)
+assert add_filter_button_label.property("color").name() == "#ffffff"
 assert QMetaObject.invokeMethod(window, "addFilterSet")
 assert filter_sets.property("count") == 2
 assert QMetaObject.invokeMethod(window, "addFilterSet")
 assert filter_sets.property("count") == 2
 assert "ya está en Mis búsquedas" in help_text.property("text")
+assert scrape_button_label.property("color").name() == "#ffffff"
 download_button.click()
 application.processEvents()
 assert controller.scrapeRunning
@@ -548,7 +662,7 @@ assert export_runner.started_requests[-1] == (
 controller._export_running = False
 controller.stateChanged.emit()
 eduescale_path = default_export_path.parent / "colegios-compartir.eduescale"
-controller.exportEduScaleFile(QUrl.fromLocalFile(str(eduescale_path)).toString())
+controller.exportEduEscaleFile(QUrl.fromLocalFile(str(eduescale_path)).toString())
 assert export_runner.started_requests[-1] == (
     "eduescale",
     database_path,
@@ -615,12 +729,28 @@ eduescale_bottom = eduescale_button.mapToItem(
 ).y()
 assert eduescale_bottom <= page_flickable.property("height") + 1
 
+theme_toggle = child("themeToggleButton")
+light_canvas = window.property("canvasColor")
+assert QMetaObject.invokeMethod(theme_toggle, "click")
+application.processEvents()
+assert controller.darkTheme is True
+assert theme_toggle.property("text") == "Tema claro"
+assert window.property("canvasColor") != light_canvas
+assert settings.value("appearance/darkTheme", type=bool) is True
+
+assert QMetaObject.invokeMethod(theme_toggle, "click")
+application.processEvents()
+assert controller.darkTheme is False
+assert theme_toggle.property("text") == "Tema oscuro"
+
 controller.shutdown()
 """
 
 
 def test_main_qml_fits_supported_window_sizes(tmp_path):
-    qml_path = Path(__file__).parents[1] / "eduescale" / "gui" / "qml" / "Main.qml"
+    assets_path = (
+        Path(__file__).parents[1] / "eduescale" / "gui" / "assets"
+    )
     environment = os.environ.copy()
     environment.setdefault("QT_QPA_PLATFORM", "offscreen")
     environment.setdefault(
@@ -633,8 +763,9 @@ def test_main_qml_fits_supported_window_sizes(tmp_path):
             sys.executable,
             "-c",
             QML_SMOKE_SCRIPT,
-            str(qml_path),
+            "qrc:/eduescale/gui/qml/Main.qml",
             str(tmp_path / "settings.ini"),
+            str(assets_path),
         ],
         capture_output=True,
         check=False,
@@ -644,3 +775,6 @@ def test_main_qml_fits_supported_window_sizes(tmp_path):
     )
 
     assert result.returncode == 0, f"{result.stdout}\n{result.stderr}"
+    assert "QML WebEngineProfile: Please use WebEngineProfilePrototype" not in (
+        result.stderr
+    )

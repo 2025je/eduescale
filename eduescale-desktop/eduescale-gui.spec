@@ -1,20 +1,11 @@
 # -*- mode: python ; coding: utf-8 -*-
-from PyInstaller.utils.hooks import collect_data_files
+from PyInstaller.utils.hooks import collect_data_files, copy_metadata
 
 datas = [
-    ('eduescale/gui/qml/Main.qml', 'eduescale/gui/qml'),
-    ('eduescale/gui/qml/DistrictMap.qml', 'eduescale/gui/qml'),
-    ('eduescale/gui/assets/edutrack-logo.png', 'eduescale/gui/assets'),
-    ('eduescale/gui/assets/districts_map.json', 'eduescale/gui/assets'),
-    ('eduescale/gui/assets/districts_map_hierarchy.json', 'eduescale/gui/assets'),
-    ('eduescale/gui/assets/maplibre/map.html', 'eduescale/gui/assets/maplibre'),
-    ('eduescale/gui/assets/maplibre/maplibre-gl.js', 'eduescale/gui/assets/maplibre'),
-    ('eduescale/gui/assets/maplibre/maplibre-gl.css', 'eduescale/gui/assets/maplibre'),
-    ('eduescale/gui/assets/maplibre/LICENSE.txt', 'eduescale/gui/assets/maplibre'),
-    ('eduescale/gui/fonts/Roboto-Variable.ttf', 'eduescale/gui/fonts'),
-    ('eduescale/gui/fonts/OFL.txt', 'eduescale/gui/fonts'),
+    ('eduescale/gui/resources.rcc', 'eduescale/gui'),
 ]
 datas += collect_data_files('PySide6')
+datas += copy_metadata('eduescale')
 
 
 a = Analysis(

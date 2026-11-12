@@ -1,8 +1,9 @@
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Controls.Material
+import QtQuick.Controls.Universal
 import QtQuick.Dialogs
 import QtQuick.Layouts
+import "styles" as EduStyle
 
 ApplicationWindow {
     id: window
@@ -13,31 +14,51 @@ ApplicationWindow {
     minimumHeight: 600
     visible: true
     title: "EduEscale | Buscador de colegios"
-    color: "#F4F7F5"
+    color: canvasColor
 
-    readonly property color primaryColor: "#176B50"
-    readonly property color primaryHoverColor: "#145D46"
-    readonly property color primaryActiveColor: "#104B39"
-    readonly property color primarySubtleColor: "#E8F4ED"
-    readonly property color primarySubtleHoverColor: "#D5E9DC"
-    readonly property color primaryBorderColor: "#B9D7C6"
-    readonly property color primaryEmphasisColor: "#164C39"
-    readonly property color borderColor: "#E6ECE8"
-    readonly property color textColor: "#1C262B"
-    readonly property color mutedTextColor: "#65746C"
-    readonly property int cardRadius: 20
-    readonly property int controlRadius: 14
-    readonly property int compactButtonHeight: 36
-    readonly property int actionButtonHeight: 40
+    readonly property bool darkTheme: controller.darkTheme
+    readonly property color canvasColor: EduStyle.Style.canvasColor
+    readonly property color surfaceColor: EduStyle.Style.surfaceColor
+    readonly property color subtleSurfaceColor: EduStyle.Style.subtleSurfaceColor
+    readonly property color disabledSurfaceColor: EduStyle.Style.disabledSurfaceColor
+    readonly property color disabledBorderColor: EduStyle.Style.disabledBorderColor
+    readonly property color disabledTextColor: EduStyle.Style.disabledTextColor
+    readonly property color primaryColor: EduStyle.Style.primaryColor
+    readonly property color primaryHoverColor: EduStyle.Style.primaryHoverColor
+    readonly property color primaryActiveColor: EduStyle.Style.primaryActiveColor
+    readonly property color primarySubtleColor: EduStyle.Style.primarySubtleColor
+    readonly property color primarySubtleHoverColor:
+        EduStyle.Style.primarySubtleHoverColor
+    readonly property color primaryBorderColor: EduStyle.Style.primaryBorderColor
+    readonly property color primaryEmphasisColor: EduStyle.Style.primaryEmphasisColor
+    readonly property color borderColor: EduStyle.Style.borderColor
+    readonly property color textColor: EduStyle.Style.textColor
+    readonly property color mutedTextColor: EduStyle.Style.mutedTextColor
+    readonly property int appTitleFontSize: EduStyle.Style.appTitleFontSize
+    readonly property int sectionTitleFontSize: EduStyle.Style.sectionTitleFontSize
+    readonly property int bodyFontSize: EduStyle.Style.bodyFontSize
+    readonly property int smallFontSize: EduStyle.Style.smallFontSize
+    readonly property int captionFontSize: EduStyle.Style.captionFontSize
+    readonly property int cardRadius: EduStyle.Style.cardRadius
+    readonly property int controlRadius: EduStyle.Style.controlRadius
+    readonly property int compactButtonHeight: EduStyle.Style.compactButtonHeight
+    readonly property int actionButtonHeight: EduStyle.Style.actionButtonHeight
     property string filterNotice: ""
     property string mapLevel: "department"
     property var selectedDepartmentCodes: []
     property var selectedProvinceCodes: []
     property var selectedDistrictCodes: []
 
-    Material.theme: Material.Light
-    Material.primary: primaryColor
-    Material.accent: primaryColor
+    Universal.theme: darkTheme ? Universal.Dark : Universal.Light
+    Universal.accent: primaryColor
+    Universal.background: surfaceColor
+    Universal.foreground: textColor
+
+    Binding {
+        target: EduStyle.Style
+        property: "darkTheme"
+        value: window.controller.darkTheme
+    }
 
     onClosing: {
         controller.saveWindowSize(width, height)
@@ -50,6 +71,13 @@ ApplicationWindow {
     }
 
     function effectiveDistrictCodes() {
+        if (locationTabs.currentIndex === 1) {
+            return controller.effectiveDistrictCodes(
+                departmentCombo.currentValue ? [String(departmentCombo.currentValue)] : [],
+                provinceCombo.currentValue ? [String(provinceCombo.currentValue)] : [],
+                districtCombo.currentValue ? [String(districtCombo.currentValue)] : []
+            )
+        }
         return controller.effectiveDistrictCodes(
             selectedDepartmentCodes,
             selectedProvinceCodes,
@@ -99,6 +127,14 @@ ApplicationWindow {
         selectedProvinceCodes = []
         selectedDistrictCodes = []
         filterNotice = ""
+    }
+
+    function clearLocationSelection() {
+        clearMapSelection()
+        departmentCombo.currentIndex = 0
+        provinceCombo.currentIndex = 0
+        districtCombo.currentIndex = 0
+        controller.selectRegion("")
     }
 
     function selectedManagement() {
@@ -208,7 +244,7 @@ ApplicationWindow {
         clip: true
         contentWidth: availableWidth
         contentHeight: pageContent.implicitHeight
-        ScrollBar.vertical: ScrollBar {
+        ScrollBar.vertical: StyledScrollBar {
             objectName: "pageVerticalScrollBar"
             anchors.right: parent.right
             policy: ScrollBar.AlwaysOn
@@ -226,7 +262,7 @@ ApplicationWindow {
                 padding: 10
                 background: Rectangle {
                     radius: window.cardRadius
-                    color: "#FFFFFF"
+                    color: window.surfaceColor
                     border.width: 1
                     border.color: window.borderColor
                 }
@@ -255,15 +291,23 @@ ApplicationWindow {
                                 objectName: "brandTitle"
                                 text: "EduEscale"
                                 color: window.textColor
-                                font.pixelSize: 22
+                                font.pixelSize: window.appTitleFontSize
                                 font.weight: Font.DemiBold
                             }
 
                             Label {
                                 text: "Instituciones educativas del Perú · Busca, filtra y exporta"
                                 color: window.mutedTextColor
-                                font.pixelSize: 12
+                                font.pixelSize: window.bodyFontSize
                             }
+                        }
+
+                        StyledButton {
+                            objectName: "themeToggleButton"
+                            Layout.alignment: Qt.AlignVCenter
+                            text: window.darkTheme ? "Tema claro" : "Tema oscuro"
+                            variant: "secondary"
+                            onClicked: window.controller.setDarkTheme(!window.darkTheme)
                         }
                     }
                 }
@@ -288,7 +332,7 @@ ApplicationWindow {
                 padding: 14
                 background: Rectangle {
                     radius: window.cardRadius
-                    color: "white"
+                    color: window.surfaceColor
                     border.width: 1
                     border.color: window.borderColor
                 }
@@ -300,49 +344,8 @@ ApplicationWindow {
                     Label {
                         text: "Ubicación y criterios"
                         color: window.textColor
-                        font.pixelSize: 18
+                        font.pixelSize: window.sectionTitleFontSize
                         font.weight: Font.DemiBold
-                    }
-
-                    RowLayout {
-                        objectName: "mapNavigation"
-                        Layout.fillWidth: true
-                        Label {
-                            id: mapLevelLabel
-                            objectName: "mapLevelLabel"
-                            Layout.fillWidth: true
-                            color: window.textColor
-                            font.weight: Font.DemiBold
-                            text: window.mapLevel === "department"
-                                ? "Paso 1 de 3 · Departamentos"
-                                : window.mapLevel === "province"
-                                ? "Paso 2 de 3 · Provincias"
-                                : "Paso 3 de 3 · Distritos"
-                        }
-                        Button {
-                            objectName: "mapBackButton"
-                            text: "Volver"
-                            implicitHeight: window.compactButtonHeight
-                            font.pixelSize: 12
-                            padding: 6
-                            visible: window.mapLevel !== "department"
-                            enabled: !controller.scrapeRunning
-                            onClicked: window.goBackMapLevel()
-                        }
-                        Button {
-                            objectName: "mapAdvanceButton"
-                            text: window.mapLevel === "department"
-                                ? "Ver provincias" : "Ver distritos"
-                            implicitHeight: window.compactButtonHeight
-                            font.pixelSize: 12
-                            padding: 6
-                            visible: window.mapLevel !== "district"
-                            enabled: !controller.scrapeRunning
-                                && (window.mapLevel === "department"
-                                    ? window.selectedDepartmentCodes.length > 0
-                                    : window.selectedProvinceCodes.length > 0)
-                            onClicked: window.advanceMapLevel()
-                        }
                     }
 
                     GridLayout {
@@ -353,32 +356,185 @@ ApplicationWindow {
                         columnSpacing: 12
                         rowSpacing: 6
 
-                        DistrictMap {
-                            id: districtMap
+                        ColumnLayout {
+                            id: locationSelector
+                            objectName: "locationSelector"
                             Layout.column: 0
                             Layout.row: 0
                             Layout.fillWidth: true
-                            Layout.fillHeight: false
-                            Layout.minimumHeight: 300
-                            Layout.preferredHeight: 340
-                            Layout.alignment: Qt.AlignTop
-                            enabled: !controller.scrapeRunning
-                            mapLevel: window.mapLevel
-                            parentCodes: window.mapLevel === "province"
-                                ? window.selectedDepartmentCodes
-                                : window.mapLevel === "district"
-                                ? window.selectedProvinceCodes : []
-                            selectionCodes: window.mapLevel === "department"
-                                ? window.selectedDepartmentCodes
-                                : window.mapLevel === "province"
-                                ? window.selectedProvinceCodes
-                                : window.selectedDistrictCodes
-                            departmentMetadata: controller.mapDepartmentMetadata
-                            provinceMetadata: controller.mapProvinceMetadata
-                            districtCodes: controller.districtCodes
-                            onSelectedCodesChanged: window.filterNotice = ""
-                            onMapSelectionChanged: function(level, codes) {
-                                window.updateMapSelection(level, codes)
+                            spacing: 8
+
+                            TabBar {
+                                id: locationTabs
+                                objectName: "locationTabs"
+                                Layout.fillWidth: true
+                                enabled: !controller.scrapeRunning
+                                padding: 4
+                                spacing: 2
+                                background: Rectangle {
+                                    radius: window.controlRadius
+                                    color: EduStyle.Style.tabTrackColor
+                                    border.width: 1
+                                    border.color: window.borderColor
+                                }
+
+                                StyledTabButton {
+                                    id: mapLocationTabButton
+                                    objectName: "mapLocationTab"
+                                    labelObjectName: "mapLocationTabLabel"
+                                    indicatorObjectName: "mapLocationTabIndicator"
+                                    text: "Mapa"
+                                    width: (locationTabs.availableWidth
+                                        - locationTabs.spacing) / 2
+                                }
+                                StyledTabButton {
+                                    id: comboLocationTabButton
+                                    objectName: "comboLocationTab"
+                                    labelObjectName: "comboLocationTabLabel"
+                                    indicatorObjectName: "comboLocationTabIndicator"
+                                    text: "Por ubicación"
+                                    width: (locationTabs.availableWidth
+                                        - locationTabs.spacing) / 2
+                                }
+                            }
+
+                            StackLayout {
+                                id: locationPages
+                                objectName: "locationPages"
+                                Layout.fillWidth: true
+                                Layout.minimumHeight: 300
+                                Layout.preferredHeight: 340
+                                currentIndex: locationTabs.currentIndex
+
+                                ColumnLayout {
+                                    id: mapSelectionPage
+                                    objectName: "mapSelectionPage"
+                                    spacing: 8
+
+                                    RowLayout {
+                                        objectName: "mapNavigation"
+                                        Layout.fillWidth: true
+                                        Label {
+                                            id: mapLevelLabel
+                                            objectName: "mapLevelLabel"
+                                            Layout.fillWidth: true
+                                            color: window.textColor
+                                            font.weight: Font.DemiBold
+                                            text: window.mapLevel === "department"
+                                                ? "Paso 1 de 3 · Departamentos"
+                                                : window.mapLevel === "province"
+                                                ? "Paso 2 de 3 · Provincias"
+                                                : "Paso 3 de 3 · Distritos"
+                                        }
+                                        StyledButton {
+                                            objectName: "mapBackButton"
+                                            variant: "secondary"
+                                            text: "Volver"
+                                            implicitHeight: window.compactButtonHeight
+                                            font.pixelSize: window.bodyFontSize
+                                            padding: 6
+                                            visible: window.mapLevel !== "department"
+                                            enabled: !controller.scrapeRunning
+                                            onClicked: window.goBackMapLevel()
+                                        }
+                                        StyledButton {
+                                            objectName: "mapAdvanceButton"
+                                            labelObjectName: "mapAdvanceButtonLabel"
+                                            variant: "secondary"
+                                            text: window.mapLevel === "department"
+                                                ? "Ver provincias" : "Ver distritos"
+                                            implicitHeight: window.compactButtonHeight
+                                            font.pixelSize: window.bodyFontSize
+                                            padding: 6
+                                            visible: window.mapLevel !== "district"
+                                            enabled: !controller.scrapeRunning
+                                                && (window.mapLevel === "department"
+                                                    ? window.selectedDepartmentCodes.length > 0
+                                                    : window.selectedProvinceCodes.length > 0)
+                                            onClicked: window.advanceMapLevel()
+                                        }
+                                    }
+
+                                    DistrictMap {
+                                        id: districtMap
+                                        objectName: "districtMap"
+                                        Layout.fillWidth: true
+                                        Layout.fillHeight: true
+                                        Layout.minimumHeight: 260
+                                        Layout.preferredHeight: 300
+                                        Layout.alignment: Qt.AlignTop
+                                        enabled: !controller.scrapeRunning
+                                        mapLevel: window.mapLevel
+                                        parentCodes: window.mapLevel === "province"
+                                            ? window.selectedDepartmentCodes
+                                            : window.mapLevel === "district"
+                                            ? window.selectedProvinceCodes : []
+                                        selectionCodes: window.mapLevel === "department"
+                                            ? window.selectedDepartmentCodes
+                                            : window.mapLevel === "province"
+                                            ? window.selectedProvinceCodes
+                                            : window.selectedDistrictCodes
+                                        departmentMetadata: controller.mapDepartmentMetadata
+                                        provinceMetadata: controller.mapProvinceMetadata
+                                        districtCodes: controller.districtCodes
+                                        onSelectedCodesChanged: window.filterNotice = ""
+                                        onMapSelectionChanged: function(level, codes) {
+                                            window.updateMapSelection(level, codes)
+                                        }
+                                    }
+                                }
+
+                                ColumnLayout {
+                                    id: comboSelectionPage
+                                    objectName: "comboSelectionPage"
+                                    spacing: 12
+
+                                    StyledComboBox {
+                                        id: departmentCombo
+                                        objectName: "departmentCombo"
+                                        Layout.fillWidth: true
+                                        model: controller.regions
+                                        textRole: "label"
+                                        valueRole: "code"
+                                        enabled: controller.regionsEnabled
+                                            && !controller.scrapeRunning
+                                        onActivated: function(index) {
+                                            controller.selectRegion(currentValue)
+                                            provinceCombo.currentIndex = 0
+                                            districtCombo.currentIndex = 0
+                                            window.filterNotice = ""
+                                        }
+                                    }
+                                    StyledComboBox {
+                                        id: provinceCombo
+                                        objectName: "provinceCombo"
+                                        Layout.fillWidth: true
+                                        model: controller.provinces
+                                        textRole: "label"
+                                        valueRole: "code"
+                                        enabled: controller.provincesEnabled
+                                            && !controller.scrapeRunning
+                                        onActivated: function(index) {
+                                            controller.selectProvince(currentValue)
+                                            districtCombo.currentIndex = 0
+                                            window.filterNotice = ""
+                                        }
+                                    }
+                                    StyledComboBox {
+                                        id: districtCombo
+                                        objectName: "districtCombo"
+                                        Layout.fillWidth: true
+                                        model: controller.districts
+                                        textRole: "label"
+                                        valueRole: "code"
+                                        enabled: controller.districtsEnabled
+                                            && !controller.scrapeRunning
+                                        onActivated: window.filterNotice = ""
+                                    }
+                                    Item {
+                                        Layout.fillHeight: true
+                                    }
+                                }
                             }
                         }
                         ColumnLayout {
@@ -396,6 +552,7 @@ ApplicationWindow {
                             spacing: 2
 
                             Label {
+                                objectName: "selectedDistrictCountLabel"
                                 Layout.fillWidth: true
                                 Layout.maximumWidth: filterGrid.columns === 2
                                     ? 260 : 16777215
@@ -408,21 +565,27 @@ ApplicationWindow {
                                         : "Todo el Perú"
                                 }
                             }
-                            Button {
+                            StyledButton {
+                                id: mapClearButton
                                 objectName: "mapClearButton"
+                                labelObjectName: "mapClearButtonLabel"
+                                variant: "secondary"
                                 Layout.fillWidth: true
                                 Layout.maximumWidth: filterGrid.columns === 2
                                     ? 260 : 16777215
                                 implicitHeight: window.compactButtonHeight
-                                font.pixelSize: 12
+                                font.pixelSize: window.bodyFontSize
                                 padding: 6
                                 text: "Limpiar selección"
                                 enabled: (window.mapLevel !== "department"
                                     || window.selectedDepartmentCodes.length > 0
                                     || window.selectedProvinceCodes.length > 0
-                                    || window.selectedDistrictCodes.length > 0)
+                                    || window.selectedDistrictCodes.length > 0
+                                    || departmentCombo.currentValue
+                                    || provinceCombo.currentValue
+                                    || districtCombo.currentValue)
                                     && !controller.scrapeRunning
-                                onClicked: window.clearMapSelection()
+                                onClicked: window.clearLocationSelection()
                             }
 
                             Label {
@@ -435,14 +598,14 @@ ApplicationWindow {
                                 Layout.maximumWidth: filterGrid.columns === 2
                                     ? 260 : 16777215
                                 spacing: 4
-                                CheckBox {
+                                StyledCheckBox {
                                     id: publicManagement
                                     objectName: "publicManagement"
                                     text: "Pública"
                                     enabled: !controller.scrapeRunning
                                     onToggled: window.filterNotice = ""
                                 }
-                                CheckBox {
+                                StyledCheckBox {
                                     id: privateManagement
                                     objectName: "privateManagement"
                                     text: "Privada"
@@ -461,21 +624,21 @@ ApplicationWindow {
                                 Layout.maximumWidth: filterGrid.columns === 2
                                     ? 260 : 16777215
                                 spacing: 4
-                                CheckBox {
+                                StyledCheckBox {
                                     id: primaryLevel
                                     objectName: "primaryLevel"
                                     text: "Primaria"
                                     enabled: !controller.scrapeRunning
                                     onToggled: window.filterNotice = ""
                                 }
-                                CheckBox {
+                                StyledCheckBox {
                                     id: secondaryLevel
                                     objectName: "secondaryLevel"
                                     text: "Secundaria"
                                     enabled: !controller.scrapeRunning
                                     onToggled: window.filterNotice = ""
                                 }
-                                CheckBox {
+                                StyledCheckBox {
                                     id: cetproLevel
                                     objectName: "cetproLevel"
                                     text: "CETPRO"
@@ -491,7 +654,7 @@ ApplicationWindow {
                                 text: "Límites INEI 2023; Alto Trujillo y Santa Rosa de Loreto son aproximados."
                                 color: window.mutedTextColor
                                 wrapMode: Text.WordWrap
-                                font.pixelSize: 10
+                                font.pixelSize: window.captionFontSize
                             }
 
                             Label {
@@ -504,43 +667,25 @@ ApplicationWindow {
                                     : "Selecciona ubicación, gestión y nivel educativo."
                                 color: window.mutedTextColor
                                 wrapMode: Text.WordWrap
-                                font.pixelSize: 11
+                                font.pixelSize: window.smallFontSize
                             }
 
-                            Button {
+                            StyledButton {
                                 id: addFilterSetButton
                                 objectName: "addFilterSetButton"
+                                labelObjectName: "addFilterSetButtonLabel"
+                                variant: "primary"
                                 Layout.fillWidth: true
                                 Layout.maximumWidth: filterGrid.columns === 2
                                     ? 260 : 16777215
                                 implicitHeight: window.actionButtonHeight
-                                font.pixelSize: 12
+                                font.pixelSize: window.bodyFontSize
                                 padding: 8
                                 text: "Agregar búsqueda"
-                                highlighted: true
-                                Material.foreground: enabled
-                                    ? "#FFFFFF" : window.primaryEmphasisColor
                                 enabled: !controller.scrapeRunning
                                     && window.selectedManagement().length > 0
                                     && window.selectedLevels().length > 0
                                 onClicked: window.addFilterSet()
-                                background: Rectangle {
-                                    radius: window.controlRadius
-                                    color: !addFilterSetButton.enabled
-                                        ? window.primarySubtleColor
-                                        : addFilterSetButton.pressed
-                                            ? window.primaryActiveColor
-                                            : addFilterSetButton.hovered
-                                                ? window.primaryHoverColor
-                                                : window.primaryColor
-                                    border.width: 1
-                                    border.color: addFilterSetButton.enabled
-                                        ? window.primaryBorderColor
-                                        : window.primarySubtleColor
-                                    Behavior on color {
-                                        ColorAnimation { duration: 120 }
-                                    }
-                                }
                             }
                         }
                     }
@@ -558,7 +703,7 @@ ApplicationWindow {
                 padding: 14
                 background: Rectangle {
                     radius: window.cardRadius
-                    color: "white"
+                    color: window.surfaceColor
                     border.width: 1
                     border.color: window.borderColor
                 }
@@ -574,7 +719,7 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             text: "Mis búsquedas"
                             color: window.textColor
-                            font.pixelSize: 18
+                            font.pixelSize: window.sectionTitleFontSize
                             font.weight: Font.DemiBold
                         }
 
@@ -591,7 +736,7 @@ ApplicationWindow {
                                 anchors.centerIn: parent
                                 text: filterSetsModel.count + " filtros"
                                 color: window.primaryEmphasisColor
-                                font.pixelSize: 12
+                                font.pixelSize: window.bodyFontSize
                                 font.weight: Font.DemiBold
                             }
                         }
@@ -624,7 +769,7 @@ ApplicationWindow {
 
                                 background: Rectangle {
                                     radius: window.controlRadius
-                                    color: "#F7FAF8"
+                                    color: window.subtleSurfaceColor
                                     border.width: 1
                                     border.color: window.borderColor
                                 }
@@ -662,32 +807,23 @@ ApplicationWindow {
                                             text: "Gestión: " + management.replace(/,/g, ", ")
                                                 + "    ·    Nivel: " + level.replace(/,/g, ", ")
                                             color: window.mutedTextColor
-                                            font.pixelSize: 12
+                                            font.pixelSize: window.bodyFontSize
                                         }
                                     }
 
-                                    Button {
+                                    StyledButton {
                                         text: "Quitar"
-                                        flat: true
+                                        variant: "quiet"
                                         implicitHeight: 32
-                                        font.pixelSize: 11
+                                        font.pixelSize: window.smallFontSize
                                         padding: 4
                                         enabled: !controller.scrapeRunning
-                                        Material.foreground: "#B42318"
-                                        background: Rectangle {
-                                            radius: height / 2
-                                            color: parent.pressed
-                                                ? "#FCE8E6"
-                                                : parent.hovered
-                                                    ? "#FFF4F2"
-                                                    : "transparent"
-                                        }
                                         onClicked: filterSetsModel.remove(index)
                                     }
                                 }
                             }
 
-                            ScrollBar.vertical: ScrollBar {
+                            ScrollBar.vertical: StyledScrollBar {
                                 id: searchListVerticalScrollBar
                                 objectName: "searchListVerticalScrollBar"
                                 anchors.right: parent.right
@@ -704,7 +840,7 @@ ApplicationWindow {
                             implicitHeight: emptySearchLabel.implicitHeight + 24
                             visible: filterSetsModel.count === 0
                             radius: window.controlRadius
-                            color: "#F7FAF8"
+                            color: window.subtleSurfaceColor
                             border.width: 1
                             border.color: window.borderColor
 
@@ -730,7 +866,7 @@ ApplicationWindow {
         Layout.fillWidth: true
         Layout.preferredHeight: 36
         height: 36
-        color: "#F4F7F5"
+        color: window.canvasColor
         border.color: window.borderColor
 
         Label {
@@ -754,7 +890,7 @@ ApplicationWindow {
         Layout.preferredHeight: controller.progressVisible
             ? window.width < 900 ? 224 : 164
             : window.width < 900 ? 216 : 152
-        color: "white"
+        color: window.surfaceColor
         border.color: window.borderColor
 
         ColumnLayout {
@@ -771,10 +907,10 @@ ApplicationWindow {
                     ? filterSetsModel.count + " combinaciones listas para exportar"
                     : "Agrega al menos una búsqueda para continuar"
                 color: window.mutedTextColor
-                font.pixelSize: 11
+                font.pixelSize: window.smallFontSize
             }
 
-            ProgressBar {
+            StyledProgressBar {
                 id: progressIndicator
                 objectName: "progressIndicator"
                 Layout.fillWidth: true
@@ -794,7 +930,7 @@ ApplicationWindow {
                     ? controller.progressMessage
                     : controller.statusText
                 color: window.mutedTextColor
-                font.pixelSize: 11
+                font.pixelSize: window.smallFontSize
                 wrapMode: Text.WordWrap
                 maximumLineCount: 2
                 elide: Text.ElideRight
@@ -809,15 +945,17 @@ ApplicationWindow {
                 columnSpacing: 8
                 rowSpacing: 8
 
-                Button {
+                StyledButton {
                     id: scrapeButton
                     objectName: "scrapeButton"
+                    labelObjectName: "scrapeButtonLabel"
+                    variant: "primary"
                     Layout.columnSpan: actionButtons.columns
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.minimumHeight: window.actionButtonHeight
                     implicitHeight: window.actionButtonHeight + 2
-                    font.pixelSize: 12
+                    font.pixelSize: window.bodyFontSize
                     padding: 8
                     visible: !controller.scrapeRunning
                     text: controller.cancelRequested
@@ -827,101 +965,76 @@ ApplicationWindow {
                         : controller.exportRunning
                         ? "Generando archivo..."
                         : "Ejecutar búsqueda"
-                    highlighted: true
                     enabled: !controller.scrapeRunning
                         && !controller.exportRunning
                         && filterSetsModel.count > 0
-                    Material.foreground: enabled ? "#FFFFFF" : window.primaryEmphasisColor
                     onClicked: controller.startScrape(
                         controller.defaultOutputUrl,
                         window.selectedFilterSetsJson()
                     )
-                    background: Rectangle {
-                        radius: window.controlRadius
-                        color: !scrapeButton.enabled
-                            ? window.primarySubtleColor
-                            : scrapeButton.pressed
-                                ? window.primaryActiveColor
-                                : scrapeButton.hovered
-                                    ? window.primaryHoverColor
-                                    : window.primaryColor
-                        border.width: 1
-                        border.color: scrapeButton.enabled
-                            ? window.primaryBorderColor
-                            : window.primarySubtleColor
-                        Behavior on color {
-                            ColorAnimation { duration: 120 }
-                        }
-                    }
                 }
 
-                Button {
+                StyledButton {
                     id: cancelScrapeButton
                     objectName: "cancelScrapeButton"
+                    labelObjectName: "cancelScrapeButtonLabel"
+                    variant: "danger"
                     Layout.columnSpan: actionButtons.columns
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.minimumHeight: window.actionButtonHeight
                     implicitHeight: window.actionButtonHeight
-                    font.pixelSize: 12
+                    font.pixelSize: window.bodyFontSize
                     padding: 8
                     visible: controller.scrapeRunning
                     enabled: !controller.cancelRequested
                     text: controller.cancelRequested ? "Cancelando..." : "Cancelar"
                     onClicked: controller.cancelScrape()
-                    Material.foreground: "#B42318"
-                    background: Rectangle {
-                        radius: window.controlRadius
-                        color: cancelScrapeButton.pressed
-                            ? "#FCE8E6"
-                            : cancelScrapeButton.hovered
-                                ? "#FFF4F2"
-                                : "#FFFFFF"
-                        border.width: 1
-                        border.color: "#E6B8B3"
-                    }
                 }
 
-                Button {
+                StyledButton {
                     objectName: "downloadExcelButton"
+                    labelObjectName: "downloadExcelButtonLabel"
+                    variant: "secondary"
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.minimumHeight: window.actionButtonHeight
                     implicitHeight: window.actionButtonHeight
-                    font.pixelSize: 12
+                    font.pixelSize: window.bodyFontSize
                     padding: 8
                     text: "Exportar Excel"
                     enabled: controller.exportsAvailable && !controller.exportRunning
                     onClicked: excelSaveDialog.open()
-                    Material.foreground: window.primaryColor
                 }
 
-                Button {
+                StyledButton {
                     objectName: "downloadPdfButton"
+                    labelObjectName: "downloadPdfButtonLabel"
+                    variant: "secondary"
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.minimumHeight: window.actionButtonHeight
                     implicitHeight: window.actionButtonHeight
-                    font.pixelSize: 12
+                    font.pixelSize: window.bodyFontSize
                     padding: 8
                     text: "Exportar PDF"
                     enabled: controller.exportsAvailable && !controller.exportRunning
                     onClicked: pdfSaveDialog.open()
-                    Material.foreground: window.primaryColor
                 }
 
-                Button {
-                    objectName: "downloadEduScaleButton"
+                StyledButton {
+                    objectName: "downloadEduEscaleButton"
+                    labelObjectName: "downloadEduEscaleButtonLabel"
+                    variant: "secondary"
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.minimumHeight: window.actionButtonHeight
                     implicitHeight: window.actionButtonHeight
-                    font.pixelSize: 12
+                    font.pixelSize: window.bodyFontSize
                     padding: 8
                     text: "Exportar .eduescale"
                     enabled: controller.exportsAvailable && !controller.exportRunning
-                    onClicked: eduScaleSaveDialog.open()
-                    Material.foreground: window.primaryColor
+                    onClicked: eduEscaleSaveDialog.open()
                 }
 
             }
@@ -954,17 +1067,126 @@ ApplicationWindow {
     }
 
     FileDialog {
-        id: eduScaleSaveDialog
-        objectName: "eduScaleSaveDialog"
+        id: eduEscaleSaveDialog
+        objectName: "eduEscaleSaveDialog"
         title: "Exportar .eduescale"
         fileMode: FileDialog.SaveFile
         nameFilters: ["Archivo EduEscale (*.eduescale)"]
         defaultSuffix: "eduescale"
-        currentFile: controller.defaultEduScaleOutputUrl
-        onAccepted: controller.exportEduScaleFile(selectedFile.toString())
+        currentFile: controller.defaultEduEscaleOutputUrl
+        onAccepted: {
+            eduEscaleOptionsDialog.outputUrl = selectedFile.toString()
+            eduEscaleOptionsDialog.open()
+        }
     }
 
-    Dialog {
+    StyledDialog {
+        id: eduEscaleOptionsDialog
+        objectName: "eduEscaleOptionsDialog"
+        property string outputUrl: ""
+        property string validationMessage: ""
+        title: "Opciones del archivo .eduescale"
+        modal: true
+        anchors.centerIn: parent
+        width: Math.min(window.width - 40, 440)
+        standardButtons: Dialog.NoButton
+        onClosed: {
+            eduEscalePasswordField.clear()
+            eduEscalePasswordConfirmationField.clear()
+            validationMessage = ""
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 10
+
+            StyledCheckBox {
+                id: compressEduEscaleCheckBox
+                objectName: "compressEduEscaleCheckBox"
+                Layout.fillWidth: true
+                text: "Comprimir el archivo (no cifra su contenido)"
+                enabled: !protectEduEscaleCheckBox.checked
+            }
+
+            StyledCheckBox {
+                id: protectEduEscaleCheckBox
+                objectName: "protectEduEscaleCheckBox"
+                Layout.fillWidth: true
+                text: "Proteger con contraseña"
+                onToggled: eduEscaleOptionsDialog.validationMessage = ""
+            }
+
+            StyledTextField {
+                id: eduEscalePasswordField
+                objectName: "eduEscalePasswordField"
+                Layout.fillWidth: true
+                visible: protectEduEscaleCheckBox.checked
+                enabled: visible
+                echoMode: TextInput.Password
+                placeholderText: "Contraseña (mínimo 8 caracteres)"
+            }
+
+            StyledTextField {
+                id: eduEscalePasswordConfirmationField
+                objectName: "eduEscalePasswordConfirmationField"
+                Layout.fillWidth: true
+                visible: protectEduEscaleCheckBox.checked
+                enabled: visible
+                echoMode: TextInput.Password
+                placeholderText: "Confirmar contraseña"
+            }
+
+            Label {
+                Layout.fillWidth: true
+                visible: eduEscaleOptionsDialog.validationMessage.length > 0
+                text: eduEscaleOptionsDialog.validationMessage
+                color: EduStyle.Style.dangerColor
+                wrapMode: Text.Wrap
+            }
+
+            RowLayout {
+                Layout.alignment: Qt.AlignRight
+                spacing: 8
+
+                StyledButton {
+                    text: "Cancelar"
+                    variant: "secondary"
+                    onClicked: eduEscaleOptionsDialog.close()
+                }
+
+                StyledButton {
+                    text: "Exportar"
+                    variant: "primary"
+                    onClicked: {
+                        if (protectEduEscaleCheckBox.checked) {
+                            if (eduEscalePasswordField.text.length < 8) {
+                                eduEscaleOptionsDialog.validationMessage =
+                                    "La contraseña debe tener al menos 8 caracteres."
+                                return
+                            }
+                            if (eduEscalePasswordField.text !==
+                                    eduEscalePasswordConfirmationField.text) {
+                                eduEscaleOptionsDialog.validationMessage =
+                                    "Las contraseñas no coinciden."
+                                return
+                            }
+                        }
+                        controller.exportEduEscaleFile(
+                            eduEscaleOptionsDialog.outputUrl,
+                            protectEduEscaleCheckBox.checked
+                                ? eduEscalePasswordField.text
+                                : "",
+                            compressEduEscaleCheckBox.checked
+                        )
+                        eduEscalePasswordField.clear()
+                        eduEscalePasswordConfirmationField.clear()
+                        eduEscaleOptionsDialog.close()
+                    }
+                }
+            }
+        }
+    }
+
+    StyledDialog {
         id: errorDialog
         property string details: ""
         title: "Error"
@@ -973,13 +1195,6 @@ ApplicationWindow {
         width: Math.min(window.width - 40, 760)
         height: Math.min(window.height - 40, 560)
         standardButtons: Dialog.NoButton
-        background: Rectangle {
-            radius: window.cardRadius
-            color: "#FFFFFF"
-            border.width: 1
-            border.color: window.borderColor
-        }
-
         contentItem: ColumnLayout {
             spacing: 12
 
@@ -988,31 +1203,23 @@ ApplicationWindow {
                 Layout.fillHeight: true
                 clip: true
 
-                TextArea {
+                StyledTextArea {
                     id: errorDetails
                     text: errorDialog.details
                     readOnly: true
                     selectByMouse: true
                     wrapMode: TextEdit.Wrap
-                    background: Rectangle {
-                        radius: window.controlRadius
-                        color: "#F7FAF8"
-                        border.width: errorDetails.activeFocus ? 2 : 1
-                        border.color: errorDetails.activeFocus
-                            ? window.primaryColor
-                            : window.borderColor
-                    }
                 }
             }
 
-            Button {
+            StyledButton {
                 Layout.alignment: Qt.AlignRight
                 text: "Cerrar"
+                variant: "secondary"
                 implicitHeight: window.compactButtonHeight
-                font.pixelSize: 12
+                font.pixelSize: window.bodyFontSize
                 padding: 6
                 onClicked: errorDialog.close()
-                Material.foreground: window.primaryColor
             }
         }
     }

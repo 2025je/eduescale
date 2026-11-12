@@ -41,6 +41,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import pe.eduescale.mobile.data.SchoolFilters
 import pe.eduescale.mobile.data.SchoolRecord
+import pe.eduescale.mobile.data.schoolLevelOptions
 
 @Composable
 internal fun FilterButton(count: Int, enabled: Boolean, onClick: () -> Unit) {
@@ -106,7 +107,7 @@ internal fun SchoolFiltersDialog(
         .sorted()
         .toList()
     val allManagement = schools.mapNotNull(SchoolRecord::gestion).distinct().sorted()
-    val allLevels = schools.flatMap(SchoolRecord::niveles).distinct().sorted()
+    val allLevels = schoolLevelOptions(schools)
 
     AlertDialog(
         onDismissRequest = onDismiss,

@@ -1,7 +1,7 @@
 # EduEscale
 
 Aplicación Android nativa en Kotlin para leer las exportaciones `.eduescale` de
-[EduScale Desktop](../eduescale-desktop/README.md) y ubicar los colegios en un
+[EduEscale Desktop](../eduescale-desktop/README.md) y ubicar los colegios en un
 mapa interactivo.
 La interfaz usa la familia `sans-serif` de Android, basada en Roboto.
 
@@ -9,8 +9,11 @@ La interfaz usa la familia `sans-serif` de Android, basada en Roboto.
 
 - Importa el archivo mediante el selector de documentos de Android; no requiere
   permisos de almacenamiento.
-- Lee el JSON versionado del archivo `.eduescale` en streaming y sigue
-  admitiendo archivos ZIP de versiones anteriores.
+- Lee el JSON versionado del archivo `.eduescale` en streaming, valida los
+  metadatos si están presentes y sigue admitiendo JSON anterior y ZIP.
+- Importa archivos `.eduescale` protegidos con contraseña, verifica el cifrado
+  autenticado y guarda la copia descifrada solo en el almacenamiento privado de
+  la app para restaurar la sesión.
 - Puede abrir directamente los archivos `.eduescale` recibidos como documentos
   por WhatsApp u otras apps compatibles.
 - Conserva el último archivo importado en el almacenamiento privado de la app
@@ -72,10 +75,11 @@ La interfaz usa la familia `sans-serif` de Android, basada en Roboto.
 ## Interfaz
 
 La app usa Jetpack Compose y Material 3 con navegación inferior entre **Mapa**,
-**Colegios** y **Archivos**. La búsqueda y los filtros se aplican localmente a
+**Colegios**, **Historial** y **Archivos**. El último elemento alterna entre
+tema claro y oscuro; la preferencia se guarda en el dispositivo y, antes de
+elegir una, se sigue el tema del sistema. La búsqueda y los filtros se aplican localmente a
 los registros importados; la ficha del colegio se presenta en una hoja inferior
 con opciones para abrir rutas en Google Maps o Waze y compartir la ubicación.
-El tema claro u oscuro sigue la preferencia del sistema.
 
 El mapa usa el estilo Liberty de OpenFreeMap con MapLibre Native Android y
 mantiene visible la atribución «OpenFreeMap © OpenMapTiles · Data from OpenStreetMap».

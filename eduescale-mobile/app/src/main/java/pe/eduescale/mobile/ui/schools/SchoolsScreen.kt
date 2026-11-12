@@ -45,7 +45,6 @@ import pe.eduescale.mobile.data.sortSchoolsByDistance
 import pe.eduescale.mobile.ui.EduEscaleUiState
 import pe.eduescale.mobile.ui.components.BrandHeader
 import pe.eduescale.mobile.ui.components.EmptyState
-import pe.eduescale.mobile.ui.theme.EduOrange
 
 @Composable
 internal fun SchoolsScreen(
@@ -181,7 +180,7 @@ internal fun SchoolListCard(
                 !school.hasCoordinates -> Text(
                     "Sin ubicación · toca para ver detalles",
                     style = MaterialTheme.typography.labelMedium,
-                    color = EduOrange,
+                    color = MaterialTheme.colorScheme.secondary,
                 )
                 distance != null -> Text(
                     formatDistanceKm(distance),

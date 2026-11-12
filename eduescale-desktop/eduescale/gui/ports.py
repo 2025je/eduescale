@@ -40,6 +40,8 @@ class ExportRunnerPort(Protocol):
         export_type: str,
         database_path: Path,
         output_path: Path,
+        password: str | None = None,
+        compressed: bool = False,
     ) -> None: ...
 
     def shutdown(self) -> None: ...

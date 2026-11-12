@@ -72,8 +72,6 @@ import pe.eduescale.mobile.data.distanceInMeters
 import pe.eduescale.mobile.ui.history.formatActivityDate
 import pe.eduescale.mobile.ui.history.isReminderPending
 import pe.eduescale.mobile.ui.history.reminderStatusLabel
-import pe.eduescale.mobile.ui.theme.EduGray
-import pe.eduescale.mobile.ui.theme.EduGreen
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -467,11 +465,28 @@ internal fun SchoolDetailsSheet(
 
 @Composable
 internal fun ManagementBadge(gestion: String?) {
+    val colorScheme = MaterialTheme.colorScheme
     val (label, background, foreground) = when (gestion) {
-        "publica" -> Triple("Gestión pública", Color(0xFFE7F4EC), EduGreen)
-        "privada" -> Triple("Gestión privada", Color(0xFFFFF1DB), Color(0xFF9A5B00))
-        null, "" -> Triple("Gestión desconocida", Color(0xFFECEFF1), EduGray)
-        else -> Triple(gestion, Color(0xFFECEFF1), EduGray)
+        "publica" -> Triple(
+            "Gestión pública",
+            colorScheme.primaryContainer,
+            colorScheme.onPrimaryContainer,
+        )
+        "privada" -> Triple(
+            "Gestión privada",
+            colorScheme.secondaryContainer,
+            colorScheme.onSecondaryContainer,
+        )
+        null, "" -> Triple(
+            "Gestión desconocida",
+            colorScheme.surfaceVariant,
+            colorScheme.onSurfaceVariant,
+        )
+        else -> Triple(
+            gestion,
+            colorScheme.surfaceVariant,
+            colorScheme.onSurfaceVariant,
+        )
     }
     Surface(shape = RoundedCornerShape(50), color = background) {
         Text(

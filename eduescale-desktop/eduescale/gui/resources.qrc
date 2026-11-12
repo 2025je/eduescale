@@ -1,0 +1,28 @@
+<RCC>
+  <qresource prefix="/eduescale/gui">
+    <file alias="qml/Main.qml">qml/Main.qml</file>
+    <file alias="qml/DistrictMap.qml">qml/DistrictMap.qml</file>
+    <file alias="qml/StyledButton.qml">qml/StyledButton.qml</file>
+    <file alias="qml/StyledCheckBox.qml">qml/StyledCheckBox.qml</file>
+    <file alias="qml/StyledComboBox.qml">qml/StyledComboBox.qml</file>
+    <file alias="qml/StyledDialog.qml">qml/StyledDialog.qml</file>
+    <file alias="qml/StyledProgressBar.qml">qml/StyledProgressBar.qml</file>
+    <file alias="qml/StyledScrollBar.qml">qml/StyledScrollBar.qml</file>
+    <file alias="qml/StyledTabButton.qml">qml/StyledTabButton.qml</file>
+    <file alias="qml/StyledTextArea.qml">qml/StyledTextArea.qml</file>
+    <file alias="qml/StyledTextField.qml">qml/StyledTextField.qml</file>
+    <file alias="qml/styles/Style.qml">qml/styles/Style.qml</file>
+    <file alias="qml/styles/qmldir">qml/styles/qmldir</file>
+    <file alias="assets/districts_map.json">assets/districts_map.json</file>
+    <file alias="assets/districts_map_hierarchy.json">assets/districts_map_hierarchy.json</file>
+    <file alias="assets/edutrack-logo.ico">assets/edutrack-logo.ico</file>
+    <file alias="assets/edutrack-logo.png">assets/edutrack-logo.png</file>
+    <file alias="assets/edutrack-logo.svg">assets/edutrack-logo.svg</file>
+    <file alias="assets/maplibre/LICENSE.txt">assets/maplibre/LICENSE.txt</file>
+    <file alias="assets/maplibre/map.html">assets/maplibre/map.html</file>
+    <file alias="assets/maplibre/maplibre-gl.css">assets/maplibre/maplibre-gl.css</file>
+    <file alias="assets/maplibre/maplibre-gl.js">assets/maplibre/maplibre-gl.js</file>
+    <file alias="fonts/OFL.txt">fonts/OFL.txt</file>
+    <file alias="fonts/Roboto-Variable.ttf">fonts/Roboto-Variable.ttf</file>
+  </qresource>
+</RCC>

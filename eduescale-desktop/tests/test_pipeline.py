@@ -203,7 +203,7 @@ def test_failed_excel_replace_preserves_both_existing_exports(monkeypatch):
         output_path = Path(temp_dir) / "colegios.xlsx"
         android_path = android_data_path(output_path)
         output_path.write_bytes(b"archivo anterior")
-        android_path.write_bytes(b"archivo EduScale anterior")
+        android_path.write_bytes(b"archivo EduEscale anterior")
         spider = SimpleNamespace(
             output=str(output_path),
             count_received=True,
@@ -230,7 +230,7 @@ def test_failed_excel_replace_preserves_both_existing_exports(monkeypatch):
             pipeline.close_spider()
 
         assert output_path.read_bytes() == b"archivo anterior"
-        assert android_path.read_bytes() == b"archivo EduScale anterior"
+        assert android_path.read_bytes() == b"archivo EduEscale anterior"
         assert not pipeline._temporary_output_path.exists()
         assert not pipeline._spool_path.exists()
         assert not list(Path(temp_dir).glob(".eduescale-backup-*"))

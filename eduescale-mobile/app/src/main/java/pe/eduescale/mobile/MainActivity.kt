@@ -1,10 +1,14 @@
 package pe.eduescale.mobile
 
+import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Color
+import android.net.Uri
 import android.os.Bundle
 import android.view.MotionEvent
 import android.view.ViewGroup
+import android.text.InputType
+import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -15,6 +19,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.ui.platform.ComposeView
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
@@ -68,6 +73,10 @@ class MainActivity : ComponentActivity() {
                 viewModel.setSchoolFile(file, fileName)
             },
             onImporting = { viewModel.setImporting(true) },
+            onPasswordRequired = { uri ->
+                viewModel.setImporting(false)
+                requestEduEscalePassword(uri)
+            },
             onError = viewModel::setImportError,
         )
     }
@@ -175,6 +184,12 @@ class MainActivity : ComponentActivity() {
                     EduEscaleApp(
                         viewModel = viewModel,
                         onMapTouchEnabled = { enabled -> root.mapTouchEnabled = enabled },
+                        onThemeChanged = { darkTheme ->
+                            WindowCompat.getInsetsController(window, window.decorView).apply {
+                                isAppearanceLightStatusBars = !darkTheme
+                                isAppearanceLightNavigationBars = !darkTheme
+                            }
+                        },
                         onMapTopOverlayBottomChanged = {
                             root.mapTopOverlayBottomPx = it
                         },
@@ -281,6 +296,29 @@ class MainActivity : ComponentActivity() {
     private fun showSchoolDetails(school: SchoolRecord) {
         viewModel.selectSchool(school)
         activityController.refreshSchoolActivity(school, "")
+    }
+
+    private fun requestEduEscalePassword(uri: Uri) {
+        val passwordInput = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            setSingleLine(true)
+            hint = "Contraseña"
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Archivo protegido")
+            .setMessage("Escribe la contraseña para importar este archivo.")
+            .setView(passwordInput)
+            .setNegativeButton("Cancelar") { _, _ -> viewModel.setImporting(false) }
+            .setPositiveButton("Importar") { _, _ ->
+                val password = passwordInput.text.toString()
+                if (password.isEmpty()) {
+                    Toast.makeText(this, "Ingresa la contraseña.", Toast.LENGTH_LONG).show()
+                } else {
+                    schoolImport.import(uri, password)
+                }
+            }
+            .setOnCancelListener { viewModel.setImporting(false) }
+            .show()
     }
 
     private fun showReminderMessage(message: String) {

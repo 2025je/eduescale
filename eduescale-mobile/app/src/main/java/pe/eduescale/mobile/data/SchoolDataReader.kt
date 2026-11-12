@@ -8,6 +8,8 @@ import java.io.InputStream
 import java.io.InputStreamReader
 import java.io.Reader
 import java.nio.charset.StandardCharsets
+import java.time.Instant
+import java.time.format.DateTimeParseException
 import java.util.zip.ZipInputStream
 
 data class SchoolRecord(
@@ -67,6 +69,14 @@ private data class ParsedSchools(
     val schools: List<SchoolRecord>,
 )
 
+private data class EduEscaleMetadata(
+    val generatedAt: String,
+    val recordCount: Int,
+    val coordinateSystem: String,
+    val applicationName: String,
+    val applicationVersion: String,
+)
+
 private data class SchoolGroupKey(
     val codigoLocal: String?,
     val departamento: String?,
@@ -84,22 +94,30 @@ object SchoolDataReader {
     private const val ZIP_ENTRY_NAME = "colegios.json"
 
     @Throws(IOException::class, IllegalArgumentException::class)
-    fun read(source: InputStream): SchoolFile {
-        val input = BufferedInputStream(source)
-        input.mark(ZIP_SIGNATURE.size)
-        val signature = ByteArray(ZIP_SIGNATURE.size)
-        var bytesRead = 0
-        while (bytesRead < signature.size) {
-            val count = input.read(signature, bytesRead, signature.size - bytesRead)
-            if (count < 0) break
-            bytesRead += count
-        }
-        input.reset()
+    fun read(source: InputStream): SchoolFile = read(source, null)
 
-        return if (bytesRead == signature.size && signature.contentEquals(ZIP_SIGNATURE)) {
-            readZip(input)
-        } else {
-            InputStreamReader(input, StandardCharsets.UTF_8).use { reader -> read(reader) }
+    @Throws(IOException::class, IllegalArgumentException::class)
+    fun read(source: InputStream, password: String?): SchoolFile {
+        EduEscaleEncryption.openDecoded(source, password).use { decoded ->
+            val input = BufferedInputStream(decoded)
+            input.mark(ZIP_SIGNATURE.size)
+            val signature = ByteArray(ZIP_SIGNATURE.size)
+            var bytesRead = 0
+            while (bytesRead < signature.size) {
+                val count = input.read(signature, bytesRead, signature.size - bytesRead)
+                if (count < 0) break
+                bytesRead += count
+            }
+            input.reset()
+
+            return if (
+                bytesRead == signature.size &&
+                signature.contentEquals(ZIP_SIGNATURE)
+            ) {
+                readZip(input)
+            } else {
+                InputStreamReader(input, StandardCharsets.UTF_8).use { reader -> read(reader) }
+            }
         }
     }
 
@@ -132,6 +150,7 @@ object SchoolDataReader {
 
         var format: String? = null
         var version: Int? = null
+        var metadata: EduEscaleMetadata? = null
         var parsedSchools: ParsedSchools? = null
 
         reader.beginObject()
@@ -139,6 +158,7 @@ object SchoolDataReader {
             when (reader.nextName()) {
                 "formato" -> format = readText(reader)
                 "version" -> version = readText(reader)?.toIntOrNull()
+                "metadatos" -> metadata = readMetadata(reader)
                 "colegios" -> parsedSchools = readSchools(reader)
 
                 else -> reader.skipValue()
@@ -150,7 +170,7 @@ object SchoolDataReader {
             throw IllegalArgumentException("El archivo contiene datos después del JSON.")
         }
         if (format != EXPECTED_FORMAT) {
-            throw IllegalArgumentException("El archivo no tiene formato EduScale.")
+            throw IllegalArgumentException("El archivo no tiene formato EduEscale.")
         }
         if (version != SUPPORTED_VERSION) {
             throw IllegalArgumentException(
@@ -159,6 +179,11 @@ object SchoolDataReader {
         }
         val result = parsedSchools
             ?: throw IllegalArgumentException("El archivo no contiene la lista colegios.")
+        if (metadata != null && metadata.recordCount != result.totalCount) {
+            throw IllegalArgumentException(
+                "La cantidad de colegios no coincide con los metadatos del archivo.",
+            )
+        }
         val groupedSchools = groupSchools(result.schools)
         return SchoolFile(
             totalCount = result.totalCount,
@@ -166,6 +191,52 @@ object SchoolDataReader {
             schools = groupedSchools.filter(SchoolRecord::hasCoordinates),
             schoolsWithoutCoordinates = groupedSchools.filterNot(SchoolRecord::hasCoordinates),
         )
+    }
+
+    private fun readMetadata(reader: JsonReader): EduEscaleMetadata {
+        if (reader.peek() != JsonToken.BEGIN_OBJECT) {
+            throw IllegalArgumentException("El campo metadatos debe ser un objeto.")
+        }
+        var generatedAt: String? = null
+        var recordCount: Int? = null
+        var coordinateSystem: String? = null
+        var applicationName: String? = null
+        var applicationVersion: String? = null
+        reader.beginObject()
+        while (reader.hasNext()) {
+            when (reader.nextName()) {
+                "generado_en" -> generatedAt = readText(reader)
+                "cantidad_colegios" -> recordCount = readText(reader)?.toIntOrNull()
+                "crs" -> coordinateSystem = readText(reader)
+                "aplicacion" -> applicationName = readText(reader)
+                "version_aplicacion" -> applicationVersion = readText(reader)
+                else -> reader.skipValue()
+            }
+        }
+        reader.endObject()
+
+        val timestamp = generatedAt
+            ?: throw IllegalArgumentException("Falta la fecha de generación en los metadatos.")
+        try {
+            Instant.parse(timestamp)
+        } catch (_: DateTimeParseException) {
+            throw IllegalArgumentException("La fecha de generación no es válida.")
+        }
+        val count = recordCount
+            ?: throw IllegalArgumentException("La cantidad de colegios no es válida.")
+        if (count < 0) {
+            throw IllegalArgumentException("La cantidad de colegios no puede ser negativa.")
+        }
+        val crs = coordinateSystem
+            ?: throw IllegalArgumentException("Falta el sistema de coordenadas en los metadatos.")
+        if (crs != "EPSG:4326") {
+            throw IllegalArgumentException("Sistema de coordenadas no compatible: $crs.")
+        }
+        val appName = applicationName?.takeIf(String::isNotBlank)
+            ?: throw IllegalArgumentException("Falta el nombre de la aplicación en los metadatos.")
+        val appVersion = applicationVersion?.takeIf(String::isNotBlank)
+            ?: throw IllegalArgumentException("Falta la versión de la aplicación en los metadatos.")
+        return EduEscaleMetadata(timestamp, count, crs, appName, appVersion)
     }
 
     private fun readSchools(reader: JsonReader): ParsedSchools {

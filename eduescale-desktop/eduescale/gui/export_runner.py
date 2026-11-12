@@ -15,11 +15,20 @@ class _ExportSignals(QObject):
 
 
 class _ExportJob(QRunnable):
-    def __init__(self, export_type: str, database_path: Path, output_path: Path):
+    def __init__(
+        self,
+        export_type: str,
+        database_path: Path,
+        output_path: Path,
+        password: str | None = None,
+        compressed: bool = False,
+    ):
         super().__init__()
         self.export_type = export_type
         self.database_path = database_path
         self.output_path = output_path
+        self.password = password
+        self.compressed = compressed
         self.signals = _ExportSignals()
 
     def run(self):
@@ -29,7 +38,12 @@ class _ExportJob(QRunnable):
             elif self.export_type == "pdf":
                 export_pdf(self.database_path, self.output_path)
             elif self.export_type == "eduescale":
-                export_eduescale(self.database_path, self.output_path)
+                export_eduescale(
+                    self.database_path,
+                    self.output_path,
+                    password=self.password,
+                    compressed=self.compressed,
+                )
             else:
                 raise ValueError(
                     f"Formato de exportación desconocido: {self.export_type}"
@@ -55,11 +69,24 @@ class ExportRunner(QObject):
         self._thread_pool = QThreadPool(self)
         self._active_job: _ExportJob | None = None
 
-    def start(self, export_type: str, database_path: Path, output_path: Path):
+    def start(
+        self,
+        export_type: str,
+        database_path: Path,
+        output_path: Path,
+        password: str | None = None,
+        compressed: bool = False,
+    ):
         if self._active_job is not None:
             self.failed.emit(export_type, "Ya hay una exportación en curso.", "")
             return
-        job = _ExportJob(export_type, database_path, output_path)
+        job = _ExportJob(
+            export_type,
+            database_path,
+            output_path,
+            password=password,
+            compressed=compressed,
+        )
         job.signals.completed.connect(self._export_completed)
         job.signals.failed.connect(self._export_failed)
         self._active_job = job

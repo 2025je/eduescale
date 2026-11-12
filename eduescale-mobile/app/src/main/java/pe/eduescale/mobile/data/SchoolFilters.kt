@@ -11,6 +11,9 @@ data class SchoolFilters(
     val niveles: Set<String> = emptySet(),
 )
 
+fun schoolLevelOptions(schools: List<SchoolRecord>): List<String> =
+    (schools.flatMap(SchoolRecord::niveles) + "cetpro").distinct().sorted()
+
 fun filterSchools(
     schools: List<SchoolRecord>,
     nameQuery: String,

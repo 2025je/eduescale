@@ -18,21 +18,28 @@ class SchoolImportController(
     private val isActive: () -> Boolean,
     private val onLoaded: (file: SchoolFile, fileName: String, fromUser: Boolean) -> Unit,
     private val onImporting: () -> Unit,
+    private val onPasswordRequired: (Uri) -> Unit,
     private val onError: (String) -> Unit,
 ) {
     private val executor: ExecutorService = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    fun import(uri: Uri) {
+    fun import(uri: Uri, password: String? = null) {
         onImporting()
         executor.execute {
             try {
                 val fileName = displayName(uri)
                 val input = contentResolver.openInputStream(uri)
                     ?: throw IOException("No se pudo abrir el archivo seleccionado.")
-                val parsed = input.use(storage::save)
+                val parsed = input.use { source ->
+                    if (password == null) storage.save(source) else storage.save(source, password)
+                }
                 preferences.edit().putString(LAST_FILE_NAME, fileName).apply()
                 deliver(parsed, fileName, fromUser = true)
+            } catch (_: EduEscalePasswordRequiredException) {
+                mainHandler.post {
+                    if (isActive()) onPasswordRequired(uri)
+                }
             } catch (error: IOException) {
                 onError(error.message ?: "No se pudo leer el archivo.")
             } catch (error: IllegalArgumentException) {
@@ -91,6 +98,6 @@ class SchoolImportController(
     companion object {
         const val FILE_PREFERENCES = "eduescale_file"
         const val LAST_FILE_NAME = "last_file_name"
-        private const val DEFAULT_FILE_NAME = "Archivo EduScale"
+        private const val DEFAULT_FILE_NAME = "Archivo EduEscale"
     }
 }

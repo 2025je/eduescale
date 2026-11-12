@@ -11,6 +11,7 @@ from eduescale.client import SchoolFilters
 from eduescale.export_files import android_data_path
 from eduescale.gui.export_runner import ExportRunner
 from eduescale.gui.ports import ExportRunnerPort, LocationServicePort, ScrapeRunnerPort
+from eduescale.gui.resources import read_resource_bytes, resource_path
 
 LOGGER = logging.getLogger(__name__)
 
@@ -26,6 +27,7 @@ class SchoolFinderController(QObject):
     regionsChanged = Signal()
     provincesChanged = Signal()
     districtsChanged = Signal()
+    darkThemeChanged = Signal()
     stateChanged = Signal()
     errorRaised = Signal(str, str)
 
@@ -39,6 +41,11 @@ class SchoolFinderController(QObject):
     ):
         super().__init__(parent)
         self._settings = settings if settings is not None else QSettings()
+        self._dark_theme = self._settings.value(
+            "appearance/darkTheme",
+            False,
+            type=bool,
+        )
         self._regions = [{"label": "Cargando departamentos...", "code": ""}]
         self._provinces = [{"label": LOCATION_PLACEHOLDERS["provinces"], "code": ""}]
         self._districts = [{"label": LOCATION_PLACEHOLDERS["districts"], "code": ""}]
@@ -47,8 +54,8 @@ class SchoolFinderController(QObject):
         self._districts_enabled = False
         self._selected_region_code = ""
         self._selected_province_code = ""
-        map_path = Path(__file__).resolve().parent / "assets" / "districts_map.json"
-        map_data = json.loads(map_path.read_text(encoding="utf-8"))
+        map_path = resource_path("assets/districts_map.json")
+        map_data = json.loads(read_resource_bytes("assets/districts_map.json"))
         features = map_data.get("features")
         if map_data.get("type") != "FeatureCollection" or not isinstance(
             features, list
@@ -78,8 +85,10 @@ class SchoolFinderController(QObject):
         for code in self._district_codes:
             self._district_codes_by_province.setdefault(code[:4], []).append(code)
 
-        hierarchy_path = map_path.with_name("districts_map_hierarchy.json")
-        hierarchy_data = json.loads(hierarchy_path.read_text(encoding="utf-8"))
+        hierarchy_path = resource_path("assets/districts_map_hierarchy.json")
+        hierarchy_data = json.loads(
+            read_resource_bytes("assets/districts_map_hierarchy.json")
+        )
         department_features = hierarchy_data["departments"]["features"]
         province_features = hierarchy_data["provinces"]["features"]
         if (
@@ -151,6 +160,7 @@ class SchoolFinderController(QObject):
         self._export_runner.completed.connect(self._export_completed)
         self._export_runner.failed.connect(self._export_failed)
         LOGGER.info("Loaded local district boundary data.")
+        self._location_service.load("regions")
 
     @Property(list, notify=regionsChanged)
     def regions(self):
@@ -201,9 +211,7 @@ class SchoolFinderController(QObject):
         return [
             district_code
             for province_code in sorted(selected_provinces)
-            for district_code in self._district_codes_by_province.get(
-                province_code, []
-            )
+            for district_code in self._district_codes_by_province.get(province_code, [])
         ]
 
     @Slot(str, result="QVariant")
@@ -224,6 +232,25 @@ class SchoolFinderController(QObject):
     @Property(bool, notify=stateChanged)
     def districtsEnabled(self):
         return self._districts_enabled
+
+    @Property(bool, notify=darkThemeChanged)
+    def darkTheme(self):
+        return self._dark_theme
+
+    @Slot(bool)
+    def setDarkTheme(self, dark_theme: bool):
+        if self._dark_theme == dark_theme:
+            return
+        self._settings.setValue("appearance/darkTheme", dark_theme)
+        self._settings.sync()
+        self._dark_theme = dark_theme
+        self.darkThemeChanged.emit()
+        if self._settings.status() != QSettings.Status.NoError:
+            LOGGER.error("No se pudo guardar la preferencia del tema.")
+            self.errorRaised.emit(
+                "No se pudo guardar el tema",
+                "La preferencia se aplicó, pero no se pudo guardar para la próxima vez.",
+            )
 
     @Property(str, notify=stateChanged)
     def statusText(self):
@@ -277,7 +304,7 @@ class SchoolFinderController(QObject):
         )
 
     @Property(str, notify=stateChanged)
-    def defaultEduScaleOutputUrl(self):
+    def defaultEduEscaleOutputUrl(self):
         return QUrl.fromLocalFile(
             str(android_data_path(self._default_output_path()))
         ).toString()
@@ -603,8 +630,20 @@ class SchoolFinderController(QObject):
         self._start_export("excel", output_url)
 
     @Slot(str)
-    def exportEduScaleFile(self, output_url: str):
-        self._start_export("eduescale", output_url)
+    @Slot(str, str)
+    @Slot(str, str, bool)
+    def exportEduEscaleFile(
+        self,
+        output_url: str,
+        password: str = "",
+        compressed: bool = False,
+    ):
+        self._start_export(
+            "eduescale",
+            output_url,
+            password=password or None,
+            compressed=compressed,
+        )
 
     @Slot(str)
     def exportPdfFile(self, output_url: str):
@@ -624,7 +663,13 @@ class SchoolFinderController(QObject):
             suffix += 1
         return output_path
 
-    def _start_export(self, export_type: str, output_url: str):
+    def _start_export(
+        self,
+        export_type: str,
+        output_url: str,
+        password: str | None = None,
+        compressed: bool = False,
+    ):
         if self._export_running:
             return
         if not self._exports_available or self._dataset_path is None:
@@ -677,7 +722,16 @@ class SchoolFinderController(QObject):
         }[export_type]
         self._status_text = self._progress_message
         self.stateChanged.emit()
-        self._export_runner.start(export_type, self._dataset_path, output_path)
+        if password is not None or compressed:
+            self._export_runner.start(
+                export_type,
+                self._dataset_path,
+                output_path,
+                password=password,
+                compressed=compressed,
+            )
+        else:
+            self._export_runner.start(export_type, self._dataset_path, output_path)
 
     @Slot(str, str)
     def _export_completed(self, export_type: str, output_path: str):

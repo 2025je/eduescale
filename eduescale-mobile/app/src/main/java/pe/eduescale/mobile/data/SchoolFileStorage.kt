@@ -9,19 +9,26 @@ import java.io.InputStream
 class SchoolFileStorage(private val directory: File) {
     private val savedFile = File(directory, SAVED_FILE_NAME)
 
-    fun save(input: InputStream): SchoolFile {
+    fun save(input: InputStream, password: String? = null): SchoolFile {
         if (!directory.exists() && !directory.mkdirs()) {
             throw IOException("No se pudo guardar el archivo seleccionado.")
         }
 
         val temporaryFile = File.createTempFile("eduescale-import-", ".tmp", directory)
+        val decodedFile = File.createTempFile("eduescale-decoded-", ".tmp", directory)
         try {
             FileOutputStream(temporaryFile).use { output -> input.copyTo(output) }
-            val parsedFile = FileInputStream(temporaryFile).use(SchoolDataReader::read)
-            replaceSavedFile(temporaryFile)
+            FileInputStream(temporaryFile).use { source ->
+                EduEscaleEncryption.openDecoded(source, password).use { decoded ->
+                    FileOutputStream(decodedFile).use(decoded::copyTo)
+                }
+            }
+            val parsedFile = FileInputStream(decodedFile).use(SchoolDataReader::read)
+            replaceSavedFile(decodedFile)
             return parsedFile
         } finally {
             temporaryFile.delete()
+            decodedFile.delete()
         }
     }
 
