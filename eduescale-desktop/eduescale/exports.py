@@ -9,6 +9,7 @@ from contextlib import closing
 from datetime import datetime, timezone
 from importlib.metadata import version as package_version
 from pathlib import Path
+from typing import TypedDict
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.cell import WriteOnlyCell
@@ -61,18 +62,26 @@ ANDROID_FIELDS = (
 )
 
 
+class _DistrictSheetState(TypedDict):
+    worksheet: Worksheet
+    current_level: str | None
+    table_start_row: int
+    sheet_row_count: int
+    table_order: int
+
+
 def export_excel(database_path: Path, output_path: Path) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     temporary_path = _temporary_path(output_path, ".xlsx")
     workbook = Workbook(write_only=True)
     worksheets = []
-    used_sheet_names = set()
-    current_state = None
+    used_sheet_names: set[str] = set()
+    current_state: _DistrictSheetState | None = None
     current_district = None
     table_number = 0
     workbook_saved = False
 
-    def create_sheet_state(sheet_name):
+    def create_sheet_state(sheet_name: str) -> _DistrictSheetState:
         worksheet = workbook.create_sheet(sheet_name)
         worksheets.append(worksheet)
         worksheet.page_setup.orientation = "landscape"
@@ -103,7 +112,7 @@ def export_excel(database_path: Path, output_path: Path) -> None:
             "table_order": 0,
         }
 
-    def append_row(state, values):
+    def append_row(state: _DistrictSheetState, values):
         if state["sheet_row_count"] >= EXCEL_MAX_ROWS:
             raise RuntimeError(
                 "Las tablas por distrito superan el límite de filas de una hoja de Excel."
@@ -111,7 +120,7 @@ def export_excel(database_path: Path, output_path: Path) -> None:
         state["worksheet"].append(values)
         state["sheet_row_count"] += 1
 
-    def finish_table(state):
+    def finish_table(state: _DistrictSheetState):
         nonlocal table_number
         if state["current_level"] is None:
             return
@@ -159,6 +168,7 @@ def export_excel(database_path: Path, output_path: Path) -> None:
                     current_state = create_sheet_state(sheet_name)
                     current_district = district_key
 
+                assert current_state is not None
                 if level != current_state["current_level"]:
                     if current_state["current_level"] is not None:
                         finish_table(current_state)
