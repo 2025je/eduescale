@@ -459,7 +459,10 @@ def build_hierarchy_data(map_data: dict[str, object]) -> dict[str, object]:
             department_code = code[:2]
             geometries = [shape(feature["geometry"]) for feature in group]
             merged = unary_union(
-                [geometry if geometry.is_valid else make_valid(geometry) for geometry in geometries]
+                [
+                    geometry if geometry.is_valid else make_valid(geometry)
+                    for geometry in geometries
+                ]
             ).simplify(SIMPLIFICATION_TOLERANCE, preserve_topology=True)
             if merged.geom_type not in {"Polygon", "MultiPolygon"}:
                 raise ValueError(

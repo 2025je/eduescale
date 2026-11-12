@@ -99,7 +99,9 @@ def main(
     qml_url = resource_url("qml/Main.qml")
     engine.load(qml_url)
     if not engine.rootObjects():
-        LOGGER.error("Could not load the main QML interface from %s", qml_url.toString())
+        LOGGER.error(
+            "Could not load the main QML interface from %s", qml_url.toString()
+        )
         controller.shutdown()
         return 1
     return application.exec()

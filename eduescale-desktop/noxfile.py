@@ -26,12 +26,7 @@ def _find_inno_compiler() -> str | None:
 
     local_app_data = os.environ.get("LOCALAPPDATA")
     if local_app_data:
-        compiler = (
-            Path(local_app_data)
-            / "Programs"
-            / "Inno Setup 6"
-            / "ISCC.exe"
-        )
+        compiler = Path(local_app_data) / "Programs" / "Inno Setup 6" / "ISCC.exe"
         if compiler.is_file():
             return str(compiler)
     return None

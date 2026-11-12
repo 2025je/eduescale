@@ -801,9 +801,7 @@ controller.shutdown()
 
 
 def test_main_qml_fits_supported_window_sizes(tmp_path):
-    assets_path = (
-        Path(__file__).parents[1] / "eduescale" / "gui" / "assets"
-    )
+    assets_path = Path(__file__).parents[1] / "eduescale" / "gui" / "assets"
     environment = os.environ.copy()
     environment.setdefault("QT_QPA_PLATFORM", "offscreen")
     environment.setdefault(

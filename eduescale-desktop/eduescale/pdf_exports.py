@@ -26,14 +26,10 @@ CELL_PADDING = 5
 COLUMN_WIDTH_RATIOS = (0.35, 1.4, 1.8, 1.0, 0.65, 0.7, 0.55, 0.65)
 WRAP_FLAGS = int(Qt.TextFlag.TextWrapAnywhere)
 CELL_FLAGS = (
-    int(Qt.AlignmentFlag.AlignLeft)
-    | int(Qt.AlignmentFlag.AlignVCenter)
-    | WRAP_FLAGS
+    int(Qt.AlignmentFlag.AlignLeft) | int(Qt.AlignmentFlag.AlignVCenter) | WRAP_FLAGS
 )
 HEADER_FLAGS = (
-    int(Qt.AlignmentFlag.AlignHCenter)
-    | int(Qt.AlignmentFlag.AlignVCenter)
-    | WRAP_FLAGS
+    int(Qt.AlignmentFlag.AlignHCenter) | int(Qt.AlignmentFlag.AlignVCenter) | WRAP_FLAGS
 )
 
 
@@ -43,7 +39,9 @@ class _PdfRenderer:
         self.painter = painter
         # QPdfWriter's painter starts at the printable area's origin.
         self.page_rect = QRect(0, 0, writer.width(), writer.height())
-        self.content_bottom = self.page_rect.y() + self.page_rect.height() - FOOTER_HEIGHT
+        self.content_bottom = (
+            self.page_rect.y() + self.page_rect.height() - FOOTER_HEIGHT
+        )
         self.y = self.page_rect.y()
         self.page_number = 1
         self.page_has_content = False
@@ -89,8 +87,8 @@ class _PdfRenderer:
 
     def draw_row(self, values):
         row_height = self._row_height(values, self.body_font)
-        table_header_height = (
-            self._heading_height() + self._row_height(HEADERS, self.header_font)
+        table_header_height = self._heading_height() + self._row_height(
+            HEADERS, self.header_font
         )
         if row_height + table_header_height > self.content_bottom - self.page_rect.y():
             raise RuntimeError(
@@ -100,9 +98,7 @@ class _PdfRenderer:
             self._next_page()
             self._draw_table_headers()
         fill = QColor("#FFFFFF" if self.row_index % 2 == 0 else "#F1F5F8")
-        self._draw_row(
-            (self.row_index + 1, *values), self.body_font, fill, CELL_FLAGS
-        )
+        self._draw_row((self.row_index + 1, *values), self.body_font, fill, CELL_FLAGS)
         self.row_index += 1
 
     def draw_empty(self):
