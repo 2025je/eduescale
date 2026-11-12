@@ -256,7 +256,7 @@ class TestParseInstitutions:
             <nivelModalidad>
               <idCodigo>L0</idCodigo><valor>Técnico Productiva</valor>
             </nivelModalidad>
-        </items></instituciones>""".encode("utf-8")
+        </items></instituciones>""".encode()
 
         record = parse_institutions(xml)[0]
 
@@ -267,7 +267,7 @@ class TestParseInstitutions:
             <nivelModalidad>
               <idCodigo>A2</idCodigo><valor>Inicial - Jardín</valor>
             </nivelModalidad>
-        </items></instituciones>""".encode("utf-8")
+        </items></instituciones>""".encode()
 
         assert parse_institutions(xml) == []
 
