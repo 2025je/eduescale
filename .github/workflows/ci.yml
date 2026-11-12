@@ -19,9 +19,19 @@ jobs:
           python-version: "3.14"
           enable-cache: true
           cache-dependency-glob: "eduescale-desktop/uv.lock"
+      - name: Install Inno Setup
+        run: choco install innosetup --yes --no-progress
       - name: Run tests, lint, and Windows builds
         run: uv run --locked --group nox nox -s tests lint build
         working-directory: eduescale-desktop
+      - name: Verify Windows installer
+        shell: pwsh
+        working-directory: eduescale-desktop
+        run: |
+          $installer = Get-ChildItem ".\dist\installer\EduEscale-Setup-*.exe" -File
+          if ($null -eq $installer) {
+            throw "The Inno Setup installer was not generated."
+          }
       - name: Smoke-test scraper executable
         run: .\dist\eduescale-scraper\eduescale-scraper.exe list
         working-directory: eduescale-desktop
@@ -53,7 +63,7 @@ jobs:
           if ($null -eq $scraperCertificate) {
             throw "The scraper certificate bundle is missing."
           }
-      - name: Upload Windows executables
+      - name: Upload Windows application and installer
         if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
@@ -61,4 +71,5 @@ jobs:
           path: |
             eduescale-desktop/dist/eduescale-gui.exe
             eduescale-desktop/dist/eduescale-scraper/
+            eduescale-desktop/dist/installer/
           retention-days: 7

@@ -1,6 +1,11 @@
 <RCC>
   <qresource prefix="/eduescale/gui">
     <file alias="qml/Main.qml">qml/Main.qml</file>
+    <file alias="qml/DashboardHeader.qml">qml/DashboardHeader.qml</file>
+    <file alias="qml/SearchActionBar.qml">qml/SearchActionBar.qml</file>
+    <file alias="qml/ExportConfirmationDialog.qml">qml/ExportConfirmationDialog.qml</file>
+    <file alias="qml/ExportHistoryDialog.qml">qml/ExportHistoryDialog.qml</file>
+    <file alias="qml/SavedSearchesPanel.qml">qml/SavedSearchesPanel.qml</file>
     <file alias="qml/DistrictMap.qml">qml/DistrictMap.qml</file>
     <file alias="qml/StyledButton.qml">qml/StyledButton.qml</file>
     <file alias="qml/StyledCheckBox.qml">qml/StyledCheckBox.qml</file>

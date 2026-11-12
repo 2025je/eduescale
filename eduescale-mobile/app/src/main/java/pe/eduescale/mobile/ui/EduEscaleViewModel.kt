@@ -18,6 +18,7 @@ import pe.eduescale.mobile.data.SchoolFile
 import pe.eduescale.mobile.data.SchoolFilters
 import pe.eduescale.mobile.data.SchoolRecord
 import pe.eduescale.mobile.data.SchoolReminder
+import pe.eduescale.mobile.data.SavedSearch
 import pe.eduescale.mobile.data.filterSchools
 
 data class OfflineMapAreaUi(
@@ -47,6 +48,9 @@ data class EduEscaleUiState(
     val importError: String? = null,
     val query: String = "",
     val filters: SchoolFilters = SchoolFilters(),
+    val savedSearches: List<SavedSearch> = emptyList(),
+    val savedSearchMessage: String? = null,
+    val savedSearchMessageIsError: Boolean = false,
     val visibleSchools: List<SchoolRecord> = emptyList(),
     val userLocation: SchoolCoordinates? = null,
     val locationServicesEnabled: Boolean? = null,
@@ -108,6 +112,18 @@ class EduEscaleViewModel(
     fun setFilters(filters: SchoolFilters) {
         mutableState.update { it.copy(filters = filters) }
         filterSchoolsAsync()
+    }
+
+    fun setSavedSearches(searches: List<SavedSearch>) {
+        mutableState.update {
+            it.copy(savedSearches = searches, savedSearchMessage = null, savedSearchMessageIsError = false)
+        }
+    }
+
+    fun setSavedSearchMessage(message: String, isError: Boolean = false) {
+        mutableState.update {
+            it.copy(savedSearchMessage = message, savedSearchMessageIsError = isError)
+        }
     }
 
     fun setUserLocation(latitude: Double, longitude: Double) {

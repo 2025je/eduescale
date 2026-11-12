@@ -32,6 +32,9 @@ La interfaz usa la familia `sans-serif` de Android, basada en Roboto.
   agrupados con ubicación y los registros sin coordenadas utilizables.
 - Filtra los resultados por departamento, provincia, distrito, gestión y nivel
   educativo desde **Filtros avanzados**.
+- Permite guardar búsquedas con nombre en el dispositivo, aplicarlas desde
+  **Colegios** e importarlas o exportarlas con los selectores de documentos de
+  Android.
 - Distingue colegios públicos (verde) y particulares (naranja); el tamaño del
   marcador representa el nivel más avanzado que se ofrece en ese local.
 - Resalta el colegio seleccionado con un aro celeste de borde blanco y ajusta
@@ -45,6 +48,8 @@ La interfaz usa la familia `sans-serif` de Android, basada en Roboto.
 - Permite descargar para uso sin conexión el área visible del mapa y el rango
   de zoom elegido; muestra el progreso y permite pausar, reanudar o eliminar
   cada área guardada.
+- **Archivos** informa el total descargado para los mapas sin conexión y el
+  espacio disponible en el almacenamiento interno del dispositivo.
 - Al tocar un marcador, muestra nombre, dirección, localidad, distrito,
   provincia, departamento, CP, turno, gestión, todos los niveles educativos y
   los totales de alumnos y secciones, la distancia desde tu ubicación y
@@ -75,11 +80,19 @@ La interfaz usa la familia `sans-serif` de Android, basada en Roboto.
 ## Interfaz
 
 La app usa Jetpack Compose y Material 3 con navegación inferior entre **Mapa**,
-**Colegios**, **Historial** y **Archivos**. El último elemento alterna entre
-tema claro y oscuro; la preferencia se guarda en el dispositivo y, antes de
-elegir una, se sigue el tema del sistema. La búsqueda y los filtros se aplican localmente a
+**Colegios**, **Historial**, **Archivos** y **Ajustes**. En **Ajustes** se puede
+elegir **Sistema**, **Claro** u **Oscuro**; Sistema es la opción inicial y la
+preferencia se guarda en el dispositivo. La búsqueda y los filtros se aplican localmente a
 los registros importados; la ficha del colegio se presenta en una hoja inferior
 con opciones para abrir rutas en Google Maps o Waze y compartir la ubicación.
+
+Las búsquedas guardadas solo contienen sus filtros, nunca datos de colegios ni
+secretos. Su documento portátil usa el formato `eduescale.saved-searches`,
+versión `1`, con una lista `searches` y los campos `name`, `department`,
+`province`, `district`, `department_code`, `province_code`, `district_code`,
+`management` y `levels`. Los códigos se exportan como `null` cuando no están
+disponibles en los registros móviles. La app valida formato, versión, tipos,
+valores permitidos y nombres al importar.
 
 El mapa usa el estilo Liberty de OpenFreeMap con MapLibre Native Android y
 mantiene visible la atribución «OpenFreeMap © OpenMapTiles · Data from OpenStreetMap».
@@ -102,7 +115,8 @@ Paquete base `pe.eduescale.mobile`:
 
 - `di/`: módulo Hilt (`AppModule`) con OkHttp, almacenamiento y OfflineManager.
 - `data/`: modelos, Room (`SchoolActivityRepository`), lectura de archivos,
-  `SchoolImportController` (importar/restaurar el archivo) y
+  `SavedSearchJson` (serialización validada de búsquedas), `SchoolImportController`
+  (importar/restaurar el archivo) y
   `ActivityBackupController` (copia JSON).
 - `activity/`: `SchoolActivityController` (comentarios e historial).
 - `map/`: estilo, cámara, marcadores, `SchoolMapController` (mapa y selección) y `OfflineMapController`.

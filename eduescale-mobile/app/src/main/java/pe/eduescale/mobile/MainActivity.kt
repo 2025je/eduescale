@@ -36,6 +36,8 @@ import pe.eduescale.mobile.data.SchoolFile
 import pe.eduescale.mobile.data.SchoolFileStorage
 import pe.eduescale.mobile.data.SchoolImportController
 import pe.eduescale.mobile.data.SchoolRecord
+import pe.eduescale.mobile.data.SavedSearchJson
+import pe.eduescale.mobile.ui.theme.THEME_PREFERENCES_NAME
 import pe.eduescale.mobile.location.LocationController
 import pe.eduescale.mobile.map.MapCameraStore
 import pe.eduescale.mobile.map.OfflineMapController
@@ -139,11 +141,62 @@ class MainActivity : ComponentActivity() {
         uri?.let(activityBackup::import)
     }
 
+    private val openSavedSearches = registerForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) {
+            try {
+                val json = contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)
+                    ?.use { it.readText() }
+                    ?: throw IllegalArgumentException("No se pudo leer el archivo seleccionado.")
+                val imported = SavedSearchJson.decode(json)
+                viewModel.setSavedSearches(imported)
+                viewModel.setSavedSearchMessage("Se importaron ${imported.size} búsquedas.")
+            } catch (error: Exception) {
+                viewModel.setSavedSearchMessage(
+                    error.message ?: "No se pudo importar el archivo de búsquedas.",
+                    isError = true,
+                )
+            }
+        }
+    }
+
+    private val createSavedSearches = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json"),
+    ) { uri ->
+        if (uri != null) {
+            try {
+                val json = SavedSearchJson.encode(viewModel.state.value.savedSearches)
+                contentResolver.openOutputStream(uri)?.bufferedWriter(Charsets.UTF_8)
+                    ?.use { it.write(json) }
+                    ?: throw IllegalArgumentException("No se pudo escribir el archivo seleccionado.")
+                viewModel.setSavedSearchMessage("Búsquedas exportadas.")
+            } catch (error: Exception) {
+                viewModel.setSavedSearchMessage(
+                    error.message ?: "No se pudo exportar el archivo de búsquedas.",
+                    isError = true,
+                )
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Activity result launchers must be registered before STARTED, and need the ViewModel store.
         reminderController
         locationController
+        val savedSearchPreferences = getSharedPreferences(THEME_PREFERENCES_NAME, MODE_PRIVATE)
+        val savedSearchJson = savedSearchPreferences.getString("saved_searches", null)
+        val savedSearches = if (savedSearchJson == null) {
+            emptyList()
+        } else {
+            try {
+                SavedSearchJson.decode(savedSearchJson)
+            } catch (_: IllegalArgumentException) {
+                emptyList()
+            }
+        }
+        viewModel.setSavedSearches(savedSearches)
         externalFileBackCallback = object : OnBackPressedCallback(false) {
             override fun handleOnBackPressed() {
                 if (!moveTaskToBack(true)) {
@@ -204,6 +257,12 @@ class MainActivity : ComponentActivity() {
                             root.mapDownloadControlBounds.set(left, top, right, bottom)
                         },
                         onPickFile = { openDocument.launch(arrayOf("*/*")) },
+                        onImportSavedSearches = {
+                            openSavedSearches.launch(arrayOf("application/json", "text/json"))
+                        },
+                        onExportSavedSearches = {
+                            createSavedSearches.launch("EduEscale-busquedas.json")
+                        },
                         onLocate = locationController::showMyLocation,
                         onApplyFilters = viewModel::setFilters,
                         onSchoolSelected = { school ->

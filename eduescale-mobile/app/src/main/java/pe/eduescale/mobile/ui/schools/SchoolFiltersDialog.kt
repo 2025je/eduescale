@@ -51,7 +51,7 @@ internal fun FilterButton(count: Int, enabled: Boolean, onClick: () -> Unit) {
         shape = RoundedCornerShape(14.dp),
         modifier = Modifier.height(56.dp),
     ) {
-        Icon(Icons.Default.FilterList, contentDescription = null)
+        Icon(Icons.Default.FilterList, contentDescription = "Abrir filtros avanzados")
         if (count > 0) {
             Spacer(Modifier.width(4.dp))
             Text(count.toString())

@@ -6,12 +6,11 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -26,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import android.os.StatFs
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -37,12 +37,16 @@ import pe.eduescale.mobile.data.SchoolComment
 import pe.eduescale.mobile.data.SchoolFilters
 import pe.eduescale.mobile.data.SchoolRecord
 import pe.eduescale.mobile.data.SchoolReminder
+import pe.eduescale.mobile.data.SavedSearchJson
+import pe.eduescale.mobile.data.SavedSearch
 import pe.eduescale.mobile.ui.files.FilesScreen
 import pe.eduescale.mobile.ui.history.ActivityHistoryScreen
 import pe.eduescale.mobile.ui.map.MapScreen
 import pe.eduescale.mobile.ui.schools.SchoolsScreen
 import pe.eduescale.mobile.ui.theme.DARK_THEME_PREFERENCE_KEY
+import pe.eduescale.mobile.ui.theme.THEME_MODE_PREFERENCE_KEY
 import pe.eduescale.mobile.ui.theme.THEME_PREFERENCES_NAME
+import pe.eduescale.mobile.ui.theme.ThemeMode
 import pe.eduescale.mobile.ui.theme.EduEscaleTheme
 
 @Composable
@@ -54,6 +58,8 @@ fun EduEscaleApp(
     onSchoolDetailsSheetShown: (SchoolRecord, Float) -> Unit,
     onMapDownloadControlBoundsChanged: (Float, Float, Float, Float) -> Unit,
     onPickFile: () -> Unit,
+    onImportSavedSearches: () -> Unit,
+    onExportSavedSearches: () -> Unit,
     onLocate: () -> Unit,
     onApplyFilters: (SchoolFilters) -> Unit,
     onSchoolSelected: (SchoolRecord) -> Unit,
@@ -82,11 +88,21 @@ fun EduEscaleApp(
         context.getSharedPreferences(THEME_PREFERENCES_NAME, Context.MODE_PRIVATE)
     }
     val systemDarkTheme = isSystemInDarkTheme()
-    var darkTheme by remember(themePreferences, systemDarkTheme) {
+    var themeMode by remember(themePreferences) {
         mutableStateOf(
-            themePreferences.getBoolean(DARK_THEME_PREFERENCE_KEY, systemDarkTheme),
+            themePreferences.getString(THEME_MODE_PREFERENCE_KEY, null)?.let(ThemeMode::fromPreference)
+                ?: if (themePreferences.contains(DARK_THEME_PREFERENCE_KEY)) {
+                    if (themePreferences.getBoolean(DARK_THEME_PREFERENCE_KEY, false)) {
+                        ThemeMode.DARK
+                    } else {
+                        ThemeMode.LIGHT
+                    }
+                } else {
+                    ThemeMode.SYSTEM
+                },
         )
     }
+    val darkTheme = themeMode.isDark(systemDarkTheme)
     val navController = rememberNavController()
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route ?: "map"
@@ -103,10 +119,22 @@ fun EduEscaleApp(
         Destination("schools", "Colegios", Icons.AutoMirrored.Filled.List),
         Destination("history", "Historial", Icons.Default.History),
         Destination("files", "Archivos", Icons.Default.FolderOpen),
+        Destination("settings", "Ajustes", Icons.Default.Settings),
     )
 
     LaunchedEffect(darkTheme) {
         onThemeChanged(darkTheme)
+    }
+    LaunchedEffect(themeMode) {
+        themePreferences.edit()
+            .putString(THEME_MODE_PREFERENCE_KEY, themeMode.preferenceValue)
+            .remove(DARK_THEME_PREFERENCE_KEY)
+            .apply()
+    }
+    LaunchedEffect(state.savedSearches) {
+        themePreferences.edit()
+            .putString("saved_searches", SavedSearchJson.encode(state.savedSearches))
+            .apply()
     }
 
     EduEscaleTheme(darkTheme = darkTheme) {
@@ -136,30 +164,6 @@ fun EduEscaleApp(
                             label = { Text(destination.label) },
                         )
                     }
-                    NavigationBarItem(
-                        selected = false,
-                        onClick = {
-                            darkTheme = !darkTheme
-                            themePreferences.edit()
-                                .putBoolean(DARK_THEME_PREFERENCE_KEY, darkTheme)
-                                .apply()
-                        },
-                        icon = {
-                            Icon(
-                                imageVector = if (darkTheme) {
-                                    Icons.Default.LightMode
-                                } else {
-                                    Icons.Default.DarkMode
-                                },
-                                contentDescription = if (darkTheme) {
-                                    "Cambiar a tema claro"
-                                } else {
-                                    "Cambiar a tema oscuro"
-                                },
-                            )
-                        },
-                        label = { Text(if (darkTheme) "Claro" else "Oscuro") },
-                    )
                 }
             },
         ) { padding ->
@@ -199,6 +203,30 @@ fun EduEscaleApp(
                         state = state,
                         onQueryChanged = viewModel::setQuery,
                         onApplyFilters = onApplyFilters,
+                        savedSearches = state.savedSearches,
+                        savedSearchMessage = state.savedSearchMessage,
+                        savedSearchMessageIsError = state.savedSearchMessageIsError,
+                        onApplySavedSearch = { onApplyFilters(it) },
+                        onSaveSearch = { name ->
+                            try {
+                                val search = SavedSearch.from(name, state.filters)
+                                val updated = state.savedSearches
+                                    .filterNot { it.name.equals(search.name, ignoreCase = true) } + search
+                                SavedSearchJson.encode(updated)
+                                viewModel.setSavedSearches(updated)
+                                viewModel.setSavedSearchMessage("Búsqueda guardada.")
+                            } catch (error: IllegalArgumentException) {
+                                viewModel.setSavedSearchMessage(
+                                    error.message ?: "No se pudo guardar la búsqueda.",
+                                    isError = true,
+                                )
+                            }
+                        },
+                        onDeleteSavedSearch = { search ->
+                            viewModel.setSavedSearches(state.savedSearches - search)
+                        },
+                        onImportSavedSearches = onImportSavedSearches,
+                        onExportSavedSearches = onExportSavedSearches,
                         onSchoolSelected = { school ->
                             onSchoolSelected(school)
                             navController.navigate("map") {
@@ -218,6 +246,7 @@ fun EduEscaleApp(
                         onExportActivityBackup = onExportActivityBackup,
                         onImportActivityBackup = onImportActivityBackup,
                         offlineMapAreas = state.offlineMapAreas,
+                        deviceAvailableBytes = StatFs(context.filesDir.path).availableBytes,
                         offlineMapMessage = state.offlineMapMessage,
                         offlineMapMessageIsError = state.offlineMapMessageIsError,
                         onToggleOfflineMapArea = onToggleOfflineMapArea,
@@ -231,6 +260,12 @@ fun EduEscaleApp(
                         onEditComment = onEditHistoryComment,
                         onEditReminder = onEditHistoryReminder,
                         onPickReminderDateTime = onPickReminderDateTime,
+                    )
+                }
+                composable("settings") {
+                    SettingsScreen(
+                        themeMode = themeMode,
+                        onThemeModeChanged = { themeMode = it },
                     )
                 }
             }

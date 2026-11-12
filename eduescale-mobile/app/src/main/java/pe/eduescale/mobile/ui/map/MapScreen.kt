@@ -1,6 +1,5 @@
 package pe.eduescale.mobile.ui.map
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandLess
@@ -30,6 +30,7 @@ import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RangeSlider
@@ -44,6 +45,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.text.font.FontWeight
@@ -131,7 +133,10 @@ internal fun MapScreen(
             Card(
                 modifier = Modifier
                     .align(Alignment.Start)
-                    .clickable { legendExpanded = !legendExpanded },
+                    .clickable(
+                        role = Role.Button,
+                        onClick = { legendExpanded = !legendExpanded },
+                    ),
                 shape = RoundedCornerShape(14.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surface,
@@ -220,32 +225,26 @@ internal fun MapScreen(
                     }
                 }
             }
-            Button(
-                onClick = { showOfflineMapDialog = true },
-                enabled = state.visibleMapBounds != null &&
-                    !state.isCreatingOfflineMapArea &&
-                    state.offlineMapAreas.none(OfflineMapAreaUi::isDownloading),
-            ) {
-                Icon(Icons.Default.FileDownload, contentDescription = null)
-                Spacer(Modifier.width(6.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (!state.isCreatingOfflineMapArea && activeDownload == null) {
+                IconButton(
+                    onClick = { showOfflineMapDialog = true },
+                    enabled = state.visibleMapBounds != null,
+                ) {
+                    Icon(
+                        Icons.Default.FileDownload,
+                        contentDescription = "Descargar el área visible sin conexión",
+                    )
+                }
+                }
                 Text(
-                    if (state.isCreatingOfflineMapArea) {
-                        "Iniciando descarga…"
-                    } else if (activeDownload != null) {
-                        "Descarga en curso"
-                    } else {
-                        "Descargar área visible"
-                    },
-                )
-            }
-            Text(
                 "OpenFreeMap © OpenMapTiles · Data from OpenStreetMap",
                 modifier = Modifier.padding(start = 4.dp),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            if (!state.isCreatingOfflineMapArea && activeDownload == null) {
-                state.offlineMapMessage?.let { message ->
+                )
+            }
+            state.offlineMapMessage?.let { message ->
                 Text(
                     message,
                     modifier = Modifier.padding(start = 4.dp, end = 8.dp),
@@ -256,7 +255,6 @@ internal fun MapScreen(
                         MaterialTheme.colorScheme.onSurfaceVariant
                     },
                 )
-                }
             }
         }
 

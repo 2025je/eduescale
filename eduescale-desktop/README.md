@@ -34,8 +34,12 @@ seleccionado se consulta por separado y los colegios repetidos se guardan una
 sola vez. La extracción se ejecuta en
 segundo plano para mantener la interfaz receptiva. Puedes cancelarla desde la
 barra inferior; los archivos anteriores se conservan si la extracción se
-cancela o falla. El botón «Tema oscuro»/«Tema claro» del encabezado alterna y
-recuerda la apariencia elegida.
+cancela o falla. El selector «Apariencia» del encabezado permite elegir entre
+Sistema, Claro y Oscuro, y recuerda la preferencia.
+La ventana se organiza como un panel de control: el encabezado y la franja de
+estado y acciones permanecen visibles mientras el área central se desplaza.
+En pantallas amplias, los criterios de ubicación y «Mis búsquedas» aparecen
+como paneles contiguos; en ventanas estrechas se apilan para conservar espacio.
 
 También se puede iniciar con `uv run python app.py` por compatibilidad.
 
@@ -83,9 +87,14 @@ pública/privada y uno o varios niveles entre primaria, secundaria y CETPRO.
 Pulsa **Agregar a mis búsquedas** para guardar los filtros y repite el
 proceso para agregar otros criterios. Cada combinación debe tener al menos una
 opción de Gestión y una de Nivel educativo. Puedes quitar combinaciones antes
-de iniciar. Al pulsar
-**Ejecutar búsqueda**, solo se consultan y guardan temporalmente los resultados;
-no se crean archivos de exportación. Al finalizar, usa **Exportar Excel**,
+de iniciar y editar su nombre. Usa **Compartir** para exportarlas como JSON
+portable versionado (`eduescale.saved-searches`, versión 1), o **Importar** para
+combinar un archivo recibido; las combinaciones duplicadas se omiten.
+Antes de ejecutar una búsqueda o generar una exportación, EduEscale muestra un
+resumen de las ubicaciones, gestiones y niveles que se procesarán para que puedas
+confirmar o cancelar. Al pulsar **Ejecutar búsqueda**, solo se consultan y
+guardan temporalmente los resultados; no se crean archivos de exportación. Al
+finalizar, usa **Exportar Excel**,
 **Exportar PDF** o **Exportar .eduescale** para abrir un diálogo y elegir la
 carpeta y el nombre del archivo; se sugiere la última carpeta utilizada y un
 nombre predeterminado. Al confirmar, se genera únicamente el formato elegido y
@@ -102,6 +111,10 @@ aparecen en la cabecera de la tabla. No incluye coordenadas ni enlaces de Google
 Maps. El Excel se prepara en orientación horizontal y ajustado al ancho de página.
 El PDF conserva esta organización; cuando una tabla continúa en otra página,
 repite sus encabezados y mantiene cada fila de colegio completa.
+
+El botón **Historial** muestra las últimas 50 exportaciones y sus metadatos:
+fecha, formato, nombre del archivo, estado y resumen de filtros. No conserva
+contraseñas ni el contenido de los archivos exportados.
 
 Las exportaciones Excel, PDF y `.eduescale` comparten el mismo nombre base y
 solo cambia la extensión.
@@ -252,24 +265,30 @@ y 1920 × 1080.
 
 ## Ejecutable para Windows
 
-Genera los ejecutables con PyInstaller a través de Nox:
+Instala Inno Setup 6 (por ejemplo, con `choco install innosetup --yes`) y
+genera los ejecutables y el instalador con PyInstaller e Inno Setup a través de
+Nox:
 
 ```powershell
 uv run --group nox nox -s build
 ```
 
-La carpeta `dist` contendrá `eduescale-gui.exe` y la carpeta
-`eduescale-scraper`, que incluye el worker y sus dependencias. Mantén ambos
-elementos juntos: la interfaz usa `QProcess` para iniciar el worker de Scrapy
-como proceso separado y recibir su progreso. El worker se distribuye como una
-carpeta para que, al cancelar una extracción, Windows cierre el proceso que
-mantiene abierta la base de datos temporal.
+La carpeta `dist` contendrá `eduescale-gui.exe`, la carpeta
+`eduescale-scraper` con el worker y sus dependencias, y
+`installer\EduEscale-Setup-<versión>.exe`. El instalador coloca ambos componentes
+juntos en `Program Files`, crea accesos directos en el menú Inicio y permite
+crear uno en el escritorio. La interfaz usa `QProcess` para iniciar el worker
+de Scrapy como proceso separado y recibir su progreso; por eso el ejecutable
+del worker debe permanecer junto a la aplicación. Se distribuye como carpeta
+para que, al cancelar una extracción, Windows cierre el proceso que mantiene
+abierta la base de datos temporal.
 Nox usa `eduescale-gui.spec` y `eduescale-scraper.spec` como configuración de
 empaquetado. GitHub Actions ejecuta las pruebas, Ruff, mypy, ambos builds de
 Windows y una comprobación del comando `list` del scraper, los recursos QML de Material,
 los certificados, MapLibre y Qt WebEngine incluidos en la GUI en cada push y pull request.
 También se puede ejecutar manualmente desde GitHub Actions; ese flujo permite
-descargar la interfaz y la carpeta del worker como artefacto durante siete días.
+descargar la interfaz, la carpeta del worker y el instalador como artefacto
+durante siete días.
 
 Para comprobar lint, formato y tipos con Ruff y mypy:
 

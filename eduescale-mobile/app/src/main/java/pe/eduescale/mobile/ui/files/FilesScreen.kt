@@ -40,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import pe.eduescale.mobile.data.SchoolFile
 import pe.eduescale.mobile.ui.OfflineMapAreaUi
@@ -56,12 +57,14 @@ internal fun FilesScreen(
     onExportActivityBackup: () -> Unit,
     onImportActivityBackup: () -> Unit,
     offlineMapAreas: List<OfflineMapAreaUi>,
+    deviceAvailableBytes: Long,
     offlineMapMessage: String?,
     offlineMapMessageIsError: Boolean,
     onToggleOfflineMapArea: (Long, Boolean) -> Unit,
     onDeleteOfflineMapArea: (Long) -> Unit,
 ) {
     var pendingOfflineAreaDeletion by remember { mutableStateOf<OfflineMapAreaUi?>(null) }
+    val context = LocalContext.current
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -156,6 +159,17 @@ internal fun FilesScreen(
         }
         HorizontalDivider()
         Text("Mapas sin conexión", style = MaterialTheme.typography.titleMedium)
+        StatisticLine(
+            "Total descargado en mapas sin conexión",
+            android.text.format.Formatter.formatFileSize(
+                context,
+                offlineMapAreas.sumOf(OfflineMapAreaUi::completedBytes),
+            ),
+        )
+        StatisticLine(
+            "Espacio disponible en el almacenamiento interno",
+            android.text.format.Formatter.formatFileSize(context, deviceAvailableBytes),
+        )
         Text(
             "Descarga el área visible desde Mapa. Los mapas guardados se pueden reanudar o eliminar aquí.",
             color = MaterialTheme.colorScheme.onSurfaceVariant,

@@ -1,19 +1,32 @@
 import json
 import logging
+import unicodedata
 from datetime import datetime
 from pathlib import Path
 
 from pydantic import TypeAdapter, ValidationError
-from PySide6.QtCore import Property, QObject, QSettings, QUrl, Signal, Slot
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtCore import (
+    Property,
+    QIODevice,
+    QObject,
+    QSaveFile,
+    QSettings,
+    Qt,
+    QUrl,
+    Signal,
+    Slot,
+)
+from PySide6.QtGui import QDesktopServices, QGuiApplication
 
 from eduescale.client import SchoolFilters
 from eduescale.export_files import android_data_path
 from eduescale.gui.export_runner import ExportRunner
 from eduescale.gui.ports import ExportRunnerPort, LocationServicePort, ScrapeRunnerPort
 from eduescale.gui.resources import read_resource_bytes, resource_path
+from eduescale.gui.saved_searches import PortableSavedSearches
 
 LOGGER = logging.getLogger(__name__)
+MAX_SAVED_SEARCH_FILE_BYTES = 1_048_576
 
 LOCATION_PLACEHOLDERS = {
     "regions": "Todos los departamentos",
@@ -28,6 +41,9 @@ class SchoolFinderController(QObject):
     provincesChanged = Signal()
     districtsChanged = Signal()
     darkThemeChanged = Signal()
+    themeModeChanged = Signal()
+    savedSearchesLoaded = Signal(str)
+    exportHistoryChanged = Signal()
     stateChanged = Signal()
     errorRaised = Signal(str, str)
 
@@ -41,11 +57,13 @@ class SchoolFinderController(QObject):
     ):
         super().__init__(parent)
         self._settings = settings if settings is not None else QSettings()
-        self._dark_theme = self._settings.value(
-            "appearance/darkTheme",
-            False,
-            type=bool,
-        )
+        self._theme_mode = self._read_theme_mode()
+        self._dark_theme = self._effective_dark_theme()
+        application = QGuiApplication.instance()
+        if isinstance(application, QGuiApplication):
+            application.styleHints().colorSchemeChanged.connect(
+                self._system_color_scheme_changed
+            )
         self._regions = [{"label": "Cargando departamentos...", "code": ""}]
         self._provinces = [{"label": LOCATION_PLACEHOLDERS["provinces"], "code": ""}]
         self._districts = [{"label": LOCATION_PLACEHOLDERS["districts"], "code": ""}]
@@ -142,6 +160,8 @@ class SchoolFinderController(QObject):
         self._exports_available = False
         self._output_path: Path | None = None
         self._dataset_path: Path | None = None
+        self._last_search_summary = ""
+        self._export_history, self._export_history_warning = self._read_export_history()
 
         self._location_service = location_service
         self._scrape_runner = scrape_runner
@@ -233,24 +253,182 @@ class SchoolFinderController(QObject):
     def districtsEnabled(self):
         return self._districts_enabled
 
+    @Property(str, notify=themeModeChanged)
+    def themeMode(self):
+        return self._theme_mode
+
     @Property(bool, notify=darkThemeChanged)
     def darkTheme(self):
         return self._dark_theme
 
-    @Slot(bool)
-    def setDarkTheme(self, dark_theme: bool):
-        if self._dark_theme == dark_theme:
-            return
-        self._settings.setValue("appearance/darkTheme", dark_theme)
+    @Property(list, notify=exportHistoryChanged)
+    def exportHistory(self):
+        return self._export_history
+
+    @Property(str, notify=exportHistoryChanged)
+    def exportHistoryWarning(self):
+        return self._export_history_warning
+
+    def _read_export_history(self) -> tuple[list[dict[str, str]], str]:
+        value = self._settings.value("export/history", "[]")
+        if not isinstance(value, str):
+            LOGGER.error("Saved export history has an unexpected value type.")
+            return [], "No se pudo leer el historial guardado."
+        try:
+            history = json.loads(value)
+        except json.JSONDecodeError as error:
+            LOGGER.error("Saved export history is invalid JSON: %s", error)
+            return [], "El historial guardado está dañado."
+        if not isinstance(history, list):
+            LOGGER.error("Saved export history is not a list.")
+            return [], "El historial guardado tiene un formato no válido."
+        entries = []
+        keys = {"timestamp", "format", "file", "status", "filters"}
+        for entry in history[:50]:
+            if (
+                not isinstance(entry, dict)
+                or set(entry) != keys
+                or any(not isinstance(entry[key], str) for key in keys)
+            ):
+                LOGGER.error("Ignoring malformed saved export history entry.")
+                return [], "El historial guardado contiene una entrada no válida."
+            entries.append(entry)
+        return entries, ""
+
+    def _record_export_history(
+        self,
+        export_type: str,
+        file_name: str,
+        status: str,
+    ):
+        export_labels = {
+            "excel": "Excel",
+            "pdf": "PDF",
+            "eduescale": ".eduescale",
+        }
+        entry = {
+            "timestamp": datetime.now().astimezone().isoformat(timespec="seconds"),
+            "format": export_labels.get(export_type, export_type),
+            "file": Path(file_name).name,
+            "status": status,
+            "filters": self._last_search_summary,
+        }
+        self._export_history = [entry, *self._export_history][:50]
+        self._settings.setValue(
+            "export/history",
+            json.dumps(self._export_history, ensure_ascii=False),
+        )
         self._settings.sync()
-        self._dark_theme = dark_theme
-        self.darkThemeChanged.emit()
         if self._settings.status() != QSettings.Status.NoError:
-            LOGGER.error("No se pudo guardar la preferencia del tema.")
+            LOGGER.error("Could not save export history.")
+            self._export_history_warning = "No se pudo guardar el historial."
+            self.errorRaised.emit(
+                "No se pudo guardar el historial",
+                "La exportación terminó, pero su registro no se pudo guardar.",
+            )
+        self.exportHistoryChanged.emit()
+
+    def _summarize_searches(self, filter_sets: list[SchoolFilters]) -> str:
+        locations = []
+        management: set[str] = set()
+        levels: set[str] = set()
+        for filters in filter_sets:
+            if filters.district_code in self._district_metadata:
+                details = self._district_metadata[filters.district_code]
+                location = " / ".join(
+                    (details["department"], details["province"], details["district"])
+                )
+            elif filters.province_code in self._map_province_metadata:
+                province = self._map_province_metadata[filters.province_code]
+                location = f"{province['department']} / {province['name']}"
+            elif filters.region_code in self._map_department_metadata:
+                location = self._map_department_metadata[filters.region_code]["name"]
+            else:
+                location = "Todo el Perú"
+            if location not in locations:
+                locations.append(location)
+            management.update(filters.management)
+            levels.update(filters.level)
+        location_summary = ", ".join(locations[:5])
+        if len(locations) > 5:
+            location_summary += f" y {len(locations) - 5} más"
+        return (
+            f"{len(filter_sets)} combinaciones · {location_summary} · "
+            f"Gestión: {', '.join(sorted(management))} · "
+            f"Nivel: {', '.join(sorted(levels))}"
+        )
+
+    def _read_theme_mode(self) -> str:
+        theme_mode = self._settings.value("appearance/themeMode")
+        if theme_mode is None:
+            if self._settings.contains("appearance/darkTheme"):
+                return (
+                    "dark"
+                    if self._settings.value(
+                        "appearance/darkTheme",
+                        False,
+                        type=bool,
+                    )
+                    else "light"
+                )
+            return "system"
+        if theme_mode in ("system", "light", "dark"):
+            return theme_mode
+        LOGGER.error("Ignoring invalid saved theme mode %r.", theme_mode)
+        return "system"
+
+    @staticmethod
+    def _system_prefers_dark_theme() -> bool:
+        application = QGuiApplication.instance()
+        return (
+            isinstance(application, QGuiApplication)
+            and application.styleHints().colorScheme() == Qt.ColorScheme.Dark
+        )
+
+    def _effective_dark_theme(self) -> bool:
+        if self._theme_mode == "dark":
+            return True
+        if self._theme_mode == "light":
+            return False
+        return self._system_prefers_dark_theme()
+
+    def _system_color_scheme_changed(self, *_args: object):
+        if self._theme_mode != "system":
+            return
+        dark_theme = self._system_prefers_dark_theme()
+        if dark_theme != self._dark_theme:
+            self._dark_theme = dark_theme
+            self.darkThemeChanged.emit()
+
+    @Slot(str)
+    def setThemeMode(self, theme_mode: str):
+        if theme_mode not in ("system", "light", "dark"):
+            LOGGER.error("Ignoring invalid theme mode %r.", theme_mode)
+            self.errorRaised.emit(
+                "Tema no válido",
+                "Elige Sistema, Claro u Oscuro.",
+            )
+            return
+        if self._theme_mode == theme_mode:
+            return
+        old_dark_theme = self._dark_theme
+        self._settings.setValue("appearance/themeMode", theme_mode)
+        self._settings.sync()
+        self._theme_mode = theme_mode
+        self._dark_theme = self._effective_dark_theme()
+        self.themeModeChanged.emit()
+        if self._dark_theme != old_dark_theme:
+            self.darkThemeChanged.emit()
+        if self._settings.status() != QSettings.Status.NoError:
+            LOGGER.error("Could not save the selected appearance mode.")
             self.errorRaised.emit(
                 "No se pudo guardar el tema",
                 "La preferencia se aplicó, pero no se pudo guardar para la próxima vez.",
             )
+
+    @Slot(bool)
+    def setDarkTheme(self, dark_theme: bool):
+        self.setThemeMode("dark" if dark_theme else "light")
 
     @Property(str, notify=stateChanged)
     def statusText(self):
@@ -456,6 +634,253 @@ class SchoolFinderController(QObject):
         self._status_text = f"No se pudo cargar la ubicación desde ESCALE: {message}"
         self.stateChanged.emit()
 
+    @Slot(str, str, result=bool)
+    def saveSavedSearches(self, output_url: str, document_json: str) -> bool:
+        output_path = self._local_path(output_url)
+        if output_path is None:
+            self.errorRaised.emit(
+                "Ruta no válida",
+                "Selecciona un archivo JSON local para compartir las búsquedas.",
+            )
+            return False
+        try:
+            document = PortableSavedSearches.model_validate_json(document_json)
+            self._normalize_saved_searches(document.searches)
+        except ValidationError as error:
+            LOGGER.error("Refusing to export invalid saved searches: %s", error)
+            self.errorRaised.emit("Búsquedas no válidas", str(error))
+            return False
+        except ValueError as error:
+            LOGGER.error("Refusing to export unresolved saved searches: %s", error)
+            self.errorRaised.emit("Ubicación no válida", str(error))
+            return False
+
+        payload = document.model_dump_json(indent=2).encode("utf-8")
+        if len(payload) > MAX_SAVED_SEARCH_FILE_BYTES:
+            self.errorRaised.emit(
+                "Archivo demasiado grande",
+                "El archivo de búsquedas supera el límite de 1 MiB.",
+            )
+            return False
+        save_file = QSaveFile(str(output_path))
+        if not save_file.open(QIODevice.OpenModeFlag.WriteOnly):
+            LOGGER.error("Could not open saved-search file %s.", output_path)
+            self.errorRaised.emit(
+                "No se pudo guardar",
+                f"No se pudo crear el archivo de búsquedas: {save_file.errorString()}",
+            )
+            return False
+        if save_file.write(payload) != len(payload) or not save_file.commit():
+            error_message = save_file.errorString()
+            save_file.cancelWriting()
+            LOGGER.error(
+                "Could not commit saved-search file %s: %s",
+                output_path,
+                error_message,
+            )
+            self.errorRaised.emit(
+                "No se pudo guardar",
+                f"No se pudo completar el archivo de búsquedas: {error_message}",
+            )
+            return False
+        LOGGER.info(
+            "Exported %d saved searches to %s.",
+            len(document.searches),
+            output_path,
+        )
+        return True
+
+    @Slot(str, result=bool)
+    def loadSavedSearches(self, input_url: str) -> bool:
+        input_path = self._local_path(input_url)
+        if input_path is None:
+            self.errorRaised.emit(
+                "Ruta no válida",
+                "Selecciona un archivo JSON local de búsquedas.",
+            )
+            return False
+        try:
+            if input_path.stat().st_size > MAX_SAVED_SEARCH_FILE_BYTES:
+                raise ValueError("El archivo supera el límite de 1 MiB.")
+            document = PortableSavedSearches.model_validate_json(
+                input_path.read_bytes()
+            )
+            searches = self._normalize_saved_searches(document.searches)
+        except (OSError, ValidationError, ValueError) as error:
+            LOGGER.error("Could not load saved searches from %s: %s", input_path, error)
+            self.errorRaised.emit("No se pudieron importar las búsquedas", str(error))
+            return False
+        self.savedSearchesLoaded.emit(
+            json.dumps(searches, ensure_ascii=False, separators=(",", ":"))
+        )
+        LOGGER.info("Imported %d saved searches from %s.", len(searches), input_path)
+        return True
+
+    @staticmethod
+    def _local_path(file_url: str) -> Path | None:
+        url = QUrl(file_url)
+        return Path(url.toLocalFile()) if url.isLocalFile() else None
+
+    def _normalize_saved_searches(self, searches):
+        normalized = []
+        for index, search in enumerate(searches, start=1):
+            location = self._resolve_saved_search_location(search)
+            normalized.append(
+                {
+                    "name": search.name,
+                    "regionCode": location["department_code"] or "",
+                    "provinceCode": location["province_code"] or "",
+                    "districtCode": location["district_code"] or "",
+                    "regionLabel": location["department"],
+                    "provinceLabel": location["province"],
+                    "districtLabel": location["district"] or "Todos los distritos",
+                    "management": ",".join(search.management or ("publica", "privada")),
+                    "level": ",".join(
+                        search.levels or ("primaria", "secundaria", "cetpro")
+                    ),
+                }
+            )
+        return normalized
+
+    def _resolve_saved_search_location(self, search):
+        requested = {
+            "department": search.department,
+            "province": search.province,
+            "district": search.district,
+        }
+        codes = {
+            "department_code": search.department_code,
+            "province_code": search.province_code,
+            "district_code": search.district_code,
+        }
+        if codes["district_code"]:
+            properties = self._district_metadata.get(codes["district_code"])
+            if properties is None:
+                raise ValueError(
+                    f"Ubigeo distrital no reconocido: {codes['district_code']}."
+                )
+            if (
+                codes["province_code"]
+                and codes["province_code"] != properties["provinceCode"]
+            ):
+                raise ValueError(
+                    f"El ubigeo provincial {codes['province_code']} no corresponde "
+                    f"al distrito {codes['district_code']}."
+                )
+            if (
+                codes["department_code"]
+                and codes["department_code"] != properties["departmentCode"]
+            ):
+                raise ValueError(
+                    f"El ubigeo departamental {codes['department_code']} no "
+                    f"corresponde al distrito {codes['district_code']}."
+                )
+            codes["province_code"] = (
+                codes["province_code"] or properties["provinceCode"]
+            )
+            codes["department_code"] = (
+                codes["department_code"] or properties["departmentCode"]
+            )
+        if codes["province_code"]:
+            province = self._map_province_metadata.get(codes["province_code"])
+            if province is None:
+                raise ValueError(
+                    f"Ubigeo provincial no reconocido: {codes['province_code']}."
+                )
+            if (
+                codes["department_code"]
+                and codes["department_code"] != province["departmentCode"]
+            ):
+                raise ValueError(
+                    f"El ubigeo departamental {codes['department_code']} no "
+                    f"corresponde a la provincia {codes['province_code']}."
+                )
+            codes["department_code"] = (
+                codes["department_code"] or province["departmentCode"]
+            )
+        if codes["department_code"] and (
+            codes["department_code"] not in self._map_department_metadata
+        ):
+            raise ValueError(
+                f"Ubigeo departamental no reconocido: {codes['department_code']}."
+            )
+
+        if not any(codes.values()) and any(requested.values()):
+
+            def matches(actual: str, expected: str | None) -> bool:
+                return expected is None or self._normalized_label(actual) == (
+                    self._normalized_label(expected)
+                )
+
+            if requested["district"]:
+                candidates = [
+                    (code, properties)
+                    for code, properties in self._district_metadata.items()
+                    if matches(properties["district"], requested["district"])
+                    and matches(properties["province"], requested["province"])
+                    and matches(properties["department"], requested["department"])
+                ]
+                if len(candidates) != 1:
+                    raise ValueError(
+                        f"No se pudo resolver de forma única el distrito "
+                        f"«{requested['district']}»."
+                    )
+                district_code, properties = candidates[0]
+                codes["district_code"] = district_code
+                codes["province_code"] = properties["provinceCode"]
+                codes["department_code"] = properties["departmentCode"]
+            elif requested["province"]:
+                candidates = [
+                    (code, properties)
+                    for code, properties in self._map_province_metadata.items()
+                    if matches(properties["name"], requested["province"])
+                    and matches(properties["department"], requested["department"])
+                ]
+                if len(candidates) != 1:
+                    raise ValueError(
+                        f"No se pudo resolver de forma única la provincia "
+                        f"«{requested['province']}»."
+                    )
+                province_code, properties = candidates[0]
+                codes["province_code"] = province_code
+                codes["department_code"] = properties["departmentCode"]
+            elif requested["department"]:
+                candidates = [
+                    code
+                    for code, properties in self._map_department_metadata.items()
+                    if matches(properties["name"], requested["department"])
+                ]
+                if len(candidates) != 1:
+                    raise ValueError(
+                        f"No se pudo resolver de forma única el departamento "
+                        f"«{requested['department']}»."
+                    )
+                codes["department_code"] = candidates[0]
+
+        department = self._map_department_metadata.get(codes["department_code"], {})
+        province = self._map_province_metadata.get(codes["province_code"], {})
+        district = self._district_metadata.get(codes["district_code"], {})
+        resolved = {
+            "department": department.get("name", requested["department"]),
+            "province": province.get("name", requested["province"]),
+            "district": district.get("district", requested["district"]),
+        }
+        for key, value in requested.items():
+            if (
+                value
+                and resolved[key]
+                and (
+                    self._normalized_label(value)
+                    != self._normalized_label(resolved[key])
+                )
+            ):
+                raise ValueError(f"La etiqueta de ubicación «{value}» no coincide.")
+        return {**resolved, **codes}
+
+    @staticmethod
+    def _normalized_label(value: str) -> str:
+        return unicodedata.normalize("NFKC", value).strip().casefold()
+
     @Slot(str, str)
     def startScrape(self, output_url: str, filter_sets_json: str):
         if self._scrape_running:
@@ -494,6 +919,7 @@ class SchoolFinderController(QObject):
             )
             return
 
+        self._last_search_summary = self._summarize_searches(filter_sets)
         selected_url = QUrl(output_url)
         if selected_url.isLocalFile():
             output_path = selected_url.toLocalFile()
@@ -738,6 +1164,7 @@ class SchoolFinderController(QObject):
         self._export_running = False
         path = Path(output_path)
         LOGGER.info("Exported %s to %s.", export_type, path)
+        self._record_export_history(export_type, path.name, "Completada")
         self._progress_visible = False
         self._progress_indeterminate = False
         self._progress_message = ""
@@ -748,6 +1175,7 @@ class SchoolFinderController(QObject):
     @Slot(str, str, str)
     def _export_failed(self, export_type: str, details: str, file_name: str):
         self._export_running = False
+        self._record_export_history(export_type, file_name, "Fallida")
         self._progress_visible = False
         self._progress_indeterminate = False
         self._progress_message = ""

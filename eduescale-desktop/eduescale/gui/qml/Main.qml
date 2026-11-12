@@ -44,12 +44,20 @@ ApplicationWindow {
     readonly property int compactButtonHeight: EduStyle.Style.compactButtonHeight
     readonly property int actionButtonHeight: EduStyle.Style.actionButtonHeight
     property string filterNotice: ""
+    property string pendingAction: ""
+    property string pendingOutputUrl: ""
+    property string pendingSearchesJson: ""
+    property string pendingEduEscalePassword: ""
+    property bool pendingEduEscaleProtected: false
+    property bool pendingEduEscaleCompressed: false
     property string mapLevel: "department"
     property var selectedDepartmentCodes: []
     property var selectedProvinceCodes: []
     property var selectedDistrictCodes: []
 
-    Universal.theme: darkTheme ? Universal.Dark : Universal.Light
+    Universal.theme: controller.themeMode === "system"
+        ? Universal.System
+        : darkTheme ? Universal.Dark : Universal.Light
     Universal.accent: primaryColor
     Universal.background: surfaceColor
     Universal.foreground: textColor
@@ -183,6 +191,7 @@ ApplicationWindow {
                 return
             }
             var filterSet = {
+                name: "Búsqueda " + (filterSetsModel.count + 1),
                 regionCode: "",
                 provinceCode: "",
                 districtCode: districtCode,
@@ -223,9 +232,13 @@ ApplicationWindow {
         for (var index = 0; index < filterSetsModel.count; index++) {
             var filterSet = filterSetsModel.get(index)
             filterSets.push({
+                name: filterSet.name,
                 region_code: filterSet.regionCode,
                 province_code: filterSet.provinceCode,
                 district_code: filterSet.districtCode,
+                department: filterSet.regionLabel || null,
+                province: filterSet.provinceLabel || null,
+                district: filterSet.districtCode ? filterSet.districtLabel : null,
                 management: filterSet.management,
                 level: filterSet.level
             })
@@ -233,21 +246,104 @@ ApplicationWindow {
         return JSON.stringify(filterSets)
     }
 
-    ScrollView {
-        id: filterScrollView
-        objectName: "filterScrollView"
-        anchors.top: parent.top
+    function currentSearchSummary() {
+        var summary = []
+        for (var index = 0; index < filterSetsModel.count; index++) {
+            var search = filterSetsModel.get(index)
+            var location = []
+            if (search.regionLabel)
+                location.push(search.regionLabel)
+            if (search.provinceLabel)
+                location.push(search.provinceLabel)
+            if (search.districtCode)
+                location.push(search.districtLabel)
+            if (!location.length)
+                location.push("Todo el Perú")
+            summary.push(search.name + ": " + location.join(" / ")
+                + " · Gestión: " + search.management.replace(/,/g, ", ")
+                + " · Nivel: " + search.level.replace(/,/g, ", "))
+        }
+        return summary.join("\n")
+    }
+
+    function fileNameFromUrl(url) {
+        var path = url.split(/[?#]/)[0]
+        var fileName = path.substring(path.lastIndexOf("/") + 1)
+        return decodeURIComponent(fileName)
+    }
+
+    function openPendingConfirmation() {
+        var operation = pendingAction
+        exportConfirmationDialog.title = operation === "scrape"
+            ? "Confirmar búsqueda"
+            : operation === "excel"
+            ? "Confirmar exportación Excel"
+            : operation === "pdf"
+            ? "Confirmar exportación PDF"
+            : "Confirmar exportación .eduescale"
+        exportConfirmationDialog.description = operation === "scrape"
+            ? "Se consultarán los datos para las búsquedas seleccionadas y se generará un archivo Excel."
+            : operation === "eduescale" && pendingEduEscaleProtected
+            ? "Se guardará un archivo .eduescale protegido con contraseña."
+            : operation === "eduescale" && pendingEduEscaleCompressed
+            ? "Se guardará un archivo .eduescale comprimido."
+            : "Se generará un archivo con los datos exportados."
+        exportConfirmationDialog.continueLabel = operation === "scrape"
+            ? "Iniciar búsqueda" : "Generar archivo"
+        exportConfirmationDialog.destinationName = fileNameFromUrl(pendingOutputUrl)
+        exportConfirmationDialog.searchSummary = currentSearchSummary()
+        exportConfirmationDialog.open()
+    }
+
+    function requestConfirmation(operation, outputUrl) {
+        pendingAction = operation
+        pendingOutputUrl = outputUrl
+        pendingSearchesJson = selectedFilterSetsJson()
+        openPendingConfirmation()
+    }
+
+    ColumnLayout {
+        id: dashboardShell
+        objectName: "dashboardShell"
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.bottom: parent.bottom
-        padding: 12
+        anchors.top: parent.top
+        height: implicitHeight
+        spacing: 0
+
+        DashboardHeader {
+            id: dashboardHeader
+            Layout.fillWidth: true
+            Layout.margins: 10
+            controller: window.controller
+        }
+
+        ScrollView {
+        id: filterScrollView
+        objectName: "filterScrollView"
+        Layout.fillWidth: true
+        Layout.fillHeight: false
+        Layout.leftMargin: 12
+        Layout.rightMargin: 12
+        Layout.bottomMargin: 8
+        Layout.preferredHeight: Math.min(
+            pageContent.implicitHeight + padding * 2,
+            Math.max(
+                160,
+                window.contentItem.height - dashboardHeader.height - 20
+                    - searchActionBar.implicitHeight - 8
+            )
+        )
+        padding: 8
         clip: true
         contentWidth: availableWidth
         contentHeight: pageContent.implicitHeight
         ScrollBar.vertical: StyledScrollBar {
             objectName: "pageVerticalScrollBar"
             anchors.right: parent.right
-            policy: ScrollBar.AlwaysOn
+            policy: ScrollBar.AsNeeded
+            visible: filterScrollView.contentHeight
+                > filterScrollView.availableHeight + 1
             interactive: true
             width: 12
         }
@@ -256,62 +352,6 @@ ApplicationWindow {
             id: pageContent
             width: filterScrollView.availableWidth
             spacing: 10
-
-            Frame {
-                Layout.fillWidth: true
-                padding: 10
-                background: Rectangle {
-                    radius: window.cardRadius
-                    color: window.surfaceColor
-                    border.width: 1
-                    border.color: window.borderColor
-                }
-
-                ColumnLayout {
-                    anchors.fill: parent
-                    spacing: 0
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 10
-
-                        Image {
-                            objectName: "brandLogo"
-                            Layout.preferredWidth: 42
-                            Layout.preferredHeight: 42
-                            source: Qt.resolvedUrl("../assets/edutrack-logo.png")
-                            fillMode: Image.PreserveAspectFit
-                        }
-
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 2
-
-                            Label {
-                                objectName: "brandTitle"
-                                text: "EduEscale"
-                                color: window.textColor
-                                font.pixelSize: window.appTitleFontSize
-                                font.weight: Font.DemiBold
-                            }
-
-                            Label {
-                                text: "Instituciones educativas del Perú · Busca, filtra y exporta"
-                                color: window.mutedTextColor
-                                font.pixelSize: window.bodyFontSize
-                            }
-                        }
-
-                        StyledButton {
-                            objectName: "themeToggleButton"
-                            Layout.alignment: Qt.AlignVCenter
-                            text: window.darkTheme ? "Tema claro" : "Tema oscuro"
-                            variant: "secondary"
-                            onClicked: window.controller.setDarkTheme(!window.darkTheme)
-                        }
-                    }
-                }
-            }
 
             GridLayout {
                 id: searchWorkspace
@@ -692,356 +732,39 @@ ApplicationWindow {
                 }
             }
 
-            Frame {
+            SavedSearchesPanel {
                 id: searchesCard
-                objectName: "searchesCard"
                 Layout.fillWidth: true
                 Layout.alignment: Qt.AlignTop
                 Layout.preferredWidth: searchWorkspace.columns === 2
                     ? filterScrollView.availableWidth * 0.34
                     : filterScrollView.availableWidth
-                padding: 14
-                background: Rectangle {
-                    radius: window.cardRadius
-                    color: window.surfaceColor
-                    border.width: 1
-                    border.color: window.borderColor
-                }
-
-                ColumnLayout {
-                    anchors.fill: parent
-                    spacing: 14
-
-                    RowLayout {
-                        Layout.fillWidth: true
-
-                        Label {
-                            Layout.fillWidth: true
-                            text: "Mis búsquedas"
-                            color: window.textColor
-                            font.pixelSize: window.sectionTitleFontSize
-                            font.weight: Font.DemiBold
-                        }
-
-                        Rectangle {
-                            implicitWidth: countLabel.implicitWidth + 20
-                            implicitHeight: 34
-                            radius: height / 2
-                            color: window.primarySubtleColor
-                            border.width: 1
-                            border.color: window.primaryBorderColor
-
-                            Label {
-                                id: countLabel
-                                anchors.centerIn: parent
-                                text: filterSetsModel.count + " filtros"
-                                color: window.primaryEmphasisColor
-                                font.pixelSize: window.bodyFontSize
-                                font.weight: Font.DemiBold
-                            }
-                        }
-                    }
-
-                    Item {
-                        id: searchListViewport
-                        objectName: "searchListViewport"
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: Math.min(
-                            Math.max(
-                                searchListView.contentHeight,
-                                emptySearchState.implicitHeight
-                            ),
-                            Math.max(180, window.height * 0.45)
-                        )
-                        clip: true
-
-                        ListView {
-                            id: searchListView
-                            objectName: "searchListView"
-                            anchors.fill: parent
-                            clip: true
-                            model: filterSetsModel
-                            spacing: 6
-
-                            delegate: Frame {
-                                width: searchListView.width - searchListVerticalScrollBar.width
-                                padding: 12
-
-                                background: Rectangle {
-                                    radius: window.controlRadius
-                                    color: window.subtleSurfaceColor
-                                    border.width: 1
-                                    border.color: window.borderColor
-                                }
-
-                                RowLayout {
-                                    anchors.fill: parent
-                                    spacing: 12
-
-                                    ColumnLayout {
-                                        Layout.fillWidth: true
-                                        spacing: 4
-
-                                        Label {
-                                            Layout.fillWidth: true
-                                            wrapMode: Text.WordWrap
-                                            text: {
-                                                var location = []
-                                                if (regionLabel)
-                                                    location.push(regionLabel)
-                                                if (provinceLabel)
-                                                    location.push(provinceLabel)
-                                                if (districtLabel)
-                                                    location.push(districtLabel)
-                                                return location.length
-                                                    ? location.join(" / ")
-                                                    : "Todo el Perú"
-                                            }
-                                            color: window.textColor
-                                            font.weight: Font.DemiBold
-                                        }
-
-                                        Label {
-                                            Layout.fillWidth: true
-                                            wrapMode: Text.WordWrap
-                                            text: "Gestión: " + management.replace(/,/g, ", ")
-                                                + "    ·    Nivel: " + level.replace(/,/g, ", ")
-                                            color: window.mutedTextColor
-                                            font.pixelSize: window.bodyFontSize
-                                        }
-                                    }
-
-                                    StyledButton {
-                                        text: "Quitar"
-                                        variant: "quiet"
-                                        implicitHeight: 32
-                                        font.pixelSize: window.smallFontSize
-                                        padding: 4
-                                        enabled: !controller.scrapeRunning
-                                        onClicked: filterSetsModel.remove(index)
-                                    }
-                                }
-                            }
-
-                            ScrollBar.vertical: StyledScrollBar {
-                                id: searchListVerticalScrollBar
-                                objectName: "searchListVerticalScrollBar"
-                                anchors.right: parent.right
-                                policy: ScrollBar.AlwaysOn
-                                interactive: true
-                                width: 12
-                            }
-                        }
-
-                        Rectangle {
-                            id: emptySearchState
-                            objectName: "emptySearchState"
-                            anchors.fill: parent
-                            implicitHeight: emptySearchLabel.implicitHeight + 24
-                            visible: filterSetsModel.count === 0
-                            radius: window.controlRadius
-                            color: window.subtleSurfaceColor
-                            border.width: 1
-                            border.color: window.borderColor
-
-                            Label {
-                                id: emptySearchLabel
-                                anchors.left: parent.left
-                                anchors.right: parent.right
-                                anchors.top: parent.top
-                                anchors.margins: 12
-                                text: "Aún no agregas búsquedas. Elige los criterios y pulsa «Agregar a mis búsquedas»."
-                                color: window.mutedTextColor
-                                wrapMode: Text.WordWrap
-                            }
-                        }
-                    }
-                }
+                controller: window.controller
+                searchModel: filterSetsModel
+                windowHeight: window.height
+                scrapeRunning: window.controller
+                    ? window.controller.scrapeRunning : false
+                filterNotice: window.filterNotice
             }
-            }
+        }
 
-    Rectangle {
-        id: sourceBar
-        objectName: "sourceBar"
-        Layout.fillWidth: true
-        Layout.preferredHeight: 36
-        height: 36
-        color: window.canvasColor
-        border.color: window.borderColor
-
-        Label {
-            id: sourceLabel
-            objectName: "sourceLabel"
-            anchors.fill: parent
-            anchors.leftMargin: 20
-            anchors.rightMargin: 20
-            verticalAlignment: Text.AlignVCenter
-            text: '<a href="https://escale.minedu.gob.pe/padron-de-iiee">Fuente: Padrón de IIEE de ESCALE</a>'
-            textFormat: Text.RichText
-            onLinkActivated: link => Qt.openUrlExternally(link)
-            palette.link: window.primaryColor
         }
     }
 
-    Rectangle {
-        id: actionBar
-        objectName: "actionBar"
+    SearchActionBar {
+        id: searchActionBar
         Layout.fillWidth: true
-        Layout.preferredHeight: controller.progressVisible
-            ? window.width < 900 ? 224 : 164
-            : window.width < 900 ? 216 : 152
-        color: window.surfaceColor
-        border.color: window.borderColor
-
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.leftMargin: 24
-            anchors.rightMargin: 24
-            anchors.topMargin: 8
-            anchors.bottomMargin: 10
-            spacing: 4
-
-            Label {
-                Layout.fillWidth: true
-                text: filterSetsModel.count > 0
-                    ? filterSetsModel.count + " combinaciones listas para exportar"
-                    : "Agrega al menos una búsqueda para continuar"
-                color: window.mutedTextColor
-                font.pixelSize: window.smallFontSize
-            }
-
-            StyledProgressBar {
-                id: progressIndicator
-                objectName: "progressIndicator"
-                Layout.fillWidth: true
-                Layout.preferredHeight: 8
-                visible: controller.progressVisible
-                from: 0
-                to: Math.max(controller.progressMaximum, 1)
-                value: controller.progressValue
-                indeterminate: controller.progressIndeterminate
-            }
-
-            Label {
-                id: statusLabel
-                objectName: "statusLabel"
-                Layout.fillWidth: true
-                text: controller.scrapeRunning || controller.exportRunning
-                    ? controller.progressMessage
-                    : controller.statusText
-                color: window.mutedTextColor
-                font.pixelSize: window.smallFontSize
-                wrapMode: Text.WordWrap
-                maximumLineCount: 2
-                elide: Text.ElideRight
-            }
-
-            GridLayout {
-                id: actionButtons
-                objectName: "actionButtons"
-                Layout.fillWidth: true
-                Layout.fillHeight: false
-                columns: window.width < 900 ? 2 : 3
-                columnSpacing: 8
-                rowSpacing: 8
-
-                StyledButton {
-                    id: scrapeButton
-                    objectName: "scrapeButton"
-                    labelObjectName: "scrapeButtonLabel"
-                    variant: "primary"
-                    Layout.columnSpan: actionButtons.columns
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    Layout.minimumHeight: window.actionButtonHeight
-                    implicitHeight: window.actionButtonHeight + 2
-                    font.pixelSize: window.bodyFontSize
-                    padding: 8
-                    visible: !controller.scrapeRunning
-                    text: controller.cancelRequested
-                        ? "Cancelando extracción..."
-                        : controller.scrapeRunning
-                        ? "Consultando datos..."
-                        : controller.exportRunning
-                        ? "Generando archivo..."
-                        : "Ejecutar búsqueda"
-                    enabled: !controller.scrapeRunning
-                        && !controller.exportRunning
-                        && filterSetsModel.count > 0
-                    onClicked: controller.startScrape(
-                        controller.defaultOutputUrl,
-                        window.selectedFilterSetsJson()
-                    )
-                }
-
-                StyledButton {
-                    id: cancelScrapeButton
-                    objectName: "cancelScrapeButton"
-                    labelObjectName: "cancelScrapeButtonLabel"
-                    variant: "danger"
-                    Layout.columnSpan: actionButtons.columns
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    Layout.minimumHeight: window.actionButtonHeight
-                    implicitHeight: window.actionButtonHeight
-                    font.pixelSize: window.bodyFontSize
-                    padding: 8
-                    visible: controller.scrapeRunning
-                    enabled: !controller.cancelRequested
-                    text: controller.cancelRequested ? "Cancelando..." : "Cancelar"
-                    onClicked: controller.cancelScrape()
-                }
-
-                StyledButton {
-                    objectName: "downloadExcelButton"
-                    labelObjectName: "downloadExcelButtonLabel"
-                    variant: "secondary"
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    Layout.minimumHeight: window.actionButtonHeight
-                    implicitHeight: window.actionButtonHeight
-                    font.pixelSize: window.bodyFontSize
-                    padding: 8
-                    text: "Exportar Excel"
-                    enabled: controller.exportsAvailable && !controller.exportRunning
-                    onClicked: excelSaveDialog.open()
-                }
-
-                StyledButton {
-                    objectName: "downloadPdfButton"
-                    labelObjectName: "downloadPdfButtonLabel"
-                    variant: "secondary"
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    Layout.minimumHeight: window.actionButtonHeight
-                    implicitHeight: window.actionButtonHeight
-                    font.pixelSize: window.bodyFontSize
-                    padding: 8
-                    text: "Exportar PDF"
-                    enabled: controller.exportsAvailable && !controller.exportRunning
-                    onClicked: pdfSaveDialog.open()
-                }
-
-                StyledButton {
-                    objectName: "downloadEduEscaleButton"
-                    labelObjectName: "downloadEduEscaleButtonLabel"
-                    variant: "secondary"
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    Layout.minimumHeight: window.actionButtonHeight
-                    implicitHeight: window.actionButtonHeight
-                    font.pixelSize: window.bodyFontSize
-                    padding: 8
-                    text: "Exportar .eduescale"
-                    enabled: controller.exportsAvailable && !controller.exportRunning
-                    onClicked: eduEscaleSaveDialog.open()
-                }
-
-            }
-        }
+        controller: window.controller
+        windowWidth: window.width
+        searchCount: filterSetsModel.count
+        onScrapeRequested: window.requestConfirmation(
+            "scrape", window.controller.defaultOutputUrl
+        )
+        onExcelExportRequested: excelSaveDialog.open()
+        onPdfExportRequested: pdfSaveDialog.open()
+        onEduEscaleExportRequested: eduEscaleSaveDialog.open()
+        onHistoryRequested: exportHistoryDialog.open()
     }
-
-        }
     }
 
     FileDialog {
@@ -1052,7 +775,7 @@ ApplicationWindow {
         nameFilters: ["Libro de Excel (*.xlsx)"]
         defaultSuffix: "xlsx"
         currentFile: controller.defaultOutputUrl
-        onAccepted: controller.exportExcelFile(selectedFile.toString())
+        onAccepted: window.requestConfirmation("excel", selectedFile.toString())
     }
 
     FileDialog {
@@ -1063,7 +786,7 @@ ApplicationWindow {
         nameFilters: ["Documento PDF (*.pdf)"]
         defaultSuffix: "pdf"
         currentFile: controller.defaultPdfOutputUrl
-        onAccepted: controller.exportPdfFile(selectedFile.toString())
+        onAccepted: window.requestConfirmation("pdf", selectedFile.toString())
     }
 
     FileDialog {
@@ -1170,20 +893,59 @@ ApplicationWindow {
                                 return
                             }
                         }
-                        controller.exportEduEscaleFile(
-                            eduEscaleOptionsDialog.outputUrl,
-                            protectEduEscaleCheckBox.checked
-                                ? eduEscalePasswordField.text
-                                : "",
-                            compressEduEscaleCheckBox.checked
-                        )
-                        eduEscalePasswordField.clear()
-                        eduEscalePasswordConfirmationField.clear()
-                        eduEscaleOptionsDialog.close()
-                    }
+                            window.pendingAction = "eduescale"
+                            window.pendingOutputUrl = eduEscaleOptionsDialog.outputUrl
+                            window.pendingSearchesJson = window.selectedFilterSetsJson()
+                            window.pendingEduEscaleProtected =
+                                protectEduEscaleCheckBox.checked
+                            window.pendingEduEscaleCompressed =
+                                !protectEduEscaleCheckBox.checked
+                                && compressEduEscaleCheckBox.checked
+                            window.pendingEduEscalePassword =
+                                protectEduEscaleCheckBox.checked
+                                ? eduEscalePasswordField.text : ""
+                            eduEscaleOptionsDialog.close()
+                            Qt.callLater(window.openPendingConfirmation)
+                        }
                 }
             }
         }
+    }
+
+    ExportConfirmationDialog {
+        id: exportConfirmationDialog
+        objectName: "exportConfirmationDialog"
+        onConfirmed: {
+            if (window.pendingAction === "scrape") {
+                controller.startScrape(
+                        window.pendingOutputUrl,
+                        window.pendingSearchesJson
+                )
+            } else if (window.pendingAction === "excel") {
+                controller.exportExcelFile(window.pendingOutputUrl)
+            } else if (window.pendingAction === "pdf") {
+                controller.exportPdfFile(window.pendingOutputUrl)
+            } else if (window.pendingAction === "eduescale") {
+                controller.exportEduEscaleFile(
+                        window.pendingOutputUrl,
+                        window.pendingEduEscalePassword,
+                        window.pendingEduEscaleCompressed
+                )
+            }
+        }
+        onClosed: {
+            window.pendingAction = ""
+            window.pendingOutputUrl = ""
+            window.pendingSearchesJson = ""
+            window.pendingEduEscalePassword = ""
+            window.pendingEduEscaleProtected = false
+            window.pendingEduEscaleCompressed = false
+        }
+    }
+
+    ExportHistoryDialog {
+        id: exportHistoryDialog
+        controller: window.controller
     }
 
     StyledDialog {

@@ -9,6 +9,7 @@ from eduescale.export_files import android_data_path
 from eduescale.gui import controller as controller_module
 from eduescale.gui.application import create_controller
 from eduescale.gui.controller import SchoolFinderController
+from eduescale.gui.saved_searches import PortableSavedSearch
 
 
 class FakeLocationService(QObject):
@@ -148,7 +149,7 @@ def test_restores_export_folder_and_window_size(tmp_path):
         controller.shutdown()
 
 
-def test_restores_and_persists_dark_theme(tmp_path):
+def test_restores_legacy_theme_and_persists_theme_mode(tmp_path):
     application = QCoreApplication.instance() or QCoreApplication([])
     settings = QSettings(
         str(tmp_path / "settings.ini"),
@@ -165,15 +166,157 @@ def test_restores_and_persists_dark_theme(tmp_path):
 
     try:
         assert controller.darkTheme is True
+        assert controller.themeMode == "dark"
 
-        controller.setDarkTheme(False)
+        controller.setThemeMode("light")
 
         assert controller.darkTheme is False
-        assert settings.value("appearance/darkTheme", type=bool) is False
+        assert controller.themeMode == "light"
+        assert settings.value("appearance/themeMode") == "light"
         assert changes == [False]
         assert application is not None
     finally:
         controller.shutdown()
+
+
+def test_imports_and_exports_portable_saved_searches(controller_components, tmp_path):
+    controller, _scrape_runner, errors = controller_components
+    location = controller._district_metadata["150122"]
+    document = {
+        "format": "eduescale.saved-searches",
+        "version": 1,
+        "searches": [
+            {
+                "name": "Lima centro",
+                "department": location["department"],
+                "province": location["province"],
+                "district": location["district"],
+                "department_code": None,
+                "province_code": None,
+                "district_code": None,
+                "management": ["publica"],
+                "levels": ["primaria"],
+            }
+        ],
+    }
+    imported = []
+    controller.savedSearchesLoaded.connect(
+        lambda value: imported.extend(json.loads(value))
+    )
+    path = tmp_path / "saved-searches.json"
+    file_url = QUrl.fromLocalFile(str(path)).toString()
+
+    assert controller.saveSavedSearches(file_url, json.dumps(document))
+    assert controller.loadSavedSearches(file_url)
+
+    assert imported == [
+        {
+            "name": "Lima centro",
+            "regionCode": location["departmentCode"],
+            "provinceCode": location["provinceCode"],
+            "districtCode": "150122",
+            "regionLabel": location["department"],
+            "provinceLabel": location["province"],
+            "districtLabel": location["district"],
+            "management": "publica",
+            "level": "primaria",
+        }
+    ]
+    assert errors == []
+
+
+def test_rejects_invalid_portable_saved_search_file(controller_components, tmp_path):
+    controller, _scrape_runner, errors = controller_components
+    path = tmp_path / "invalid.json"
+    path.write_text(
+        json.dumps(
+            {
+                "format": "eduescale.saved-searches",
+                "version": 2,
+                "searches": [{"name": "Lima"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert not controller.loadSavedSearches(QUrl.fromLocalFile(str(path)).toString())
+    assert errors
+    assert errors[-1][0] == "No se pudieron importar las búsquedas"
+
+
+def test_rejects_ambiguous_saved_search_location(controller_components):
+    controller, _scrape_runner, _errors = controller_components
+    locations_by_name = {}
+    for location in controller._district_metadata.values():
+        name = controller._normalized_label(location["district"])
+        locations_by_name.setdefault(name, []).append(location["district"])
+    ambiguous_names = [
+        names[0] for names in locations_by_name.values() if len(names) > 1
+    ]
+    assert ambiguous_names
+
+    with pytest.raises(ValueError, match="No se pudo resolver de forma única"):
+        controller._normalize_saved_searches(
+            [PortableSavedSearch(name="Ubicación ambigua", district=ambiguous_names[0])]
+        )
+
+
+def test_rejects_inconsistent_saved_search_location_codes(controller_components):
+    controller, _scrape_runner, _errors = controller_components
+    location = controller._district_metadata["150122"]
+    other_province_code = next(
+        code
+        for code in controller._map_province_metadata
+        if code != location["provinceCode"]
+    )
+    other_department_code = next(
+        code
+        for code in controller._map_department_metadata
+        if code != location["departmentCode"]
+    )
+
+    with pytest.raises(ValueError, match="no corresponde al distrito"):
+        controller._normalize_saved_searches(
+            [
+                PortableSavedSearch(
+                    name="Códigos inconsistentes",
+                    district_code="150122",
+                    province_code=other_province_code,
+                )
+            ]
+        )
+    with pytest.raises(ValueError, match="no corresponde al distrito"):
+        controller._normalize_saved_searches(
+            [
+                PortableSavedSearch(
+                    name="Departamento inconsistente",
+                    district_code="150122",
+                    department_code=other_department_code,
+                )
+            ]
+        )
+    with pytest.raises(ValueError, match="no reconocido"):
+        controller._normalize_saved_searches(
+            [PortableSavedSearch(name="Distrito inválido", district_code="999999")]
+        )
+
+
+def test_persists_only_the_latest_50_export_metadata_entries(controller_components):
+    controller, _scrape_runner, _errors = controller_components
+    controller._last_search_summary = "Lima / Miraflores · primaria"
+
+    for index in range(55):
+        controller._record_export_history(
+            "excel",
+            f"colegios_{index}.xlsx",
+            "Completada",
+        )
+
+    assert len(controller.exportHistory) == 50
+    assert controller.exportHistory[0]["file"] == "colegios_54.xlsx"
+    assert controller.exportHistory[-1]["file"] == "colegios_5.xlsx"
+    assert controller.exportHistory[0]["filters"] == ("Lima / Miraflores · primaria")
+    assert not any("password" in key for key in controller.exportHistory[0])
 
 
 def test_default_output_url_avoids_overwriting_existing_exports(

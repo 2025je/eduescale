@@ -24,6 +24,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -40,6 +41,7 @@ import java.util.Locale
 import pe.eduescale.mobile.data.SchoolCoordinates
 import pe.eduescale.mobile.data.SchoolFilters
 import pe.eduescale.mobile.data.SchoolRecord
+import pe.eduescale.mobile.data.SavedSearch
 import pe.eduescale.mobile.data.distanceInMeters
 import pe.eduescale.mobile.data.sortSchoolsByDistance
 import pe.eduescale.mobile.ui.EduEscaleUiState
@@ -51,9 +53,18 @@ internal fun SchoolsScreen(
     state: EduEscaleUiState,
     onQueryChanged: (String) -> Unit,
     onApplyFilters: (SchoolFilters) -> Unit,
+    savedSearches: List<SavedSearch>,
+    savedSearchMessage: String?,
+    savedSearchMessageIsError: Boolean,
+    onApplySavedSearch: (SchoolFilters) -> Unit,
+    onSaveSearch: (String) -> Unit,
+    onDeleteSavedSearch: (SavedSearch) -> Unit,
+    onImportSavedSearches: () -> Unit,
+    onExportSavedSearches: () -> Unit,
     onSchoolSelected: (SchoolRecord) -> Unit,
 ) {
     var filtersOpen by rememberSaveable { mutableStateOf(false) }
+    var savedSearchesOpen by rememberSaveable { mutableStateOf(false) }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -80,6 +91,24 @@ internal fun SchoolsScreen(
                 count = activeFilterCount(state.filters),
                 enabled = state.schoolFile != null,
                 onClick = { filtersOpen = true },
+            )
+        }
+        OutlinedButton(
+            onClick = { savedSearchesOpen = true },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Búsquedas guardadas (${savedSearches.size})")
+        }
+        savedSearchMessage?.let { message ->
+            Text(
+                message,
+                modifier = Modifier.padding(vertical = 2.dp),
+                color = if (savedSearchMessageIsError) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.primary
+                },
+                style = MaterialTheme.typography.bodySmall,
             )
         }
         ActiveFilterChips(state.filters, Modifier.padding(top = 4.dp))
@@ -138,6 +167,24 @@ internal fun SchoolsScreen(
                 onApplyFilters(it)
                 filtersOpen = false
             },
+        )
+    }
+    if (savedSearchesOpen) {
+        SavedSearchesDialog(
+            searches = savedSearches,
+            canSave = state.schoolFile != null,
+            canApply = state.schoolFile != null,
+            message = savedSearchMessage,
+            messageIsError = savedSearchMessageIsError,
+            onDismiss = { savedSearchesOpen = false },
+            onApply = {
+                onApplySavedSearch(it)
+                savedSearchesOpen = false
+            },
+            onSave = onSaveSearch,
+            onDelete = onDeleteSavedSearch,
+            onImport = onImportSavedSearches,
+            onExport = onExportSavedSearches,
         )
     }
 }

@@ -9,6 +9,25 @@ import androidx.compose.ui.graphics.Color
 
 internal const val THEME_PREFERENCES_NAME = "eduescale_settings"
 internal const val DARK_THEME_PREFERENCE_KEY = "dark_theme"
+internal const val THEME_MODE_PREFERENCE_KEY = "theme_mode"
+
+internal enum class ThemeMode(val preferenceValue: String, val label: String) {
+    SYSTEM("system", "Sistema"),
+    LIGHT("light", "Claro"),
+    DARK("dark", "Oscuro"),
+    ;
+
+    fun isDark(systemDarkTheme: Boolean): Boolean = when (this) {
+        SYSTEM -> systemDarkTheme
+        LIGHT -> false
+        DARK -> true
+    }
+
+    companion object {
+        fun fromPreference(value: String?): ThemeMode =
+            entries.firstOrNull { it.preferenceValue == value } ?: SYSTEM
+    }
+}
 
 internal val EduGreen = Color(0xFF176B50)
 

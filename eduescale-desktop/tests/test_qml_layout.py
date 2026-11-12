@@ -172,8 +172,10 @@ vertical_scrollbar = child("pageVerticalScrollBar")
 search_list_view = child("searchListView")
 search_list_scrollbar = child("searchListVerticalScrollBar")
 action_bar = child("actionBar")
+action_surface = child("actionSurface")
 source_bar = child("sourceBar")
 source_label = child("sourceLabel")
+dashboard_header = child("dashboardHeader")
 action_buttons = child("actionButtons")
 progress_indicator = child("progressIndicator")
 status_label = child("statusLabel")
@@ -215,7 +217,15 @@ pdf_dialog = child("pdfSaveDialog")
 eduescale_dialog = child("eduEscaleSaveDialog")
 download_button = child("scrapeButton")
 scrape_button_label = child("scrapeButtonLabel")
+history_button = child("exportHistoryButton")
+history_dialog = child("exportHistoryDialog")
 add_filter_button_label = child("addFilterSetButtonLabel")
+history_button.click()
+application.processEvents()
+assert history_dialog.property("visible")
+assert child("exportHistoryWarning").property("visible") is False
+child("closeExportHistoryButton").click()
+application.processEvents()
 assert district_map.property("featureCount") == controller.property("districtCount")
 deadline = time.monotonic() + 35
 while (
@@ -417,7 +427,7 @@ for width, height in ((560, 600), (1280, 720), (1366, 768), (1600, 900), (1920, 
 
     expected_columns = 1 if width < 720 else 2
     expected_workspace_columns = 1 if width < 1100 else 2
-    expected_action_columns = 2 if width < 900 else 3
+    expected_action_columns = 2 if width < 900 else 3 if width < 1200 else 4
     assert filter_grid.property("columns") == expected_columns, (
         width,
         filter_grid.property("columns"),
@@ -427,9 +437,26 @@ for width, height in ((560, 600), (1280, 720), (1366, 768), (1600, 900), (1920, 
         search_workspace.property("columns"),
     )
     assert action_buttons.property("columns") == expected_action_columns
-    assert vertical_scrollbar.property("visible")
+    if width >= 1200:
+        action_row_positions = {
+            round(button.property("y"))
+            for button in (excel_button, pdf_button, eduescale_button, history_button)
+        }
+        assert len(action_row_positions) == 1, (
+            width,
+            action_row_positions,
+        )
+    page_has_overflow = (
+        scroll_view.property("contentHeight")
+        > scroll_view.property("availableHeight") + 1
+    )
+    assert vertical_scrollbar.property("visible") == page_has_overflow
     assert vertical_scrollbar.property("interactive")
-    assert search_list_scrollbar.property("visible")
+    list_has_overflow = (
+        search_list_view.property("contentHeight")
+        > search_list_view.property("height") + 1
+    )
+    assert search_list_scrollbar.property("visible") == list_has_overflow
     assert search_list_scrollbar.property("interactive")
     page_scrollbar_right = vertical_scrollbar.mapToItem(
         scroll_view,
@@ -467,24 +494,35 @@ for width, height in ((560, 600), (1280, 720), (1366, 768), (1600, 900), (1920, 
             <= searches_card.property("y") + 1
         )
     assert empty_state.property("visible")
-    assert abs(
-        scroll_view.property("y")
-        + scroll_view.property("height")
-        - window.height()
-    ) <= 1
-    assert (
-        source_bar.property("y") + source_bar.property("height")
-        <= action_bar.property("y") + 1
-    ), (
-        source_bar.property("y"),
-        source_bar.property("height"),
-        action_bar.property("y"),
-    )
+    window_content = window.contentItem()
+    scroll_top = scroll_view.mapToItem(window_content, QPointF(0, 0)).y()
+    scroll_bottom = scroll_view.mapToItem(
+        window_content,
+        QPointF(0, scroll_view.property("height")),
+    ).y()
+    header_bottom = dashboard_header.mapToItem(
+        window_content,
+        QPointF(0, dashboard_header.property("height")),
+    ).y()
+    source_top = source_bar.mapToItem(window_content, QPointF(0, 0)).y()
+    source_bottom = source_bar.mapToItem(
+        window_content,
+        QPointF(0, source_bar.property("height")),
+    ).y()
+    action_surface_top = action_surface.mapToItem(
+        window_content,
+        QPointF(0, 0),
+    ).y()
+    action_bottom = action_bar.mapToItem(
+        window_content,
+        QPointF(0, action_bar.property("height")),
+    ).y()
+    assert scroll_top >= header_bottom
+    assert scroll_bottom <= source_top + 1
+    assert source_top - scroll_bottom <= 10
+    assert abs(source_bottom - action_surface_top) <= 1
+    assert action_bottom <= window.height() + 1
     assert source_label.property("width") > 0
-    assert (
-        action_bar.property("y") + action_bar.property("height")
-        <= scroll_view.property("contentHeight") + 1
-    )
     for button in (download_button, excel_button, pdf_button, eduescale_button):
         assert button.property("visible")
         assert button.property("height") >= 40
@@ -538,7 +576,6 @@ for width, height in ((560, 600), (1280, 720), (1366, 768), (1600, 900), (1920, 
         viewport = scroll_view.property("contentItem")
         viewport_height = scroll_view.property("availableHeight")
         visible_controls = (
-            district_map,
             map_level_label,
             map_advance_button,
             child("publicManagement"),
@@ -548,15 +585,24 @@ for width, height in ((560, 600), (1280, 720), (1366, 768), (1600, 900), (1920, 
             child("cetproLevel"),
             child("addFilterSetButton"),
         )
+        map_bottom = district_map.mapToItem(
+            viewport,
+            QPointF(0, district_map.property("height")),
+        ).y()
+        assert map_bottom <= viewport_height + 1, (
+            map_bottom,
+            viewport_height,
+            scroll_view.property("contentHeight"),
+        )
         for item in visible_controls:
             bottom = item.mapToItem(
                 viewport,
                 QPointF(0, item.property("height")),
             ).y()
-            assert bottom <= viewport_height + 1, (
+            assert bottom <= scroll_view.property("contentHeight") + 1, (
                 item.objectName(),
                 bottom,
-                viewport_height,
+                scroll_view.property("contentHeight"),
             )
 select_map_codes(district_webview, district_map, ("15", "13"))
 map_advance_button.click()
@@ -581,6 +627,11 @@ assert "ya está en Mis búsquedas" in help_text.property("text")
 assert scrape_button_label.property("color").name() == "#ffffff"
 download_button.click()
 application.processEvents()
+confirmation_dialog = child("exportConfirmationDialog")
+assert confirmation_dialog.property("visible")
+assert "primaria" in confirmation_dialog.property("searchSummary")
+child("confirmActionButton").click()
+application.processEvents()
 assert controller.scrapeRunning
 assert scrape_runner.started_requests[0][1][0].level == ("primaria", "cetpro")
 assert [item.district_code for item in scrape_runner.started_requests[0][1]] == [
@@ -590,7 +641,7 @@ assert [item.district_code for item in scrape_runner.started_requests[0][1]] == 
 cancel_button = child("cancelScrapeButton")
 assert cancel_button.property("visible")
 assert not download_button.property("visible")
-for width, expected_action_columns in ((560, 2), (1280, 3)):
+for width, expected_action_columns in ((560, 2), (1280, 4)):
     window.resize(width, 600)
     application.processEvents()
     assert progress_indicator.property("visible")
@@ -716,32 +767,34 @@ assert (
 assert search_list_scrollbar.property("position") >= (
     1 - search_list_scrollbar.property("size") - 0.01
 )
+assert search_list_scrollbar.property("visible")
 
 page_flickable = scroll_view.property("contentItem")
+action_bar_y = action_bar.mapToItem(window_content, QPointF(0, 0)).y()
 page_flickable.setProperty(
     "contentY",
     scroll_view.property("contentHeight") - scroll_view.property("availableHeight"),
 )
 application.processEvents()
-eduescale_bottom = eduescale_button.mapToItem(
-    page_flickable,
-    QPointF(0, eduescale_button.property("height")),
-).y()
-assert eduescale_bottom <= page_flickable.property("height") + 1
+assert abs(action_bar.mapToItem(window_content, QPointF(0, 0)).y() - action_bar_y) <= 1
+assert eduescale_button.property("visible")
 
-theme_toggle = child("themeToggleButton")
+theme_selector = child("themeModeSelector")
 light_canvas = window.property("canvasColor")
-assert QMetaObject.invokeMethod(theme_toggle, "click")
+assert theme_selector.property("currentText") == "Sistema"
+assert QMetaObject.invokeMethod(theme_selector, "activated", Q_ARG(int, 2))
 application.processEvents()
 assert controller.darkTheme is True
-assert theme_toggle.property("text") == "Tema claro"
+assert controller.themeMode == "dark"
+assert theme_selector.property("currentText") == "Oscuro"
 assert window.property("canvasColor") != light_canvas
-assert settings.value("appearance/darkTheme", type=bool) is True
+assert settings.value("appearance/themeMode") == "dark"
 
-assert QMetaObject.invokeMethod(theme_toggle, "click")
+assert QMetaObject.invokeMethod(theme_selector, "activated", Q_ARG(int, 1))
 application.processEvents()
 assert controller.darkTheme is False
-assert theme_toggle.property("text") == "Tema oscuro"
+assert theme_selector.property("currentText") == "Claro"
+assert controller.themeMode == "light"
 
 controller.shutdown()
 """
@@ -761,8 +814,7 @@ def test_main_qml_fits_supported_window_sizes(tmp_path):
     result = subprocess.run(
         [
             sys.executable,
-            "-c",
-            QML_SMOKE_SCRIPT,
+            "-",
             "qrc:/eduescale/gui/qml/Main.qml",
             str(tmp_path / "settings.ini"),
             str(assets_path),
@@ -770,11 +822,15 @@ def test_main_qml_fits_supported_window_sizes(tmp_path):
         capture_output=True,
         check=False,
         env=environment,
-        text=True,
+        input="# -*- coding: utf-8 -*-\n" + QML_SMOKE_SCRIPT,
+        encoding="utf-8",
         timeout=90,
     )
 
     assert result.returncode == 0, f"{result.stdout}\n{result.stderr}"
+    assert "scrapeRunning' of null" not in result.stderr
+    assert "exportHistory' of null" not in result.stderr
+    assert "Cannot set " not in result.stderr
     assert "QML WebEngineProfile: Please use WebEngineProfilePrototype" not in (
         result.stderr
     )
