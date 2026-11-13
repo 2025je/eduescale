@@ -35,9 +35,9 @@ RUN --mount=type=cache,target=/root/.gradle \
     --mount=type=secret,id=release_keystore,target=/run/secrets/release.jks,required=false \
     --mount=type=secret,id=keystore_properties,target=/run/secrets/keystore.properties,required=false \
     chmod +x ./gradlew \
-    && if [ -f /run/secrets/release.jks ] && [ -f /run/secrets/keystore.properties ]; then \
+    && if [ -s /run/secrets/release.jks ] && [ -s /run/secrets/keystore.properties ]; then \
         export EDUESCALE_KEYSTORE_PROPERTIES=/run/secrets/keystore.properties; \
-    elif [ -e /run/secrets/release.jks ] || [ -e /run/secrets/keystore.properties ]; then \
+    elif [ -s /run/secrets/release.jks ] || [ -s /run/secrets/keystore.properties ]; then \
         echo "Se requieren tanto release.jks como keystore.properties para firmar." >&2; \
         exit 1; \
     fi \

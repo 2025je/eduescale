@@ -20,8 +20,13 @@ services:
         set -eu
         mkdir -p /output
         cp app/build/outputs/apk/debug/app-debug.apk /output/EduEscale-debug.apk
-        cp app/build/outputs/apk/release/app-release.apk /output/EduEscale-release.apk
-        cp app/build/outputs/bundle/release/app-release.aab /output/EduEscale-release.aab
+        if [ -f app/build/outputs/apk/release/app-release.apk ]; then
+          cp app/build/outputs/apk/release/app-release.apk /output/EduEscale-release.apk
+          cp app/build/outputs/bundle/release/app-release.aab /output/EduEscale-release.aab
+        else
+          cp app/build/outputs/apk/release/app-release-unsigned.apk /output/EduEscale-release-unsigned.apk
+          cp app/build/outputs/bundle/release/app-release.aab /output/EduEscale-release-unsigned.aab
+        fi
 
 secrets:
   release_keystore:

@@ -158,6 +158,23 @@ SDK Platform 36 y Build Tools 36.0.0, ejecuta las pruebas unitarias y empaqueta
 la aplicación como APK de depuración. Se requiere Docker BuildKit y conexión a
 Internet durante la primera compilación.
 
+El workflow móvil de GitHub Actions usa este mismo `docker-compose.yml` para ejecutar las pruebas y
+generar el APK en cada push y pull request. Para firmar builds desde una
+ejecución manual del workflow, configura el environment de GitHub Actions
+`android-release` con estos secrets:
+
+- `ANDROID_RELEASE_KEYSTORE_BASE64`: contenido de `release.jks` codificado en
+  Base64. En PowerShell puedes obtenerlo con
+  `[Convert]::ToBase64String([IO.File]::ReadAllBytes("android-secrets/release.jks"))`.
+- `ANDROID_KEYSTORE_PROPERTIES`: contenido completo de
+  `android-secrets/keystore.properties`.
+
+El workflow reconstruye esos archivos ignorados localmente y ejecuta el mismo
+Compose para probar y compilar. En CI sin firma genera el APK debug y releases
+sin firmar; en la ejecución manual genera los APK/AAB firmados. Los artefactos
+se publican por siete días y los archivos temporales de firma se eliminan al
+terminar.
+
 Para compilar con Docker Compose y firmar los artefactos de release con el
 keystore local, desde esta carpeta ejecuta:
 

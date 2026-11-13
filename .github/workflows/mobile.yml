@@ -1,0 +1,77 @@
+name: Mobile CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Prepare empty Android signing files
+        run: |
+          mkdir -p ../android-secrets
+          : > ../android-secrets/release.jks
+          : > ../android-secrets/keystore.properties
+        working-directory: eduescale-mobile
+      - name: Run Android tests and build with Docker Compose
+        run: docker compose run --build --rm android
+        working-directory: eduescale-mobile
+      - name: Upload Android debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: eduescale-android-${{ github.sha }}
+          path: eduescale-mobile/dist/EduEscale-debug.apk
+          retention-days: 7
+      - name: Remove temporary Android signing files
+        if: always()
+        run: rm -f ../android-secrets/release.jks ../android-secrets/keystore.properties
+        working-directory: eduescale-mobile
+
+  android-release:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: android-release
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Recreate Android signing files from GitHub secrets
+        env:
+          ANDROID_RELEASE_KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PROPERTIES: ${{ secrets.ANDROID_KEYSTORE_PROPERTIES }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$ANDROID_RELEASE_KEYSTORE_BASE64" || -z "$ANDROID_KEYSTORE_PROPERTIES" ]]; then
+            echo "::error::Configure ANDROID_RELEASE_KEYSTORE_BASE64 and ANDROID_KEYSTORE_PROPERTIES in the android-release environment."
+            exit 1
+          fi
+          mkdir -p ../android-secrets
+          printf '%s' "$ANDROID_RELEASE_KEYSTORE_BASE64" | base64 --decode > ../android-secrets/release.jks
+          printf '%s' "$ANDROID_KEYSTORE_PROPERTIES" > ../android-secrets/keystore.properties
+          chmod 600 ../android-secrets/release.jks ../android-secrets/keystore.properties
+        working-directory: eduescale-mobile
+      - name: Run Android tests and signed builds with Docker Compose
+        run: docker compose run --build --rm android
+        working-directory: eduescale-mobile
+      - name: Upload signed Android artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: eduescale-android-${{ github.sha }}
+          path: |
+            eduescale-mobile/dist/EduEscale-debug.apk
+            eduescale-mobile/dist/EduEscale-release.apk
+            eduescale-mobile/dist/EduEscale-release.aab
+          retention-days: 7
+      - name: Remove temporary Android signing files
+        if: always()
+        run: rm -f ../android-secrets/release.jks ../android-secrets/keystore.properties
+        working-directory: eduescale-mobile
