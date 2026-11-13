@@ -282,7 +282,9 @@ ApplicationWindow {
             ? "Confirmar exportación PDF"
             : "Confirmar exportación .eduescale"
         exportConfirmationDialog.description = operation === "scrape"
-            ? "Se consultarán los datos para las búsquedas seleccionadas y se generará un archivo Excel."
+            ? controller.dataSource === "offline"
+                ? "Se buscarán los datos de las búsquedas seleccionadas en la base offline."
+                : "Se descargarán los datos de ESCALE para las búsquedas seleccionadas."
             : operation === "eduescale" && pendingEduEscaleProtected
             ? "Se guardará un archivo .eduescale protegido con contraseña."
             : operation === "eduescale" && pendingEduEscaleCompressed
@@ -764,7 +766,34 @@ ApplicationWindow {
         onPdfExportRequested: pdfSaveDialog.open()
         onEduEscaleExportRequested: eduEscaleSaveDialog.open()
         onHistoryRequested: exportHistoryDialog.open()
+        onOfflineDatabaseSelectionRequested: offlineDatabaseOpenDialog.open()
+        onOfflineDatabaseUpdateRequested: {
+            if (controller.offlineDatabaseAvailable)
+                controller.updateOfflineDatabase(controller.offlineDatabaseUrl)
+            else
+                offlineDatabaseSaveDialog.open()
+        }
     }
+    }
+
+    FileDialog {
+        id: offlineDatabaseOpenDialog
+        objectName: "offlineDatabaseOpenDialog"
+        title: "Seleccionar base offline de EduEscale"
+        fileMode: FileDialog.OpenFile
+        nameFilters: ["Base de datos EduEscale (*.sqlite3)"]
+        onAccepted: controller.selectOfflineDatabase(selectedFile.toString())
+    }
+
+    FileDialog {
+        id: offlineDatabaseSaveDialog
+        objectName: "offlineDatabaseSaveDialog"
+        title: "Descargar base de datos de ESCALE"
+        fileMode: FileDialog.SaveFile
+        nameFilters: ["Base de datos EduEscale (*.sqlite3)"]
+        defaultSuffix: "sqlite3"
+        currentFile: controller.defaultOfflineDatabaseUrl
+        onAccepted: controller.updateOfflineDatabase(selectedFile.toString())
     }
 
     FileDialog {

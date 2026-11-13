@@ -1,7 +1,9 @@
 import json
 import logging
+import os
+import sqlite3
 import unicodedata
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from pydantic import TypeAdapter, ValidationError
@@ -21,9 +23,22 @@ from PySide6.QtGui import QDesktopServices, QGuiApplication
 from eduescale.client import SchoolFilters
 from eduescale.export_files import android_data_path
 from eduescale.gui.export_runner import ExportRunner
-from eduescale.gui.ports import ExportRunnerPort, LocationServicePort, ScrapeRunnerPort
+from eduescale.gui.local_database import (
+    LocalDatabaseSearchRunner,
+    LocalSearchFilter,
+    read_local_database_metadata,
+    validate_local_database,
+    write_local_database_metadata,
+)
+from eduescale.gui.ports import (
+    ExportRunnerPort,
+    LocalDatabaseSearchRunnerPort,
+    LocationServicePort,
+    ScrapeRunnerPort,
+)
 from eduescale.gui.resources import read_resource_bytes, resource_path
 from eduescale.gui.saved_searches import PortableSavedSearches
+from eduescale.paths import application_data_directory
 
 LOGGER = logging.getLogger(__name__)
 MAX_SAVED_SEARCH_FILE_BYTES = 1_048_576
@@ -54,11 +69,33 @@ class SchoolFinderController(QObject):
         parent: QObject | None = None,
         settings: QSettings | None = None,
         export_runner: ExportRunnerPort | None = None,
+        local_database_search_runner: LocalDatabaseSearchRunnerPort | None = None,
     ):
         super().__init__(parent)
         self._settings = settings if settings is not None else QSettings()
         self._theme_mode = self._read_theme_mode()
         self._dark_theme = self._effective_dark_theme()
+        self._data_source = self._read_data_source()
+        self._offline_database_path = self._read_offline_database_path()
+        self._offline_database_stats = self._database_stats_text(
+            self._offline_database_path
+        )
+        if (
+            self._offline_database_path is not None
+            and self._offline_database_path.is_file()
+        ):
+            try:
+                self._offline_database_stats = self._database_stats_text(
+                    self._offline_database_path,
+                    read_local_database_metadata(self._offline_database_path),
+                )
+            except (OSError, sqlite3.Error, TypeError, ValueError) as error:
+                LOGGER.error(
+                    "Could not read offline database statistics for %s: %s",
+                    self._offline_database_path,
+                    error,
+                )
+        self._database_update_target: Path | None = None
         application = QGuiApplication.instance()
         if isinstance(application, QGuiApplication):
             application.styleHints().colorSchemeChanged.connect(
@@ -166,7 +203,17 @@ class SchoolFinderController(QObject):
         self._location_service = location_service
         self._scrape_runner = scrape_runner
         self._export_runner = ExportRunner() if export_runner is None else export_runner
-        for dependency in (location_service, scrape_runner, self._export_runner):
+        self._local_database_search_runner = (
+            LocalDatabaseSearchRunner()
+            if local_database_search_runner is None
+            else local_database_search_runner
+        )
+        for dependency in (
+            location_service,
+            scrape_runner,
+            self._export_runner,
+            self._local_database_search_runner,
+        ):
             if isinstance(dependency, QObject) and dependency.parent() is None:
                 dependency.setParent(self)
         self._location_service.loaded.connect(self._locations_loaded)
@@ -177,10 +224,19 @@ class SchoolFinderController(QObject):
         self._scrape_runner.failed.connect(self._scrape_failed)
         self._scrape_runner.cancelled.connect(self._scrape_cancelled)
         self._scrape_runner.warning.connect(self._scrape_warning)
+        self._local_database_search_runner.started.connect(self._scrape_started)
+        self._local_database_search_runner.progressChanged.connect(
+            self._scrape_progress
+        )
+        self._local_database_search_runner.completed.connect(
+            self._offline_search_completed
+        )
+        self._local_database_search_runner.failed.connect(self._scrape_failed)
+        self._local_database_search_runner.cancelled.connect(self._scrape_cancelled)
         self._export_runner.completed.connect(self._export_completed)
         self._export_runner.failed.connect(self._export_failed)
         LOGGER.info("Loaded local district boundary data.")
-        self._location_service.load("regions")
+        self._request_locations("regions")
 
     @Property(list, notify=regionsChanged)
     def regions(self):
@@ -471,6 +527,42 @@ class SchoolFinderController(QObject):
         return self._exports_available
 
     @Property(str, notify=stateChanged)
+    def dataSource(self):
+        return self._data_source
+
+    @Property(str, notify=stateChanged)
+    def offlineDatabaseName(self):
+        if self._offline_database_path is None:
+            return "Ninguna base local seleccionada"
+        if not self._offline_database_path.is_file():
+            return f"No se encontró {self._offline_database_path.name}"
+        return self._offline_database_path.name
+
+    @Property(str, notify=stateChanged)
+    def offlineDatabaseUrl(self):
+        if self._offline_database_path is None:
+            return ""
+        return QUrl.fromLocalFile(str(self._offline_database_path)).toString()
+
+    @Property(str, notify=stateChanged)
+    def defaultOfflineDatabaseUrl(self):
+        path = self._offline_database_path
+        if path is None:
+            path = application_data_directory() / "escale.sqlite3"
+        return QUrl.fromLocalFile(str(path)).toString()
+
+    @Property(str, notify=stateChanged)
+    def offlineDatabaseStats(self):
+        return self._offline_database_stats
+
+    @Property(bool, notify=stateChanged)
+    def offlineDatabaseAvailable(self):
+        return (
+            self._offline_database_path is not None
+            and self._offline_database_path.is_file()
+        )
+
+    @Property(str, notify=stateChanged)
     def defaultOutputUrl(self):
         return QUrl.fromLocalFile(str(self._default_output_path())).toString()
 
@@ -538,6 +630,139 @@ class SchoolFinderController(QObject):
         if self._settings.status() != QSettings.Status.NoError:
             LOGGER.error("No se pudo guardar el tamaño de la ventana.")
 
+    @Slot(str)
+    def setDataSource(self, source: str):
+        if source not in {"online", "offline"}:
+            self.errorRaised.emit(
+                "Fuente no válida",
+                "Selecciona ESCALE en línea o una base local.",
+            )
+            return
+        if self._scrape_running or self._export_running:
+            return
+        if source == self._data_source:
+            return
+
+        self._data_source = source
+        self._settings.setValue("data/source", source)
+        self._settings.sync()
+        if self._settings.status() != QSettings.Status.NoError:
+            LOGGER.error("No se pudo guardar la fuente de datos.")
+        if source == "offline":
+            self._offline_database_stats = self._database_stats_text(
+                self._offline_database_path
+            )
+            self._status_text = (
+                "Selecciona una base local de EduEscale."
+                if self._offline_database_path is None
+                else f"Fuente local: {self.offlineDatabaseName}."
+            )
+        else:
+            self._status_text = "Fuente de datos: ESCALE en línea."
+        self._request_locations("regions")
+        if self._selected_region_code:
+            self._request_locations("provinces", self._selected_region_code)
+        if self._selected_province_code:
+            self._request_locations("districts", self._selected_province_code)
+        self.stateChanged.emit()
+
+    @Slot(str, result=bool)
+    def selectOfflineDatabase(self, database_url: str) -> bool:
+        selected_url = QUrl(database_url)
+        if not selected_url.isLocalFile():
+            self.errorRaised.emit(
+                "Ruta no válida",
+                "Selecciona una base de datos SQLite local.",
+            )
+            return False
+        database_path = Path(selected_url.toLocalFile())
+        if database_path.suffix.lower() != ".sqlite3":
+            self.errorRaised.emit(
+                "Formato no válido",
+                "Selecciona un archivo .sqlite3 de EduEscale.",
+            )
+            return False
+        try:
+            validate_local_database(database_path)
+            metadata = read_local_database_metadata(database_path)
+        except (OSError, sqlite3.Error, TypeError, ValueError) as error:
+            LOGGER.error(
+                "Refusing invalid offline database %s: %s", database_path, error
+            )
+            self.errorRaised.emit("Base de datos no válida", str(error))
+            return False
+
+        self._offline_database_path = database_path
+        self._offline_database_stats = self._database_stats_text(
+            database_path,
+            metadata,
+        )
+        self._data_source = "offline"
+        self._settings.setValue("data/source", "offline")
+        self._settings.setValue("data/offlineDatabasePath", str(database_path))
+        self._settings.sync()
+        if self._settings.status() != QSettings.Status.NoError:
+            LOGGER.error("No se pudo guardar la ruta de la base local.")
+        self._status_text = f"Base local seleccionada: {database_path.name}."
+        self._request_locations("regions")
+        if self._selected_region_code:
+            self._request_locations("provinces", self._selected_region_code)
+        if self._selected_province_code:
+            self._request_locations("districts", self._selected_province_code)
+        self.stateChanged.emit()
+        return True
+
+    @staticmethod
+    def _database_stats_text(
+        database_path: Path | None,
+        metadata: dict[str, str] | None = None,
+    ) -> str:
+        if database_path is None or not database_path.is_file():
+            return "Sin base local disponible."
+        values = metadata or {}
+        unique_records = values.get("unique_records")
+        total_records = values.get("total_records")
+        pages = values.get("pages")
+        updated_at = values.get("updated_at")
+        if (
+            unique_records is None
+            or total_records is None
+            or pages is None
+            or updated_at is None
+        ):
+            return "Estadísticas pendientes de una actualización."
+        try:
+            unique_count = int(unique_records)
+            total_count = int(total_records)
+            page_count = int(pages)
+            updated = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+            formatted_date = updated.astimezone().strftime("%Y-%m-%d %H:%M")
+            unique_label = "colegio único" if unique_count == 1 else "colegios únicos"
+            return (
+                f"{unique_count:,} {unique_label} de {total_count:,} resultados · "
+                f"{page_count:,} página{'s' if page_count != 1 else ''} · "
+                f"actualizada {formatted_date}"
+            )
+        except (ValueError, OverflowError) as error:
+            LOGGER.error("La estadística de actualización no es válida: %s", error)
+            return "La base local no contiene estadísticas válidas."
+
+    def _read_data_source(self) -> str:
+        source = self._settings.value("data/source", "online")
+        if isinstance(source, str) and source in {"online", "offline"}:
+            return source
+        LOGGER.error("Ignoring invalid saved data source %r.", source)
+        return "online"
+
+    def _read_offline_database_path(self) -> Path | None:
+        value = self._settings.value("data/offlineDatabasePath")
+        if value is None:
+            return None
+        if not isinstance(value, str) or not value:
+            LOGGER.error("Ignoring invalid saved offline database path.")
+            return None
+        return Path(value)
+
     @staticmethod
     def _location_options(placeholder: str, locations):
         return [{"label": placeholder, "code": ""}] + [
@@ -562,7 +787,7 @@ class SchoolFinderController(QObject):
         self.districtsChanged.emit()
         self.stateChanged.emit()
         if region_code:
-            self._location_service.load("provinces", region_code)
+            self._request_locations("provinces", region_code)
 
     @Slot(str)
     def selectProvince(self, province_code: str):
@@ -578,16 +803,47 @@ class SchoolFinderController(QObject):
         self.districtsChanged.emit()
         self.stateChanged.emit()
         if province_code:
-            self._location_service.load("districts", province_code)
+            self._request_locations("districts", province_code)
+
+    def _request_locations(self, kind: str, parent_code: str = ""):
+        if self._data_source == "online":
+            self._location_service.load(kind, parent_code)
+            return
+
+        if kind == "regions":
+            locations = [
+                (code, department["name"])
+                for code, department in self._map_department_metadata.items()
+            ]
+        elif kind == "provinces":
+            locations = [
+                (code, province["name"])
+                for code, province in self._map_province_metadata.items()
+                if province["departmentCode"] == parent_code
+            ]
+        elif kind == "districts":
+            locations = [
+                (code, district["district"])
+                for code, district in self._district_metadata.items()
+                if district["provinceCode"] == parent_code
+            ]
+        else:
+            raise ValueError(f"Tipo de ubicación desconocido: {kind}")
+        self._apply_locations(kind, parent_code, locations, "localmente")
 
     @Slot(str, str, object)
     def _locations_loaded(self, kind, parent_code, locations):
+        if self._data_source != "online":
+            return
         LOGGER.info(
             "Loaded %d %s for parent code %s.",
             len(locations),
             kind,
             parent_code or "(none)",
         )
+        self._apply_locations(kind, parent_code, locations, "desde ESCALE")
+
+    def _apply_locations(self, kind, parent_code, locations, source: str):
         if kind == "regions" and not parent_code:
             self._regions = self._location_options(
                 LOCATION_PLACEHOLDERS["regions"], locations
@@ -607,11 +863,13 @@ class SchoolFinderController(QObject):
         else:
             return
 
-        self._status_text = "Ubicaciones cargadas desde ESCALE."
+        self._status_text = f"Ubicaciones cargadas {source}."
         self.stateChanged.emit()
 
     @Slot(str, str, str)
     def _locations_failed(self, kind, parent_code, message):
+        if self._data_source != "online":
+            return
         LOGGER.error(
             "Failed to load %s for parent code %s: %s",
             kind,
@@ -919,6 +1177,27 @@ class SchoolFinderController(QObject):
             )
             return
 
+        local_filters: list[LocalSearchFilter] | None = None
+        local_database_path = self._offline_database_path
+        if self._data_source == "offline":
+            if local_database_path is None:
+                self.errorRaised.emit(
+                    "Base offline requerida",
+                    "Selecciona la base SQLite descargada de EduEscale.",
+                )
+                return
+            try:
+                validate_local_database(local_database_path)
+                local_filters = self._local_search_filters(filter_sets)
+            except (OSError, sqlite3.Error, TypeError, ValueError) as error:
+                LOGGER.error(
+                    "Cannot search offline database %s: %s",
+                    local_database_path,
+                    error,
+                )
+                self.errorRaised.emit("No se pudo usar la base offline", str(error))
+                return
+
         self._last_search_summary = self._summarize_searches(filter_sets)
         selected_url = QUrl(output_url)
         if selected_url.isLocalFile():
@@ -945,6 +1224,7 @@ class SchoolFinderController(QObject):
         if self._settings.status() != QSettings.Status.NoError:
             LOGGER.error("No se pudo guardar la carpeta de exportación.")
         self._cancel_requested = False
+        self._database_update_target = None
         self._dataset_path = None
         self._exports_available = False
         self._scrape_running = True
@@ -952,8 +1232,12 @@ class SchoolFinderController(QObject):
         self._progress_value = 0
         self._progress_maximum = 0
         self._progress_indeterminate = True
-        self._progress_message = "Conectando con ESCALE..."
-        self._status_text = "Consultando el total de registros en ESCALE..."
+        if self._data_source == "offline":
+            self._progress_message = "Buscando en la base offline..."
+            self._status_text = "Leyendo la base local de EduEscale..."
+        else:
+            self._progress_message = "Conectando con ESCALE..."
+            self._status_text = "Consultando el total de registros en ESCALE..."
         self.stateChanged.emit()
 
         LOGGER.info(
@@ -961,7 +1245,98 @@ class SchoolFinderController(QObject):
             self._output_path,
             [filters.model_dump(mode="json") for filters in filter_sets],
         )
-        self._scrape_runner.start(self._output_path, filter_sets)
+        if self._data_source == "offline":
+            if local_database_path is None or local_filters is None:
+                raise RuntimeError("La fuente offline no está preparada.")
+            self._local_database_search_runner.start(
+                local_database_path,
+                local_filters,
+            )
+        else:
+            self._scrape_runner.start(self._output_path, filter_sets)
+
+    def _local_search_filters(
+        self,
+        filter_sets: list[SchoolFilters],
+    ) -> list[LocalSearchFilter]:
+        local_filters = []
+        for filters in filter_sets:
+            region = ""
+            province = ""
+            district = ""
+            if filters.district_code:
+                location = self._district_metadata.get(filters.district_code)
+                if location is None:
+                    raise ValueError(
+                        f"Ubigeo distrital no reconocido: {filters.district_code}."
+                    )
+                region = location["department"]
+                province = location["province"]
+                district = location["district"]
+            elif filters.province_code:
+                location = self._map_province_metadata.get(filters.province_code)
+                if location is None:
+                    raise ValueError(
+                        f"Ubigeo provincial no reconocido: {filters.province_code}."
+                    )
+                region = location["department"]
+                province = location["name"]
+            elif filters.region_code:
+                location = self._map_department_metadata.get(filters.region_code)
+                if location is None:
+                    raise ValueError(
+                        f"Ubigeo departamental no reconocido: {filters.region_code}."
+                    )
+                region = location["name"]
+            local_filters.append(
+                LocalSearchFilter(
+                    region=region,
+                    province=province,
+                    district=district,
+                    management=tuple(filters.management),
+                    level=tuple(filters.level),
+                )
+            )
+        return local_filters
+
+    @Slot(str, result=bool)
+    def updateOfflineDatabase(self, output_url: str) -> bool:
+        if self._scrape_running or self._export_running:
+            self.errorRaised.emit(
+                "Operación en curso",
+                "Espera a que termine la operación actual antes de actualizar la base.",
+            )
+            return False
+        selected_url = QUrl(output_url)
+        if not selected_url.isLocalFile():
+            self.errorRaised.emit(
+                "Ruta no válida",
+                "Selecciona dónde guardar la base SQLite descargada.",
+            )
+            return False
+        database_path = Path(selected_url.toLocalFile())
+        if database_path.suffix.lower() != ".sqlite3":
+            self.errorRaised.emit(
+                "Formato no válido",
+                "La base offline debe usar la extensión .sqlite3.",
+            )
+            return False
+
+        self._database_update_target = database_path
+        self._cancel_requested = False
+        self._scrape_running = True
+        self._progress_visible = True
+        self._progress_value = 0
+        self._progress_maximum = 0
+        self._progress_indeterminate = True
+        self._progress_message = (
+            "Descargando la base completa de ESCALE; puede tardar hasta 60 minutos..."
+        )
+        self._status_text = "Consultando el total de registros de ESCALE..."
+        self.stateChanged.emit()
+        LOGGER.info("Updating offline database at %s.", database_path)
+        self._scrape_runner.start(database_path, [SchoolFilters()])
+        return True
 
     @Slot()
     def cancelScrape(self):
@@ -969,7 +1344,12 @@ class SchoolFinderController(QObject):
             LOGGER.info("Cancellation requested by the user.")
             self._cancel_requested = True
             self.stateChanged.emit()
-            self._scrape_runner.cancel()
+            if self._database_update_target is not None:
+                self._scrape_runner.cancel()
+            elif self._data_source == "offline":
+                self._local_database_search_runner.cancel()
+            else:
+                self._scrape_runner.cancel()
 
     @Slot()
     def _scrape_started(self):
@@ -993,8 +1373,24 @@ class SchoolFinderController(QObject):
 
     @Slot(str, int, int, int)
     def _scrape_completed(self, database_path, total, records, pages):
+        if self._database_update_target is not None:
+            self._offline_database_updated(
+                Path(database_path),
+                total,
+                records,
+                pages,
+            )
+            return
+        self._complete_search(database_path, total, records, pages, offline=False)
+
+    @Slot(str, int, int, int)
+    def _offline_search_completed(self, database_path, total, records, pages):
+        self._complete_search(database_path, total, records, pages, offline=True)
+
+    def _complete_search(self, database_path, total, records, pages, *, offline):
         LOGGER.info(
-            "Extraction completed: %d unique records across %d pages; data=%s",
+            "%s completed: %d unique records across %d pages; data=%s",
+            "Offline search" if offline else "Extraction",
             records,
             pages,
             database_path,
@@ -1013,14 +1409,32 @@ class SchoolFinderController(QObject):
             else self._next_output_path().parent
         )
         self._output_path = self._timestamped_output_path(output_directory)
-        self._status_text = (
-            f"Datos listos para exportar · {records:,} colegios en {pages} páginas."
-        )
-        self._exports_available = True
+        if offline:
+            self._status_text = (
+                f"Búsqueda local completada · {records:,} de {total:,} "
+                "colegios coinciden."
+            )
+            self._exports_available = records > 0
+        else:
+            self._status_text = (
+                f"Datos listos para exportar · {records:,} colegios en {pages} páginas."
+            )
+            self._exports_available = True
         self.stateChanged.emit()
 
     @Slot()
     def _scrape_cancelled(self):
+        if self._database_update_target is not None:
+            LOGGER.info("Offline database update cancelled; existing data preserved.")
+            self._database_update_target = None
+            self._scrape_running = False
+            self._cancel_requested = False
+            self._progress_visible = False
+            self._progress_indeterminate = False
+            self._progress_message = ""
+            self._status_text = "Actualización cancelada. La base anterior se conservó."
+            self.stateChanged.emit()
+            return
         LOGGER.info("Extraction cancelled; previous output was preserved.")
         self._scrape_running = False
         self._cancel_requested = False
@@ -1037,6 +1451,17 @@ class SchoolFinderController(QObject):
     @Slot(str, str)
     def _scrape_failed(self, title, details):
         LOGGER.error("Extraction failed (%s): %s", title, details)
+        if self._database_update_target is not None:
+            self._database_update_target = None
+            self._scrape_running = False
+            self._cancel_requested = False
+            self._progress_visible = False
+            self._progress_indeterminate = False
+            self._progress_message = ""
+            self._status_text = f"No se pudo actualizar la base offline: {title}"
+            self.stateChanged.emit()
+            self.errorRaised.emit(title, details)
+            return
         self._scrape_running = False
         self._dataset_path = None
         self._exports_available = False
@@ -1045,6 +1470,68 @@ class SchoolFinderController(QObject):
         self._status_text = title
         self.stateChanged.emit()
         self.errorRaised.emit(title, details)
+
+    def _offline_database_updated(
+        self,
+        staged_path: Path,
+        total: int,
+        records: int,
+        pages: int,
+    ):
+        target_path = self._database_update_target
+        if target_path is None:
+            raise RuntimeError("No hay una actualización de base offline activa.")
+        updated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        try:
+            write_local_database_metadata(
+                staged_path,
+                updated_at=updated_at,
+                total_records=total,
+                unique_records=records,
+                pages=pages,
+            )
+            metadata = read_local_database_metadata(staged_path)
+            os.replace(staged_path, target_path)
+        except (OSError, sqlite3.Error, TypeError, ValueError) as error:
+            LOGGER.exception("Could not publish offline database %s.", target_path)
+            self._database_update_target = None
+            self._scrape_running = False
+            self._cancel_requested = False
+            self._progress_visible = False
+            self._progress_indeterminate = False
+            self._progress_message = ""
+            self._status_text = "No se pudo actualizar la base offline."
+            self.stateChanged.emit()
+            self.errorRaised.emit(
+                "No se pudo actualizar la base offline",
+                str(error),
+            )
+            return
+
+        self._database_update_target = None
+        self._offline_database_path = target_path
+        self._offline_database_stats = self._database_stats_text(
+            target_path,
+            metadata,
+        )
+        self._settings.setValue("data/offlineDatabasePath", str(target_path))
+        self._settings.sync()
+        if self._settings.status() != QSettings.Status.NoError:
+            LOGGER.error("Could not save offline database path.")
+        self._scrape_running = False
+        self._cancel_requested = False
+        self._progress_visible = True
+        self._progress_indeterminate = False
+        self._progress_maximum = max(total, records, 1)
+        self._progress_value = self._progress_maximum
+        self._progress_message = "Actualización completada"
+        unique_label = "colegio único" if records == 1 else "colegios únicos"
+        self._status_text = (
+            f"Base offline actualizada · {records:,} {unique_label} "
+            f"de {total:,} · {pages:,} "
+            f"página{'s' if pages != 1 else ''}."
+        )
+        self.stateChanged.emit()
 
     @Slot(str, str)
     def _scrape_warning(self, title, details):
@@ -1217,5 +1704,6 @@ class SchoolFinderController(QObject):
     @Slot()
     def shutdown(self):
         self._export_runner.shutdown()
+        self._local_database_search_runner.shutdown()
         self._scrape_runner.shutdown()
         self._location_service.shutdown()

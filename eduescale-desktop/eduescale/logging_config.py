@@ -1,24 +1,15 @@
 import logging
-import os
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+
+from eduescale.paths import application_data_directory
 
 MAX_LOG_BYTES = 5 * 1024 * 1024
 LOG_BACKUP_COUNT = 3
 
 
 def _default_log_directory() -> Path:
-    local_app_data = os.environ.get("LOCALAPPDATA")
-    if local_app_data:
-        base_directory = Path(local_app_data)
-    else:
-        base_directory = Path(
-            os.environ.get(
-                "XDG_STATE_HOME",
-                str(Path.home() / ".local" / "state"),
-            )
-        )
-    return base_directory / "EduEscale" / "logs"
+    return application_data_directory() / "logs"
 
 
 def configure_logging(directory: Path | None = None) -> Path:

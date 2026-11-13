@@ -4,6 +4,7 @@ import re
 import shutil
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 from PySide6.QtCore import (
@@ -25,7 +26,9 @@ SCRAPE_PROGRESS_PATTERN = re.compile(
     r"SCRAPE_PROGRESS=(\d+)/(\d+)\s+UNIQUE=(\d+)\s+PAGES=(\d+)\s+FAILED=(\d+)"
 )
 SCRAPE_TIMEOUT_MS = 15 * 60 * 1000
+DATABASE_SCRAPE_TIMEOUT_MS = 60 * 60 * 1000
 PROCESS_TERMINATE_GRACE_MS = 3000
+CLEANUP_RETRY_DELAYS_SECONDS = (0.1, 0.25, 0.5, 1.0)
 MAX_PROCESS_LOG_CHARS = 64 * 1024
 MAX_PROGRESS_LINE_CHARS = 8 * 1024
 
@@ -69,6 +72,8 @@ class ScrapeRunner(QObject):
         self._records_received = 0
         self._pages_received = 0
         self._scrape_timed_out = False
+        self._database_download = False
+        self._scrape_timeout_ms = SCRAPE_TIMEOUT_MS
         self._cancel_requested = False
         self._shutting_down = False
         self._running = False
@@ -106,6 +111,10 @@ class ScrapeRunner(QObject):
         self._records_received = 0
         self._pages_received = 0
         self._scrape_timed_out = False
+        self._database_download = output_path.suffix.lower() == ".sqlite3"
+        self._scrape_timeout_ms = (
+            DATABASE_SCRAPE_TIMEOUT_MS if self._database_download else SCRAPE_TIMEOUT_MS
+        )
         self._cancel_requested = False
         self._shutting_down = False
         scrapy_arguments = [
@@ -156,7 +165,7 @@ class ScrapeRunner(QObject):
         self._running = True
         self._process.setWorkingDirectory(str(working_directory))
         self._process.start(program, arguments)
-        self._timeout_timer.start(SCRAPE_TIMEOUT_MS)
+        self._timeout_timer.start(self._scrape_timeout_ms)
         self.started.emit()
 
     def cancel(self):
@@ -276,11 +285,19 @@ class ScrapeRunner(QObject):
                 )
             return
         if self._scrape_timed_out:
-            self._fail(
-                "Extracción detenida",
-                "La extracción superó el límite de 15 minutos. "
-                "Prueba con una ubicación más específica.",
-            )
+            if self._database_download:
+                timeout_minutes = self._scrape_timeout_ms // 60_000
+                self._fail(
+                    "Descarga detenida",
+                    "La descarga completa de la base superó el límite de "
+                    f"{timeout_minutes} minutos.",
+                )
+            else:
+                self._fail(
+                    "Extracción detenida",
+                    "La extracción superó el límite de 15 minutos. "
+                    "Prueba con una ubicación más específica.",
+                )
         elif self._cancel_requested:
             cleanup_error = self._cleanup_staging()
             self.cancelled.emit()
@@ -325,12 +342,20 @@ class ScrapeRunner(QObject):
     def _cleanup_staging(self) -> str | None:
         if self._staging_directory is None:
             return None
-        try:
-            shutil.rmtree(self._staging_directory)
-        except FileNotFoundError:
-            pass
-        except OSError as error:
-            return str(error)
+        for retry_delay in (*CLEANUP_RETRY_DELAYS_SECONDS, None):
+            try:
+                shutil.rmtree(self._staging_directory)
+            except FileNotFoundError:
+                break
+            except OSError as error:
+                if (
+                    getattr(error, "winerror", None) not in {32, 33}
+                    or retry_delay is None
+                ):
+                    return str(error)
+                time.sleep(retry_delay)
+            else:
+                break
         self._staging_directory = None
         self._staging_path = None
         return None

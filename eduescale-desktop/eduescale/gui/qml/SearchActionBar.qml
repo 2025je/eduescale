@@ -16,6 +16,8 @@ ColumnLayout {
     signal pdfExportRequested()
     signal eduEscaleExportRequested()
     signal historyRequested()
+    signal offlineDatabaseSelectionRequested()
+    signal offlineDatabaseUpdateRequested()
 
     spacing: 0
 
@@ -32,12 +34,32 @@ ColumnLayout {
             objectName: "sourceLabel"
             anchors.fill: parent
             anchors.leftMargin: 20
-            anchors.rightMargin: 20
+            anchors.rightMargin: root.windowWidth < 720 ? 174 : 214
             verticalAlignment: Text.AlignVCenter
             text: '<a href="https://escale.minedu.gob.pe/padron-de-iiee">Fuente: Padrón de IIEE de ESCALE</a>'
             textFormat: Text.RichText
             onLinkActivated: link => Qt.openUrlExternally(link)
             palette.link: EduStyle.Style.primaryColor
+        }
+
+        StyledComboBox {
+            id: dataSourceCombo
+            objectName: "dataSourceCombo"
+            anchors.right: parent.right
+            anchors.rightMargin: 12
+            anchors.verticalCenter: parent.verticalCenter
+            width: root.windowWidth < 720 ? 150 : 190
+            height: 28
+            model: ["ESCALE en línea", "Base offline"]
+            currentIndex: root.controller
+                && root.controller.dataSource === "offline" ? 1 : 0
+            enabled: root.controller !== null
+                && !root.controller.scrapeRunning
+                && !root.controller.exportRunning
+            Accessible.name: "Fuente de datos"
+            onActivated: index => root.controller.setDataSource(
+                index === 1 ? "offline" : "online"
+            )
         }
     }
 
@@ -57,6 +79,48 @@ ColumnLayout {
             anchors.topMargin: 8
             anchors.bottomMargin: 10
             spacing: 4
+
+            RowLayout {
+                id: offlineDatabaseControls
+                objectName: "offlineDatabaseControls"
+                Layout.fillWidth: true
+                spacing: 8
+                visible: root.controller !== null
+                    && root.controller.dataSource === "offline"
+
+                StyledButton {
+                    objectName: "selectOfflineDatabaseButton"
+                    labelObjectName: "selectOfflineDatabaseButtonLabel"
+                    text: "Elegir base"
+                    enabled: root.controller !== null
+                        && !root.controller.scrapeRunning
+                        && !root.controller.exportRunning
+                    onClicked: root.offlineDatabaseSelectionRequested()
+                }
+
+                StyledButton {
+                    objectName: "updateOfflineDatabaseButton"
+                    labelObjectName: "updateOfflineDatabaseButtonLabel"
+                    text: "Actualizar base"
+                    enabled: root.controller !== null
+                        && !root.controller.scrapeRunning
+                        && !root.controller.exportRunning
+                    onClicked: root.offlineDatabaseUpdateRequested()
+                }
+
+                Label {
+                    objectName: "offlineDatabaseStatsLabel"
+                    Layout.fillWidth: true
+                    text: root.controller
+                        ? root.controller.offlineDatabaseName + " · "
+                            + root.controller.offlineDatabaseStats : ""
+                    color: EduStyle.Style.mutedTextColor
+                    font.pixelSize: EduStyle.Style.smallFontSize
+                    wrapMode: Text.WordWrap
+                    maximumLineCount: 2
+                    elide: Text.ElideRight
+                }
+            }
 
             Label {
                 Layout.fillWidth: true
@@ -130,6 +194,8 @@ ColumnLayout {
                         && !root.controller.scrapeRunning
                         && !root.controller.exportRunning
                         && root.searchCount > 0
+                        && (root.controller.dataSource !== "offline"
+                            || root.controller.offlineDatabaseAvailable)
                     Accessible.name: "Revisar filtros e iniciar búsqueda"
                     onClicked: root.scrapeRequested()
                 }

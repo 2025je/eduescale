@@ -4,6 +4,7 @@ from typing import Protocol
 from PySide6.QtCore import SignalInstance
 
 from eduescale.client import SchoolFilters
+from eduescale.gui.local_database import LocalSearchFilter
 
 
 class LocationServicePort(Protocol):
@@ -24,6 +25,24 @@ class ScrapeRunnerPort(Protocol):
     warning: SignalInstance
 
     def start(self, output_path: Path, filter_sets: list[SchoolFilters]) -> None: ...
+
+    def cancel(self) -> None: ...
+
+    def shutdown(self) -> None: ...
+
+
+class LocalDatabaseSearchRunnerPort(Protocol):
+    started: SignalInstance
+    progressChanged: SignalInstance
+    completed: SignalInstance
+    failed: SignalInstance
+    cancelled: SignalInstance
+
+    def start(
+        self,
+        source_path: Path,
+        filters: list[LocalSearchFilter],
+    ) -> None: ...
 
     def cancel(self) -> None: ...
 

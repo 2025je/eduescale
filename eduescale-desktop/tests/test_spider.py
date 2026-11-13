@@ -100,6 +100,43 @@ class TestSchoolsSpiderPage:
         assert spider.items_received == 0
         assert spider.pages_received == 0
 
+    def test_accepts_source_records_with_unsupported_levels_in_full_download(self):
+        spider = SchoolsSpider(output="unused.sqlite3")
+        spider.expected_total = 2
+        request = scrapy.Request(
+            "https://escale.minedu.gob.pe/padron/rest/instituciones?start=0",
+            meta={
+                "filter_index": 0,
+                "filter_total": 2,
+                "offset": 0,
+                "validation_retry_times": 0,
+            },
+        )
+        response = Response(
+            request.url,
+            request=request,
+            body=(
+                b"<instituciones>"
+                b"<items><cenEdu>Primaria</cenEdu><nivelModalidad>"
+                b"<idCodigo>B0</idCodigo><valor>Primaria</valor>"
+                b"</nivelModalidad></items>"
+                b"<items><cenEdu>Inicial</cenEdu><nivelModalidad>"
+                b"<idCodigo>A2</idCodigo><valor>Inicial - Jardin</valor>"
+                b"</nivelModalidad></items>"
+                b"</instituciones>"
+            ),
+        )
+
+        try:
+            output = list(spider.parse_page(response))
+
+            assert len(output) == 1
+            assert spider.items_received == 2
+            assert spider.pages_received == 1
+            assert spider.unique_items_received == 1
+        finally:
+            spider.closed("finished")
+
     def test_invalid_numeric_field_retries_page(self):
         spider = SchoolsSpider(output="unused.xlsx")
         request = scrapy.Request(
@@ -116,6 +153,8 @@ class TestSchoolsSpiderPage:
             request=request,
             body=(
                 b"<instituciones><items><cenEdu>Colegio</cenEdu>"
+                b"<nivelModalidad><idCodigo>B0</idCodigo>"
+                b"<valor>Primaria</valor></nivelModalidad>"
                 b"<estadistica><talumno>no-numero</talumno></estadistica>"
                 b"</items></instituciones>"
             ),

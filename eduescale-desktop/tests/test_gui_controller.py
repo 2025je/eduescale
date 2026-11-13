@@ -1,10 +1,13 @@
 import json
+import sqlite3
+from contextlib import closing
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 from PySide6.QtCore import QCoreApplication, QObject, QSettings, QUrl, Signal
 
+from eduescale.client import SchoolFilters
 from eduescale.export_files import android_data_path
 from eduescale.gui import controller as controller_module
 from eduescale.gui.application import create_controller
@@ -46,6 +49,28 @@ class FakeScrapeRunner(QObject):
         pass
 
 
+class FakeLocalDatabaseSearchRunner(QObject):
+    started = Signal()
+    progressChanged = Signal(int, int, int, str)
+    completed = Signal(str, int, int, int)
+    failed = Signal(str, str)
+    cancelled = Signal()
+
+    def __init__(self):
+        super().__init__()
+        self.started_requests = []
+        self.cancel_requests = 0
+
+    def start(self, source_path, filters):
+        self.started_requests.append((source_path, filters))
+
+    def cancel(self):
+        self.cancel_requests += 1
+
+    def shutdown(self):
+        pass
+
+
 class FakeExportRunner(QObject):
     started = Signal(str)
     completed = Signal(str, str)
@@ -76,12 +101,19 @@ def test_create_controller_accepts_injected_services():
     location_service = FakeLocationService()
     scrape_runner = FakeScrapeRunner()
     export_runner = FakeExportRunner()
-    controller = create_controller(location_service, scrape_runner, export_runner)
+    local_database_search_runner = FakeLocalDatabaseSearchRunner()
+    controller = create_controller(
+        location_service,
+        scrape_runner,
+        export_runner,
+        local_database_search_runner,
+    )
 
     try:
         assert controller._location_service is location_service
         assert controller._scrape_runner is scrape_runner
         assert controller._export_runner is export_runner
+        assert controller._local_database_search_runner is local_database_search_runner
     finally:
         controller.shutdown()
 
@@ -91,6 +123,7 @@ def controller_components(tmp_path):
     application = QCoreApplication.instance() or QCoreApplication([])
     location_service = FakeLocationService()
     scrape_runner = FakeScrapeRunner()
+    local_database_search_runner = FakeLocalDatabaseSearchRunner()
     export_runner = FakeExportRunner()
     settings = QSettings(
         str(tmp_path / "settings.ini"),
@@ -101,6 +134,7 @@ def controller_components(tmp_path):
         scrape_runner=scrape_runner,
         settings=settings,
         export_runner=export_runner,
+        local_database_search_runner=local_database_search_runner,
     )
     errors = []
     controller.errorRaised.connect(
@@ -359,6 +393,20 @@ def test_education_level_selection_is_required(controller_components):
     assert scrape_runner.started_requests == []
 
 
+def test_default_offline_database_uses_application_data_directory(
+    controller_components,
+    monkeypatch,
+    tmp_path,
+):
+    controller, _scrape_runner, _errors = controller_components
+    app_data_directory = tmp_path / "AppData" / "Local"
+    monkeypatch.setenv("LOCALAPPDATA", str(app_data_directory))
+
+    default_path = Path(QUrl(controller.defaultOfflineDatabaseUrl).toLocalFile())
+
+    assert default_path == app_data_directory / "EduEscale" / "escale.sqlite3"
+
+
 def test_rejects_non_local_output_urls(controller_components):
     controller, scrape_runner, errors = controller_components
     controller.startScrape(
@@ -398,6 +446,154 @@ def test_starts_scrape_with_multiple_filter_sets(controller_components):
     assert filters[0].region_code == "01"
     assert filters[1].region_code == "02"
     assert filters[1].level == ("primaria", "secundaria")
+
+
+def test_offline_source_filters_the_selected_local_database(
+    controller_components,
+    tmp_path,
+):
+    controller, scrape_runner, _errors = controller_components
+    local_runner = controller._local_database_search_runner
+    database_path = tmp_path / "offline.sqlite3"
+    with closing(sqlite3.connect(database_path)) as database:
+        database.execute(
+            """
+            CREATE TABLE records (
+                region TEXT NOT NULL,
+                province TEXT NOT NULL,
+                district TEXT NOT NULL,
+                payload TEXT NOT NULL
+            )
+            """
+        )
+        database.commit()
+
+    assert controller.selectOfflineDatabase(
+        QUrl.fromLocalFile(str(database_path)).toString()
+    )
+    controller.startScrape(
+        QUrl.fromLocalFile(str(tmp_path / "schools.xlsx")).toString(),
+        json.dumps(
+            [
+                {
+                    "region_code": "15",
+                    "management": "publica",
+                    "level": "primaria",
+                }
+            ]
+        ),
+    )
+
+    assert controller.dataSource == "offline"
+    assert controller._settings.value("data/offlineDatabasePath") == str(database_path)
+    assert scrape_runner.started_requests == []
+    assert local_runner.started_requests[0][0] == database_path
+    offline_filter = local_runner.started_requests[0][1][0]
+    assert offline_filter.region == controller.mapDepartmentMetadata["15"]["name"]
+    assert offline_filter.management == ("publica",)
+    assert offline_filter.level == ("primaria",)
+
+
+def test_updates_offline_database_and_records_download_statistics(
+    controller_components,
+    tmp_path,
+):
+    controller, scrape_runner, _errors = controller_components
+    database_path = tmp_path / "offline.sqlite3"
+    staged_path = tmp_path / "staged.sqlite3"
+
+    assert controller.updateOfflineDatabase(
+        QUrl.fromLocalFile(str(database_path)).toString()
+    )
+    assert scrape_runner.started_requests == [(database_path, [SchoolFilters()])]
+
+    with closing(sqlite3.connect(staged_path)) as database:
+        database.execute(
+            """
+            CREATE TABLE records (
+                region TEXT NOT NULL,
+                province TEXT NOT NULL,
+                district TEXT NOT NULL,
+                payload TEXT NOT NULL
+            )
+            """
+        )
+        database.execute(
+            "INSERT INTO records VALUES (?, ?, ?, ?)",
+            ("Loreto", "Maynas", "Iquitos", '{"nombre":"Ejemplo"}'),
+        )
+        database.commit()
+
+    controller._scrape_completed(str(staged_path), 2, 1, 1)
+
+    assert database_path.is_file()
+    assert not staged_path.exists()
+    assert "1 colegio único" in controller.statusText
+    assert "1 página" in controller.statusText
+    assert "1 colegio" in controller.offlineDatabaseStats
+    assert "2 resultados" in controller.offlineDatabaseStats
+
+
+def test_cancelled_offline_database_update_preserves_existing_file(
+    controller_components,
+    tmp_path,
+):
+    controller, _scrape_runner, _errors = controller_components
+    database_path = tmp_path / "offline.sqlite3"
+    database_path.write_bytes(b"existing database")
+
+    assert controller.updateOfflineDatabase(
+        QUrl.fromLocalFile(str(database_path)).toString()
+    )
+    controller._scrape_cancelled()
+
+    assert database_path.read_bytes() == b"existing database"
+    assert controller._database_update_target is None
+    assert "base anterior se conservó" in controller.statusText
+
+
+def test_invalid_offline_update_does_not_replace_existing_database(
+    controller_components,
+    monkeypatch,
+    tmp_path,
+):
+    controller, _scrape_runner, _errors = controller_components
+    database_path = tmp_path / "offline.sqlite3"
+    database_path.write_bytes(b"existing database")
+
+    def reject_metadata(_database_path):
+        raise TypeError("metadata inválida")
+
+    monkeypatch.setattr(
+        controller_module,
+        "read_local_database_metadata",
+        reject_metadata,
+    )
+    assert controller.updateOfflineDatabase(
+        QUrl.fromLocalFile(str(database_path)).toString()
+    )
+    controller._scrape_completed(str(tmp_path / "staged.sqlite3"), 2, 1, 1)
+
+    assert database_path.read_bytes() == b"existing database"
+    assert not controller.scrapeRunning
+    assert controller._database_update_target is None
+    assert "No se pudo actualizar la base offline" in controller.statusText
+
+
+def test_offline_search_keeps_database_update_statistics(
+    controller_components, tmp_path
+):
+    controller, _scrape_runner, _errors = controller_components
+    controller._offline_database_stats = (
+        "1 colegio único de 2 resultados · 1 página · actualizada ayer"
+    )
+
+    controller._offline_search_completed(str(tmp_path / "filtered.sqlite3"), 2, 1, 0)
+
+    assert "1 de 2 colegios coinciden" in controller.statusText
+    assert controller.offlineDatabaseStats == (
+        "1 colegio único de 2 resultados · 1 página · actualizada ayer"
+    )
 
 
 def test_cancel_scrape_updates_status_after_runner_confirms(controller_components):

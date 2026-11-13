@@ -7,7 +7,9 @@ from PySide6.QtCore import QCoreApplication, QProcess
 
 from eduescale.client import SchoolFilters
 from eduescale.export_files import android_data_path
+from eduescale.gui import scrape_runner as scrape_runner_module
 from eduescale.gui.scrape_runner import (
+    DATABASE_SCRAPE_TIMEOUT_MS,
     MAX_PROCESS_LOG_CHARS,
     MAX_PROGRESS_LINE_CHARS,
     ScrapeRunner,
@@ -148,6 +150,73 @@ def test_runner_includes_failed_pages_in_progress_message(application):
         )
     ]
     runner.shutdown()
+    assert application is not None
+
+
+def test_full_database_download_has_a_longer_timeout_and_specific_message(
+    tmp_path,
+    application,
+):
+    runner = ScrapeRunner()
+    process = _replace_process(runner)
+    failures = []
+    runner.failed.connect(lambda title, details: failures.append((title, details)))
+
+    try:
+        runner.start(tmp_path / "offline.sqlite3", [SchoolFilters()])
+        assert runner._database_download
+        assert runner._scrape_timeout_ms == DATABASE_SCRAPE_TIMEOUT_MS
+
+        runner._scrape_timed_out = True
+        process._state = QProcess.ProcessState.NotRunning
+        runner._scrape_finished(-1, QProcess.ExitStatus.CrashExit)
+
+        assert failures == [
+            (
+                "Descarga detenida",
+                "La descarga completa de la base superó el límite de 60 minutos.",
+            )
+        ]
+    finally:
+        runner.shutdown()
+    assert application is not None
+
+
+def test_cleanup_retries_transient_windows_file_locks(
+    tmp_path,
+    monkeypatch,
+    application,
+):
+    runner = ScrapeRunner()
+    staging_directory = tmp_path / ".eduescale-locked"
+    staging_directory.mkdir()
+    runner._staging_directory = staging_directory
+    runner._staging_path = staging_directory / "colegios.sqlite3"
+    original_rmtree = scrape_runner_module.shutil.rmtree
+    attempts = 0
+    delays = []
+
+    def rmtree_with_transient_lock(path):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            error = OSError("file is being used")
+            error.winerror = 32
+            raise error
+        original_rmtree(path)
+
+    monkeypatch.setattr(
+        scrape_runner_module.shutil, "rmtree", rmtree_with_transient_lock
+    )
+    monkeypatch.setattr(scrape_runner_module.time, "sleep", delays.append)
+
+    try:
+        assert runner._cleanup_staging() is None
+        assert attempts == 2
+        assert delays == [0.1]
+        assert not staging_directory.exists()
+    finally:
+        runner.shutdown()
     assert application is not None
 
 

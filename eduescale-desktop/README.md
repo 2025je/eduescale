@@ -81,6 +81,22 @@ uv run pyside6-rcc --binary eduescale/gui/resources.qrc -o eduescale/gui/resourc
 
 ## Uso
 
+### Fuentes de datos
+
+En la barra de búsqueda puedes elegir entre **ESCALE en línea** y **Base
+offline**. Para usar una base local, selecciona un archivo `.sqlite3` creado
+por EduEscale; la aplicación recuerda su ruta. La búsqueda offline aplica los
+mismos filtros de ubicación, gestión y nivel sin volver a consultar ESCALE.
+
+Usa **Actualizar base** para descargar los datos de ESCALE sin filtros y crear
+o reemplazar la base local. La aplicación muestra el progreso y, al terminar,
+el total de registros recibidos, los colegios únicos, las páginas consultadas
+y la fecha de actualización. El archivo anterior se conserva si la descarga
+falla o se cancela. La descarga completa puede tardar hasta 60 minutos. Al
+crear la base por primera vez, se propone
+`%LOCALAPPDATA%\EduEscale\escale.sqlite3` en Windows; puedes elegir otra ruta
+en el diálogo.
+
 Selecciona la ubicación desde la pestaña «Mapa» o con los tres combobox de
 departamento, provincia y distrito. Luego elige una o ambas opciones de gestión
 pública/privada y uno o varios niveles entre primaria, secundaria y CETPRO.

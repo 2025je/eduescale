@@ -9,8 +9,14 @@ from PySide6.QtWebEngineQuick import QtWebEngineQuick
 
 from eduescale.gui.controller import SchoolFinderController
 from eduescale.gui.export_runner import ExportRunner
+from eduescale.gui.local_database import LocalDatabaseSearchRunner
 from eduescale.gui.location_service import LocationService
-from eduescale.gui.ports import ExportRunnerPort, LocationServicePort, ScrapeRunnerPort
+from eduescale.gui.ports import (
+    ExportRunnerPort,
+    LocalDatabaseSearchRunnerPort,
+    LocationServicePort,
+    ScrapeRunnerPort,
+)
 from eduescale.gui.resources import resource_path, resource_url
 from eduescale.gui.scrape_runner import ScrapeRunner
 from eduescale.logging_config import configure_logging
@@ -68,6 +74,7 @@ def create_controller(
     location_service: LocationServicePort | None = None,
     scrape_runner: ScrapeRunnerPort | None = None,
     export_runner: ExportRunnerPort | None = None,
+    local_database_search_runner: LocalDatabaseSearchRunnerPort | None = None,
 ) -> SchoolFinderController:
     return SchoolFinderController(
         location_service=(
@@ -75,6 +82,11 @@ def create_controller(
         ),
         scrape_runner=ScrapeRunner() if scrape_runner is None else scrape_runner,
         export_runner=ExportRunner() if export_runner is None else export_runner,
+        local_database_search_runner=(
+            LocalDatabaseSearchRunner()
+            if local_database_search_runner is None
+            else local_database_search_runner
+        ),
     )
 
 

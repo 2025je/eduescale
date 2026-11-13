@@ -228,9 +228,15 @@ def _level(
 
 
 def parse_institutions(xml: bytes) -> list[dict[str, object]]:
+    _, records = parse_institutions_page(xml)
+    return records
+
+
+def parse_institutions_page(xml: bytes) -> tuple[int, list[dict[str, object]]]:
     root = ElementTree.fromstring(xml)
+    items = root.findall("./items")
     records: list[dict[str, object]] = []
-    for item in root.findall("./items"):
+    for item in items:
         longitud = _float(item, "nlongIE")
         latitud = _float(item, "nlatIE")
         nivel = _level(
@@ -260,4 +266,4 @@ def parse_institutions(xml: bytes) -> list[dict[str, object]]:
             codigo_local=_text(item, "codlocal"),
         )
         records.append(record.model_dump())
-    return records
+    return len(items), records

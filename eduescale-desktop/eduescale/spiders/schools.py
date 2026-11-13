@@ -14,7 +14,7 @@ from eduescale.client import (
     API_URL,
     SchoolFilters,
     build_search_params,
-    parse_institutions,
+    parse_institutions_page,
 )
 
 PAGE_SIZE = 50
@@ -57,6 +57,7 @@ class SchoolsSpider(scrapy.Spider):
     ):
         super().__init__(*args, **kwargs)
         self.output = output
+        self._database_output = Path(self.output).suffix.lower() == ".sqlite3"
         if filters_json is None:
             filter_sets = [
                 SchoolFilters.model_validate(
@@ -133,7 +134,11 @@ class SchoolsSpider(scrapy.Spider):
 
         self.expected_total = sum(self.filter_totals)
         self.count_received = True
-        if len(self.filters) == 1 and self.expected_total > EXCEL_MAX_DATA_ROWS:
+        if (
+            not self._database_output
+            and len(self.filters) == 1
+            and self.expected_total > EXCEL_MAX_DATA_ROWS
+        ):
             raise CloseSpider(
                 "Los resultados superan el límite de filas de una hoja de Excel."
             )
@@ -186,7 +191,7 @@ class SchoolsSpider(scrapy.Spider):
             )
             return
         try:
-            records = parse_institutions(response.body)
+            source_item_count, records = parse_institutions_page(response.body)
         except (ElementTree.ParseError, ValueError) as error:
             retry = self._retry_or_fail_page(response, f"XML no válido: {error}")
             if retry is not None:
@@ -197,22 +202,26 @@ class SchoolsSpider(scrapy.Spider):
             PAGE_SIZE,
             response.meta["filter_total"] - offset,
         )
-        if len(records) != expected_page_size:
+        if source_item_count != expected_page_size:
             retry = self._retry_or_fail_page(
                 response,
-                f"ESCALE entregó {len(records)} registros; se esperaban {expected_page_size}.",
+                f"ESCALE entregó {source_item_count} registros; "
+                f"se esperaban {expected_page_size}.",
             )
             if retry is not None:
                 yield retry
             return
 
         self.pages_received += 1
-        self.items_received += len(records)
+        self.items_received += source_item_count
         for record in records:
             if not self._is_new_record(record):
                 continue
             self.unique_items_received += 1
-            if self.unique_items_received > EXCEL_MAX_DATA_ROWS:
+            if (
+                not self._database_output
+                and self.unique_items_received > EXCEL_MAX_DATA_ROWS
+            ):
                 raise CloseSpider(
                     "Los resultados únicos superan el límite de filas de una hoja de Excel."
                 )

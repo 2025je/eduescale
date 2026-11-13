@@ -728,6 +728,8 @@ assert export_runner.started_requests[-1] == (
     database_path,
     pdf_path,
 )
+controller._export_running = False
+controller.stateChanged.emit()
 
 for levels in (
     (True, False, False),
@@ -795,6 +797,26 @@ application.processEvents()
 assert controller.darkTheme is False
 assert theme_selector.property("currentText") == "Claro"
 assert controller.themeMode == "light"
+
+data_source_combo = child("dataSourceCombo")
+offline_database_controls = child("offlineDatabaseControls")
+assert data_source_combo.property("currentText") == "ESCALE en línea"
+controller.setDataSource("offline")
+application.processEvents()
+assert controller.dataSource == "offline"
+assert data_source_combo.property("currentIndex") == 1
+assert data_source_combo.property("displayText") == "Base offline", (
+    data_source_combo.property("currentIndex"),
+    data_source_combo.property("displayText"),
+)
+assert offline_database_controls.property("visible")
+assert not child("scrapeButton").property("enabled")
+window.resize(560, 600)
+application.processEvents()
+assert (
+    action_bar.mapToItem(window.contentItem(), QPointF(0, action_bar.height())).y()
+    <= window.height() + 1
+)
 
 controller.shutdown()
 """
