@@ -49,6 +49,14 @@ def test_hierarchy_map_covers_all_departments_and_provinces():
     hierarchy = json.loads(HIERARCHY_DATA_PATH.read_text(encoding="utf-8"))
     departments = hierarchy["departments"]["features"]
     provinces = hierarchy["provinces"]["features"]
+    map_department_names = {
+        feature["properties"]["ubigeo"][:2]: feature["properties"]["department"]
+        for feature in map_data["features"]
+    }
+    department_names = {
+        feature["properties"]["code"]: feature["properties"]["name"]
+        for feature in departments
+    }
     department_codes = {feature["properties"]["code"] for feature in departments}
     province_codes = {feature["properties"]["code"] for feature in provinces}
 
@@ -58,6 +66,12 @@ def test_hierarchy_map_covers_all_departments_and_provinces():
     }
     assert len(department_codes) == 25
     assert len(province_codes) == 196
+    assert department_names["02"] == "ÁNCASH"
+    assert department_names["03"] == "APURÍMAC"
+    assert department_names["10"] == "HUÁNUCO"
+    assert department_names["12"] == "JUNÍN"
+    assert department_names["22"] == "SAN MARTÍN"
+    assert map_department_names == department_names
     assert all(
         feature["properties"]["departmentCode"] in department_codes
         for feature in provinces

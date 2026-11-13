@@ -45,11 +45,11 @@ También se puede iniciar con `uv run python app.py` por compatibilidad.
 
 ## Uso como librería
 
-El paquete `eduescale` publica las funciones de consulta, filtros y parsing.
-Pydantic valida los modelos de filtros y registros:
+Los modelos Pydantic y el cliente de ESCALE se importan desde sus capas:
 
 ```python
-from eduescale import SchoolFilters, build_search_params, fetch_regions
+from eduescale.domain.schools import SchoolFilters
+from eduescale.infrastructure.escale.client import build_search_params, fetch_regions
 
 regions = fetch_regions()
 params = build_search_params(
@@ -61,13 +61,19 @@ params = build_search_params(
 )
 ```
 
-La GUI está separada en una vista QML, un controlador y servicios dedicados a
-la carga de ubicaciones y al proceso Scrapy. `application.create_controller`
-es el punto de composición: crea los servicios predeterminados y los inyecta
-al controlador; también permite reemplazarlos por implementaciones propias.
-El controlador depende de contratos de servicio, no de sus implementaciones
-concretas. El comando `eduescale-gui` es el entry point instalado para iniciar
-esa interfaz. Los tokens visuales compartidos por las vistas se definen en el
+El código sigue Clean Architecture: `domain/` contiene modelos y reglas
+independientes de Qt y de la base de datos; `application/` define puertos y
+coordina casos de uso; `infrastructure/` implementa ESCALE, SQLite/SQLAlchemy,
+Scrapy, exportaciones y acceso al sistema operativo; `gui/` contiene la
+presentación Qt/QML. Pydantic valida los modelos de dominio y los manifiestos
+persistidos. `gui.application.ApplicationContainer` usa `dependency-injector`
+para construir y conectar adaptadores, casos de uso y servicios Qt. Se crea un
+contenedor por controlador; `gui.application.create_controller` conserva los
+overrides para pruebas y usos personalizados. Los módulos antiguos de nivel
+superior se conservan como fachadas de compatibilidad para las importaciones
+públicas existentes.
+El comando `eduescale-gui` es el entry point instalado para iniciar esa
+interfaz. Los tokens visuales compartidos por las vistas se definen en el
 singleton QML `eduescale/gui/qml/styles/Style.qml`; todos los desplegables usan
 el componente `eduescale/gui/qml/StyledComboBox.qml` para mantener el mismo
 estilo en su lista emergente. La interfaz, el mapa, sus datos, las imágenes y
@@ -85,15 +91,21 @@ uv run pyside6-rcc --binary eduescale/gui/resources.qrc -o eduescale/gui/resourc
 
 En la barra de búsqueda puedes elegir entre **ESCALE en línea** y **Base
 offline**. Para usar una base local, selecciona un archivo `.sqlite3` creado
-por EduEscale; la aplicación recuerda su ruta. La búsqueda offline aplica los
-mismos filtros de ubicación, gestión y nivel sin volver a consultar ESCALE.
+por EduEscale; la aplicación recuerda su ruta. Las bases nuevas usan SQLAlchemy
+y claves normalizadas e indexadas para aplicar en SQLite los mismos filtros de
+ubicación, gestión y nivel. Las bases antiguas siguen siendo compatibles y se
+buscan con el lector heredado. Antes de aceptarla, la aplicación comprueba
+`quick_check` y contrasta el número de colegios con sus estadísticas guardadas.
 
 Usa **Actualizar base** para descargar los datos de ESCALE sin filtros y crear
 o reemplazar la base local. La aplicación muestra el progreso y, al terminar,
 el total de registros recibidos, los colegios únicos, las páginas consultadas
-y la fecha de actualización. El archivo anterior se conserva si la descarga
-falla o se cancela. La descarga completa puede tardar hasta 60 minutos. Al
-crear la base por primera vez, se propone
+y la fecha de actualización, además del tiempo de descarga, las páginas
+reanudadas y los reintentos. El archivo anterior se conserva si la descarga
+falla o se cancela. Las páginas completas se guardan en un checkpoint y se
+reutilizan al reintentar durante las siguientes 24 horas, siempre que ESCALE
+mantenga el mismo total de resultados. La descarga completa puede tardar hasta
+60 minutos. Al crear la base por primera vez, se propone
 `%LOCALAPPDATA%\EduEscale\escale.sqlite3` en Windows; puedes elegir otra ruta
 en el diálogo.
 

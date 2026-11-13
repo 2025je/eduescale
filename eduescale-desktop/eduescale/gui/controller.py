@@ -1,9 +1,7 @@
 import json
 import logging
-import os
-import sqlite3
 import unicodedata
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 from pydantic import TypeAdapter, ValidationError
@@ -20,16 +18,14 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import QDesktopServices, QGuiApplication
 
-from eduescale.client import SchoolFilters
-from eduescale.export_files import android_data_path
-from eduescale.gui.export_runner import ExportRunner
-from eduescale.gui.local_database import (
-    LocalDatabaseSearchRunner,
-    LocalSearchFilter,
-    read_local_database_metadata,
-    validate_local_database,
-    write_local_database_metadata,
+from eduescale.application.errors import DataAccessError
+from eduescale.application.export_policy import android_data_path
+from eduescale.application.models import OfflineDatabaseLocationSummary
+from eduescale.application.use_cases.offline_database import (
+    OfflineDatabaseUseCases,
 )
+from eduescale.domain.offline_search import LocalSearchFilter
+from eduescale.domain.schools import SchoolFilters
 from eduescale.gui.ports import (
     ExportRunnerPort,
     LocalDatabaseSearchRunnerPort,
@@ -38,7 +34,6 @@ from eduescale.gui.ports import (
 )
 from eduescale.gui.resources import read_resource_bytes, resource_path
 from eduescale.gui.saved_searches import PortableSavedSearches
-from eduescale.paths import application_data_directory
 
 LOGGER = logging.getLogger(__name__)
 MAX_SAVED_SEARCH_FILE_BYTES = 1_048_576
@@ -70,8 +65,15 @@ class SchoolFinderController(QObject):
         settings: QSettings | None = None,
         export_runner: ExportRunnerPort | None = None,
         local_database_search_runner: LocalDatabaseSearchRunnerPort | None = None,
+        *,
+        offline_database_use_cases: OfflineDatabaseUseCases,
+        data_directory: Path,
     ):
         super().__init__(parent)
+        if export_runner is None or local_database_search_runner is None:
+            raise ValueError("Los runners de exportación y búsqueda son obligatorios.")
+        self._offline_database_use_cases = offline_database_use_cases
+        self._data_directory = data_directory
         self._settings = settings if settings is not None else QSettings()
         self._theme_mode = self._read_theme_mode()
         self._dark_theme = self._effective_dark_theme()
@@ -80,6 +82,7 @@ class SchoolFinderController(QObject):
         self._offline_database_stats = self._database_stats_text(
             self._offline_database_path
         )
+        self._offline_database_location_summary = OfflineDatabaseLocationSummary()
         if (
             self._offline_database_path is not None
             and self._offline_database_path.is_file()
@@ -87,9 +90,11 @@ class SchoolFinderController(QObject):
             try:
                 self._offline_database_stats = self._database_stats_text(
                     self._offline_database_path,
-                    read_local_database_metadata(self._offline_database_path),
+                    self._offline_database_use_cases.read_metadata(
+                        self._offline_database_path
+                    ),
                 )
-            except (OSError, sqlite3.Error, TypeError, ValueError) as error:
+            except (DataAccessError, OSError, TypeError, ValueError) as error:
                 LOGGER.error(
                     "Could not read offline database statistics for %s: %s",
                     self._offline_database_path,
@@ -202,12 +207,8 @@ class SchoolFinderController(QObject):
 
         self._location_service = location_service
         self._scrape_runner = scrape_runner
-        self._export_runner = ExportRunner() if export_runner is None else export_runner
-        self._local_database_search_runner = (
-            LocalDatabaseSearchRunner()
-            if local_database_search_runner is None
-            else local_database_search_runner
-        )
+        self._export_runner = export_runner
+        self._local_database_search_runner = local_database_search_runner
         for dependency in (
             location_service,
             scrape_runner,
@@ -548,12 +549,16 @@ class SchoolFinderController(QObject):
     def defaultOfflineDatabaseUrl(self):
         path = self._offline_database_path
         if path is None:
-            path = application_data_directory() / "escale.sqlite3"
+            path = self._data_directory / "escale.sqlite3"
         return QUrl.fromLocalFile(str(path)).toString()
 
     @Property(str, notify=stateChanged)
     def offlineDatabaseStats(self):
         return self._offline_database_stats
+
+    @Property(dict, notify=stateChanged)
+    def offlineDatabaseLocationSummary(self) -> dict[str, object]:
+        return self._offline_database_location_summary.model_dump(mode="json")
 
     @Property(bool, notify=stateChanged)
     def offlineDatabaseAvailable(self):
@@ -683,9 +688,10 @@ class SchoolFinderController(QObject):
             )
             return False
         try:
-            validate_local_database(database_path)
-            metadata = read_local_database_metadata(database_path)
-        except (OSError, sqlite3.Error, TypeError, ValueError) as error:
+            metadata, location_summary = self._offline_database_use_cases.inspect(
+                database_path
+            )
+        except (DataAccessError, OSError, TypeError, ValueError) as error:
             LOGGER.error(
                 "Refusing invalid offline database %s: %s", database_path, error
             )
@@ -697,6 +703,7 @@ class SchoolFinderController(QObject):
             database_path,
             metadata,
         )
+        self._offline_database_location_summary = location_summary
         self._data_source = "offline"
         self._settings.setValue("data/source", "offline")
         self._settings.setValue("data/offlineDatabasePath", str(database_path))
@@ -724,6 +731,9 @@ class SchoolFinderController(QObject):
         total_records = values.get("total_records")
         pages = values.get("pages")
         updated_at = values.get("updated_at")
+        retries = values.get("pages_retried", "0")
+        resumed_pages = values.get("resumed_pages", "0")
+        duration_seconds = values.get("download_duration_seconds")
         if (
             unique_records is None
             or total_records is None
@@ -735,14 +745,29 @@ class SchoolFinderController(QObject):
             unique_count = int(unique_records)
             total_count = int(total_records)
             page_count = int(pages)
+            retry_count = int(retries)
+            resumed_count = int(resumed_pages)
             updated = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
             formatted_date = updated.astimezone().strftime("%Y-%m-%d %H:%M")
             unique_label = "colegio único" if unique_count == 1 else "colegios únicos"
-            return (
-                f"{unique_count:,} {unique_label} de {total_count:,} resultados · "
-                f"{page_count:,} página{'s' if page_count != 1 else ''} · "
-                f"actualizada {formatted_date}"
+            pages_label = (
+                "página verificada" if page_count == 1 else "páginas verificadas"
             )
+            stats = (
+                f"{unique_count:,} {unique_label} de {total_count:,} resultados · "
+                f"{page_count:,} {pages_label}"
+            )
+            diagnostics = []
+            if resumed_count:
+                diagnostics.append(f"{resumed_count:,} páginas reanudadas")
+            if retry_count:
+                diagnostics.append(f"{retry_count:,} reintentos")
+            if duration_seconds is not None:
+                duration_minutes = int(duration_seconds) // 60
+                diagnostics.append(f"{duration_minutes:,} min de descarga")
+            if diagnostics:
+                stats += " · " + " · ".join(diagnostics)
+            return f"{stats} · actualizada {formatted_date}"
         except (ValueError, OverflowError) as error:
             LOGGER.error("La estadística de actualización no es válida: %s", error)
             return "La base local no contiene estadísticas válidas."
@@ -1187,9 +1212,9 @@ class SchoolFinderController(QObject):
                 )
                 return
             try:
-                validate_local_database(local_database_path)
+                self._offline_database_use_cases.validate(local_database_path)
                 local_filters = self._local_search_filters(filter_sets)
-            except (OSError, sqlite3.Error, TypeError, ValueError) as error:
+            except (DataAccessError, OSError, TypeError, ValueError) as error:
                 LOGGER.error(
                     "Cannot search offline database %s: %s",
                     local_database_path,
@@ -1432,7 +1457,10 @@ class SchoolFinderController(QObject):
             self._progress_visible = False
             self._progress_indeterminate = False
             self._progress_message = ""
-            self._status_text = "Actualización cancelada. La base anterior se conservó."
+            self._status_text = (
+                "Actualización cancelada. La base anterior se conservó; "
+                "el progreso completo podrá reanudarse al actualizar de nuevo."
+            )
             self.stateChanged.emit()
             return
         LOGGER.info("Extraction cancelled; previous output was preserved.")
@@ -1458,7 +1486,11 @@ class SchoolFinderController(QObject):
             self._progress_visible = False
             self._progress_indeterminate = False
             self._progress_message = ""
-            self._status_text = f"No se pudo actualizar la base offline: {title}"
+            self._status_text = (
+                f"No se pudo actualizar la base offline: {title}. "
+                "La base anterior se conservó; las páginas completas podrán "
+                "reutilizarse al reintentar."
+            )
             self.stateChanged.emit()
             self.errorRaised.emit(title, details)
             return
@@ -1481,18 +1513,15 @@ class SchoolFinderController(QObject):
         target_path = self._database_update_target
         if target_path is None:
             raise RuntimeError("No hay una actualización de base offline activa.")
-        updated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
         try:
-            write_local_database_metadata(
+            metadata = self._offline_database_use_cases.publish_download(
                 staged_path,
-                updated_at=updated_at,
+                target_path,
                 total_records=total,
                 unique_records=records,
                 pages=pages,
             )
-            metadata = read_local_database_metadata(staged_path)
-            os.replace(staged_path, target_path)
-        except (OSError, sqlite3.Error, TypeError, ValueError) as error:
+        except (DataAccessError, OSError, TypeError, ValueError) as error:
             LOGGER.exception("Could not publish offline database %s.", target_path)
             self._database_update_target = None
             self._scrape_running = False
@@ -1508,6 +1537,12 @@ class SchoolFinderController(QObject):
             )
             return
 
+        checkpoint_cleanup_error = self._scrape_runner.complete_database_download()
+        if checkpoint_cleanup_error:
+            LOGGER.warning(
+                "Could not clean completed offline download checkpoint: %s",
+                checkpoint_cleanup_error,
+            )
         self._database_update_target = None
         self._offline_database_path = target_path
         self._offline_database_stats = self._database_stats_text(
@@ -1531,6 +1566,8 @@ class SchoolFinderController(QObject):
             f"de {total:,} · {pages:,} "
             f"página{'s' if pages != 1 else ''}."
         )
+        if checkpoint_cleanup_error:
+            self._status_text += " No se pudo limpiar el progreso temporal."
         self.stateChanged.emit()
 
     @Slot(str, str)

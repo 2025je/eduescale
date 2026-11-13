@@ -3,7 +3,9 @@ from threading import Event
 import pytest
 from PySide6.QtCore import QCoreApplication, QEventLoop, QTimer
 
+from eduescale.application.errors import LocationFetchError
 from eduescale.gui.location_service import LocationService
+from eduescale.infrastructure.escale import location_provider
 
 
 def wait_for_signal(signal, start=None):
@@ -102,3 +104,13 @@ def test_failed_location_request_can_be_retried(application):
         assert provider.calls == 2
     finally:
         service.shutdown()
+
+
+def test_escale_provider_translates_transport_errors(monkeypatch):
+    def fail_request():
+        raise location_provider.requests.ConnectionError("servicio no disponible")
+
+    monkeypatch.setattr(location_provider, "fetch_regions", fail_request)
+
+    with pytest.raises(LocationFetchError, match="servicio no disponible"):
+        location_provider.ESCALELocationProvider().fetch("regions", "")

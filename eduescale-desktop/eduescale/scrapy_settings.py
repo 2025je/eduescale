@@ -1,7 +1,7 @@
 BOT_NAME = "eduescale"
 
-SPIDER_MODULES = ["eduescale.spiders"]
-NEWSPIDER_MODULE = "eduescale.spiders"
+SPIDER_MODULES = ["eduescale.infrastructure.scrapy.spiders"]
+NEWSPIDER_MODULE = "eduescale.infrastructure.scrapy.spiders"
 
 ROBOTSTXT_OBEY = True
 TWISTED_REACTOR = "twisted.internet.asyncioreactor.AsyncioSelectorReactor"
@@ -13,5 +13,5 @@ RETRY_TIMES = 5
 USER_AGENT = "eduescale/0.1 (consulta educativa; contacto: usuario local)"
 
 ITEM_PIPELINES = {
-    "eduescale.pipelines.ExcelPipeline": 300,
+    "eduescale.infrastructure.scrapy.pipelines.ExcelPipeline": 300,
 }

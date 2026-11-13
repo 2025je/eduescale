@@ -2,6 +2,7 @@ import math
 import os
 import sqlite3
 import tempfile
+import time
 from pathlib import Path
 from urllib.parse import urlencode
 from xml.etree import ElementTree
@@ -9,12 +10,16 @@ from xml.etree import ElementTree
 import scrapy
 from pydantic import TypeAdapter
 from scrapy.exceptions import CloseSpider
+from scrapy.http import Response
 
-from eduescale.client import (
+from eduescale.domain.schools import SchoolFilters
+from eduescale.infrastructure.escale.client import (
     API_URL,
-    SchoolFilters,
     build_search_params,
     parse_institutions_page,
+)
+from eduescale.infrastructure.persistence.download_checkpoints import (
+    DownloadCheckpoint,
 )
 
 PAGE_SIZE = 50
@@ -52,6 +57,8 @@ class SchoolsSpider(scrapy.Spider):
         management="",
         level="",
         filters_json=None,
+        checkpoint_dir=None,
+        checkpoint_fingerprint=None,
         *args,
         **kwargs,
     ):
@@ -89,6 +96,14 @@ class SchoolsSpider(scrapy.Spider):
         self.count_received = False
         self.filter_totals = [0] * len(self.filters)
         self._count_responses = 0
+        self.pages_retried = 0
+        self.resumed_pages = 0
+        self.started_monotonic = time.monotonic()
+        self._checkpoint = (
+            DownloadCheckpoint(Path(checkpoint_dir), checkpoint_fingerprint)
+            if checkpoint_dir and checkpoint_fingerprint
+            else None
+        )
         self._seen_store: sqlite3.Connection | None = None
         self._seen_store_path: Path | None = None
 
@@ -134,6 +149,13 @@ class SchoolsSpider(scrapy.Spider):
 
         self.expected_total = sum(self.filter_totals)
         self.count_received = True
+        if self._checkpoint is not None and self._checkpoint.set_filter_totals(
+            self.filter_totals
+        ):
+            self.logger.warning(
+                "El total de resultados de ESCALE cambió; "
+                "se reiniciará la descarga desde cero."
+            )
         if (
             not self._database_output
             and len(self.filters) == 1
@@ -149,8 +171,9 @@ class SchoolsSpider(scrapy.Spider):
         ):
             for offset in range(0, filter_total, PAGE_SIZE):
                 params = urlencode(build_search_params(filters, offset))
-                yield scrapy.Request(
-                    f"{API_URL}/instituciones?{params}",
+                page_url = f"{API_URL}/instituciones?{params}"
+                request = scrapy.Request(
+                    page_url,
                     callback=self.parse_page,
                     errback=self.page_request_failed,
                     meta={
@@ -161,8 +184,26 @@ class SchoolsSpider(scrapy.Spider):
                         "handle_httpstatus_all": True,
                     },
                 )
+                cached_body = (
+                    self._checkpoint.load_page(filter_index, offset)
+                    if self._checkpoint is not None
+                    else None
+                )
+                if cached_body is None:
+                    yield request
+                    continue
+                request.meta["from_checkpoint"] = True
+                self.resumed_pages += 1
+                cached_response = Response(
+                    page_url,
+                    status=200,
+                    body=cached_body,
+                    request=request,
+                )
+                yield from self.parse_page(cached_response)
 
     def page_request_failed(self, failure):
+        self.pages_retried += int(failure.request.meta.get("retry_times", 0))
         offset = failure.request.meta["offset"]
         filter_index = failure.request.meta["filter_index"]
         reason = failure.getErrorMessage()
@@ -176,6 +217,7 @@ class SchoolsSpider(scrapy.Spider):
         )
 
     def parse_page(self, response):
+        self.pages_retried += int(response.meta.get("retry_times", 0))
         filter_index = response.meta["filter_index"]
         offset = response.meta["offset"]
         if response.status != 200:
@@ -193,6 +235,7 @@ class SchoolsSpider(scrapy.Spider):
         try:
             source_item_count, records = parse_institutions_page(response.body)
         except (ElementTree.ParseError, ValueError) as error:
+            self._remove_invalid_cached_page(response)
             retry = self._retry_or_fail_page(response, f"XML no válido: {error}")
             if retry is not None:
                 yield retry
@@ -203,6 +246,7 @@ class SchoolsSpider(scrapy.Spider):
             response.meta["filter_total"] - offset,
         )
         if source_item_count != expected_page_size:
+            self._remove_invalid_cached_page(response)
             retry = self._retry_or_fail_page(
                 response,
                 f"ESCALE entregó {source_item_count} registros; "
@@ -212,6 +256,10 @@ class SchoolsSpider(scrapy.Spider):
                 yield retry
             return
 
+        if self._checkpoint is not None and not response.meta.get(
+            "from_checkpoint", False
+        ):
+            self._checkpoint.save_page(filter_index, offset, response.body)
         self.pages_received += 1
         self.items_received += source_item_count
         for record in records:
@@ -266,6 +314,15 @@ class SchoolsSpider(scrapy.Spider):
 
     def closed(self, reason: str):
         self.logger.debug("Closing deduplication store (reason: %s).", reason)
+        if self._checkpoint is not None and self.failed_pages:
+            self._checkpoint.record_failures(
+                [
+                    f"filtro {filter_index + 1}, offset {offset}: {failure}"
+                    for (filter_index, offset), failure in sorted(
+                        self.failed_pages.items()
+                    )
+                ]
+            )
         try:
             if self._seen_store is not None:
                 self._seen_store.close()
@@ -277,20 +334,33 @@ class SchoolsSpider(scrapy.Spider):
 
     def _log_progress(self):
         self.logger.info(
-            "SCRAPE_PROGRESS=%d/%d UNIQUE=%d PAGES=%d FAILED=%d",
+            "SCRAPE_PROGRESS=%d/%d UNIQUE=%d PAGES=%d RESUMED=%d RETRIED=%d FAILED=%d",
             self.items_received,
             self.expected_total,
             self.unique_items_received,
             self.pages_received,
+            self.resumed_pages,
+            self.pages_retried,
             len(self.failed_pages),
         )
 
+    def _remove_invalid_cached_page(self, response: Response) -> None:
+        if self._checkpoint is not None and response.meta.get("from_checkpoint", False):
+            self._checkpoint.remove_page(
+                response.meta["filter_index"],
+                response.meta["offset"],
+            )
+
     def _retry_or_fail_page(self, response, reason):
         request = response.request.copy()
+        request.meta.pop("from_checkpoint", None)
         retry_times = response.meta.get("validation_retry_times", 0)
         if retry_times < PAGE_VALIDATION_RETRIES:
             request.dont_filter = True
             request.meta["validation_retry_times"] = retry_times + 1
+            self.pages_retried += 1
+            if self._checkpoint is not None:
+                self._checkpoint.record_retry()
             self.logger.warning(
                 "Reintentando página offset=%d (%d/%d): %s",
                 response.meta["offset"],

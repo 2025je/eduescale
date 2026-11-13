@@ -7,12 +7,18 @@ from types import SimpleNamespace
 import pytest
 from PySide6.QtCore import QCoreApplication, QObject, QSettings, QUrl, Signal
 
-from eduescale.client import SchoolFilters
-from eduescale.export_files import android_data_path
+from eduescale.application.export_policy import android_data_path
+from eduescale.application.use_cases.offline_database import (
+    OfflineDatabaseUseCases,
+)
+from eduescale.domain.schools import SchoolFilters
 from eduescale.gui import controller as controller_module
 from eduescale.gui.application import create_controller
 from eduescale.gui.controller import SchoolFinderController
 from eduescale.gui.saved_searches import PortableSavedSearch
+from eduescale.infrastructure.persistence.local_database import (
+    SqliteOfflineDatabaseRepository,
+)
 
 
 class FakeLocationService(QObject):
@@ -44,6 +50,9 @@ class FakeScrapeRunner(QObject):
 
     def cancel(self):
         self.cancel_requests += 1
+
+    def complete_database_download(self):
+        return None
 
     def shutdown(self):
         pass
@@ -135,6 +144,10 @@ def controller_components(tmp_path):
         settings=settings,
         export_runner=export_runner,
         local_database_search_runner=local_database_search_runner,
+        offline_database_use_cases=OfflineDatabaseUseCases(
+            SqliteOfflineDatabaseRepository()
+        ),
+        data_directory=tmp_path,
     )
     errors = []
     controller.errorRaised.connect(
@@ -158,6 +171,12 @@ def test_restores_export_folder_and_window_size(tmp_path):
         location_service=FakeLocationService(),
         scrape_runner=FakeScrapeRunner(),
         settings=settings,
+        export_runner=FakeExportRunner(),
+        local_database_search_runner=FakeLocalDatabaseSearchRunner(),
+        offline_database_use_cases=OfflineDatabaseUseCases(
+            SqliteOfflineDatabaseRepository()
+        ),
+        data_directory=tmp_path,
     )
 
     try:
@@ -194,6 +213,12 @@ def test_restores_legacy_theme_and_persists_theme_mode(tmp_path):
         location_service=FakeLocationService(),
         scrape_runner=FakeScrapeRunner(),
         settings=settings,
+        export_runner=FakeExportRunner(),
+        local_database_search_runner=FakeLocalDatabaseSearchRunner(),
+        offline_database_use_cases=OfflineDatabaseUseCases(
+            SqliteOfflineDatabaseRepository()
+        ),
+        data_directory=tmp_path,
     )
     changes = []
     controller.darkThemeChanged.connect(lambda: changes.append(controller.darkTheme))
@@ -394,17 +419,24 @@ def test_education_level_selection_is_required(controller_components):
 
 
 def test_default_offline_database_uses_application_data_directory(
-    controller_components,
     monkeypatch,
     tmp_path,
 ):
-    controller, _scrape_runner, _errors = controller_components
     app_data_directory = tmp_path / "AppData" / "Local"
     monkeypatch.setenv("LOCALAPPDATA", str(app_data_directory))
+    controller = create_controller(
+        FakeLocationService(),
+        FakeScrapeRunner(),
+        FakeExportRunner(),
+        FakeLocalDatabaseSearchRunner(),
+    )
 
-    default_path = Path(QUrl(controller.defaultOfflineDatabaseUrl).toLocalFile())
+    try:
+        default_path = Path(QUrl(controller.defaultOfflineDatabaseUrl).toLocalFile())
 
-    assert default_path == app_data_directory / "EduEscale" / "escale.sqlite3"
+        assert default_path == app_data_directory / "EduEscale" / "escale.sqlite3"
+    finally:
+        controller.shutdown()
 
 
 def test_rejects_non_local_output_urls(controller_components):
@@ -466,6 +498,14 @@ def test_offline_source_filters_the_selected_local_database(
             )
             """
         )
+        database.executemany(
+            "INSERT INTO records VALUES (?, ?, ?, ?)",
+            [
+                ("Loreto", "Maynas", "Iquitos", "{}"),
+                ("Loreto", "Maynas", "Iquitos", "{}"),
+                ("Lima", "Lima", "Miraflores", "{}"),
+            ],
+        )
         database.commit()
 
     assert controller.selectOfflineDatabase(
@@ -486,6 +526,10 @@ def test_offline_source_filters_the_selected_local_database(
 
     assert controller.dataSource == "offline"
     assert controller._settings.value("data/offlineDatabasePath") == str(database_path)
+    summary = controller.offlineDatabaseLocationSummary
+    assert summary["total_schools"] == 3
+    assert summary["department_count"] == 2
+    assert summary["district_count"] == 2
     assert scrape_runner.started_requests == []
     assert local_runner.started_requests[0][0] == database_path
     offline_filter = local_runner.started_requests[0][1][0]
@@ -561,12 +605,12 @@ def test_invalid_offline_update_does_not_replace_existing_database(
     database_path = tmp_path / "offline.sqlite3"
     database_path.write_bytes(b"existing database")
 
-    def reject_metadata(_database_path):
+    def reject_metadata(*_args, **_kwargs):
         raise TypeError("metadata inválida")
 
     monkeypatch.setattr(
-        controller_module,
-        "read_local_database_metadata",
+        controller._offline_database_use_cases,
+        "publish_download",
         reject_metadata,
     )
     assert controller.updateOfflineDatabase(
@@ -585,14 +629,14 @@ def test_offline_search_keeps_database_update_statistics(
 ):
     controller, _scrape_runner, _errors = controller_components
     controller._offline_database_stats = (
-        "1 colegio único de 2 resultados · 1 página · actualizada ayer"
+        "1 colegio único de 2 resultados · 1 página verificada · actualizada ayer"
     )
 
     controller._offline_search_completed(str(tmp_path / "filtered.sqlite3"), 2, 1, 0)
 
     assert "1 de 2 colegios coinciden" in controller.statusText
     assert controller.offlineDatabaseStats == (
-        "1 colegio único de 2 resultados · 1 página · actualizada ayer"
+        "1 colegio único de 2 resultados · 1 página verificada · actualizada ayer"
     )
 
 

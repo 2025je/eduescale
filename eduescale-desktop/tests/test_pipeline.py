@@ -1,14 +1,20 @@
 import json
 import tempfile
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 from openpyxl import load_workbook
 
-from eduescale.export_files import android_data_path
-from eduescale.exports import export_eduescale, export_excel
-from eduescale.pipelines import ExcelPipeline
+from eduescale.application.export_policy import android_data_path
+from eduescale.infrastructure.exports import files as export_files
+from eduescale.infrastructure.exports.eduescale import export_eduescale
+from eduescale.infrastructure.exports.excel import export_excel
+from eduescale.infrastructure.persistence.local_database import (
+    read_local_database_metadata,
+)
+from eduescale.infrastructure.scrapy.pipelines import ExcelPipeline
 
 
 def test_saves_one_excel_sheet_per_district_with_tables_per_level():
@@ -51,6 +57,9 @@ def test_saves_one_excel_sheet_per_district_with_tables_per_level():
             unique_items_received=3,
             pages_received=3,
             failed_pages={},
+            pages_retried=0,
+            resumed_pages=0,
+            started_monotonic=time.monotonic(),
         )
         pipeline = ExcelPipeline()
         pipeline.crawler = SimpleNamespace(spider=spider)
@@ -61,6 +70,11 @@ def test_saves_one_excel_sheet_per_district_with_tables_per_level():
         pipeline.close_spider()
 
         assert database_path.is_file()
+        database_metadata = read_local_database_metadata(database_path)
+        assert database_metadata["schema_version"] == "3"
+        assert database_metadata["pages_retried"] == "0"
+        assert database_metadata["resumed_pages"] == "0"
+        assert database_metadata["verified_pages"] == "3"
         assert not output_path.exists()
         android_path = android_data_path(output_path)
         assert not android_path.exists()
@@ -182,8 +196,6 @@ def test_saves_one_excel_sheet_per_district_with_tables_per_level():
 
 
 def test_failed_excel_replace_preserves_both_existing_exports(monkeypatch):
-    from eduescale import export_files
-
     record = {
         "nombre": "Colegio Ejemplo",
         "direccion": "Av. Principal",

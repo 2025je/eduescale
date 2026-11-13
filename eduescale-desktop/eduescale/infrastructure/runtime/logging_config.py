@@ -1,8 +1,10 @@
+"""Configure rotating log files for the application."""
+
 import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-from eduescale.paths import application_data_directory
+from eduescale.infrastructure.runtime.paths import application_data_directory
 
 MAX_LOG_BYTES = 5 * 1024 * 1024
 LOG_BACKUP_COUNT = 3

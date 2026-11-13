@@ -1,7 +1,7 @@
 import logging
 from logging.handlers import RotatingFileHandler
 
-from eduescale.logging_config import (
+from eduescale.infrastructure.runtime.logging_config import (
     LOG_BACKUP_COUNT,
     MAX_LOG_BYTES,
     configure_logging,

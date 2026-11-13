@@ -1,0 +1,1 @@
+"""ESCALE Scrapy spiders."""

@@ -1,6 +1,8 @@
 **
 !eduescale-mobile/
 !eduescale-mobile/**
+!test-fixtures/
+!test-fixtures/**
 eduescale-mobile/.git
 eduescale-mobile/.gradle
 eduescale-mobile/.idea

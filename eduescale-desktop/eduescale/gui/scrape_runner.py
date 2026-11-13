@@ -17,13 +17,15 @@ from PySide6.QtCore import (
     Slot,
 )
 
-from eduescale.client import SchoolFilters
+from eduescale.application.ports import CheckpointGateway
+from eduescale.domain.schools import SchoolFilters
 
 LOGGER = logging.getLogger(__name__)
 
 SCRAPE_TOTAL_PATTERN = re.compile(r"SCRAPE_TOTAL=(\d+)")
 SCRAPE_PROGRESS_PATTERN = re.compile(
-    r"SCRAPE_PROGRESS=(\d+)/(\d+)\s+UNIQUE=(\d+)\s+PAGES=(\d+)\s+FAILED=(\d+)"
+    r"SCRAPE_PROGRESS=(\d+)/(\d+)\s+UNIQUE=(\d+)\s+PAGES=(\d+)"
+    r"(?:\s+RESUMED=(\d+))?(?:\s+RETRIED=(\d+))?\s+FAILED=(\d+)"
 )
 SCRAPE_TIMEOUT_MS = 15 * 60 * 1000
 DATABASE_SCRAPE_TIMEOUT_MS = 60 * 60 * 1000
@@ -49,8 +51,13 @@ class ScrapeRunner(QObject):
     cancelled = Signal()
     warning = Signal(str, str)
 
-    def __init__(self, parent: QObject | None = None):
+    def __init__(
+        self,
+        checkpoint_gateway: CheckpointGateway | None = None,
+        parent: QObject | None = None,
+    ):
         super().__init__(parent)
+        self._checkpoint_gateway = checkpoint_gateway
         self._process = QProcess(self)
         self._process.readyReadStandardError.connect(self._read_process_output)
         self._process.readyReadStandardOutput.connect(self._read_process_output)
@@ -71,8 +78,11 @@ class ScrapeRunner(QObject):
         self._scrape_total: int | None = None
         self._records_received = 0
         self._pages_received = 0
+        self._resumed_pages = 0
+        self._retried_pages = 0
         self._scrape_timed_out = False
         self._database_download = False
+        self._checkpoint_directory: Path | None = None
         self._scrape_timeout_ms = SCRAPE_TIMEOUT_MS
         self._cancel_requested = False
         self._shutting_down = False
@@ -83,6 +93,8 @@ class ScrapeRunner(QObject):
             self.failed.emit("Extracción en curso", "Ya hay una extracción activa.")
             return
 
+        self._database_download = output_path.suffix.lower() == ".sqlite3"
+        self._checkpoint_directory = None
         cleanup_error = self._cleanup_staging()
         if cleanup_error:
             self.failed.emit(
@@ -110,8 +122,9 @@ class ScrapeRunner(QObject):
         self._scrape_total = None
         self._records_received = 0
         self._pages_received = 0
+        self._resumed_pages = 0
+        self._retried_pages = 0
         self._scrape_timed_out = False
-        self._database_download = output_path.suffix.lower() == ".sqlite3"
         self._scrape_timeout_ms = (
             DATABASE_SCRAPE_TIMEOUT_MS if self._database_download else SCRAPE_TIMEOUT_MS
         )
@@ -133,6 +146,29 @@ class ScrapeRunner(QObject):
             "-s",
             "LOGSTATS_INTERVAL=1",
         ]
+        if self._database_download:
+            if self._checkpoint_gateway is None:
+                self._fail(
+                    "No se pudo preparar la descarga de la base",
+                    "No está configurado el servicio de reanudación.",
+                )
+                return
+            try:
+                (
+                    self._checkpoint_directory,
+                    fingerprint,
+                ) = self._checkpoint_gateway.prepare(output_path, filter_sets)
+            except (OSError, ValueError) as error:
+                self._fail("No se pudo preparar la descarga de la base", str(error))
+                return
+            scrapy_arguments.extend(
+                [
+                    "-a",
+                    f"checkpoint_dir={self._checkpoint_directory}",
+                    "-a",
+                    f"checkpoint_fingerprint={fingerprint}",
+                ]
+            )
         environment = QProcessEnvironment.systemEnvironment()
         environment.insert("SCRAPY_SETTINGS_MODULE", "eduescale.scrapy_settings")
         self._process.setProcessEnvironment(environment)
@@ -220,9 +256,12 @@ class ScrapeRunner(QObject):
 
         progress_match = SCRAPE_PROGRESS_PATTERN.search(line)
         if progress_match:
-            received, total, unique, pages, failed = map(int, progress_match.groups())
+            values = [int(value or 0) for value in progress_match.groups()]
+            received, total, unique, pages, resumed, retried, failed = values
             self._scrape_total = total
-            self._emit_progress(received, total, unique, pages, failed)
+            self._emit_progress(
+                received, total, unique, pages, failed, resumed, retried
+            )
 
     def _emit_progress(
         self,
@@ -231,9 +270,13 @@ class ScrapeRunner(QObject):
         unique: int,
         pages: int,
         failed: int = 0,
+        resumed: int = 0,
+        retried: int = 0,
     ):
         self._records_received = unique
         self._pages_received = pages
+        self._resumed_pages = resumed
+        self._retried_pages = retried
         if total:
             page_label = "página" if pages == 1 else "páginas"
             message = (
@@ -245,6 +288,10 @@ class ScrapeRunner(QObject):
         if failed:
             failed_label = "página fallida" if failed == 1 else "páginas fallidas"
             message += f" · {failed} {failed_label}"
+        if resumed:
+            message += f" · {resumed} páginas reutilizadas"
+        if retried:
+            message += f" · {retried} reintentos"
         self.progressChanged.emit(received, total, pages, message)
 
     @Slot(QProcess.ProcessError)
@@ -367,6 +414,23 @@ class ScrapeRunner(QObject):
                 f"{details}\nNo se pudieron limpiar los temporales: {cleanup_error}"
             )
         self.failed.emit(title, details)
+
+    def complete_database_download(self) -> str | None:
+        checkpoint_directory = self._checkpoint_directory
+        if checkpoint_directory is None:
+            return None
+        if self._checkpoint_gateway is None:
+            return "No está configurado el servicio de reanudación."
+        error = self._checkpoint_gateway.complete(checkpoint_directory)
+        if error:
+            LOGGER.warning(
+                "Could not remove completed download checkpoint %s: %s",
+                checkpoint_directory,
+                error,
+            )
+            return error
+        self._checkpoint_directory = None
+        return None
 
     def _request_process_stop(self):
         if self._process.state() != QProcess.ProcessState.NotRunning:

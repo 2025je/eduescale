@@ -3,7 +3,10 @@ from PyInstaller.utils.hooks import collect_submodules
 from PyInstaller.utils.hooks import copy_metadata
 
 datas = []
-hiddenimports = ['eduescale.scrapy_settings', 'eduescale.pipelines']
+hiddenimports = [
+    'eduescale.scrapy_settings',
+    'eduescale.infrastructure.scrapy.pipelines',
+]
 datas += copy_metadata('Scrapy')
 datas += copy_metadata('lxml')
 datas += copy_metadata('cssselect')
@@ -12,7 +15,7 @@ datas += copy_metadata('w3lib')
 datas += copy_metadata('Twisted')
 datas += copy_metadata('pyOpenSSL')
 datas += copy_metadata('cryptography')
-hiddenimports += collect_submodules('eduescale.spiders')
+hiddenimports += collect_submodules('eduescale.infrastructure.scrapy.spiders')
 
 
 a = Analysis(

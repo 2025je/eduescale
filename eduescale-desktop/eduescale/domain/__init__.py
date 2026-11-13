@@ -1,0 +1,1 @@
+"""Core EduEscale business models."""

@@ -3,8 +3,14 @@ import tempfile
 from pathlib import Path
 
 
-def android_data_path(excel_path: Path) -> Path:
-    return excel_path.with_suffix(".eduescale")
+def create_temporary_export_path(output_path: Path, suffix: str) -> Path:
+    with tempfile.NamedTemporaryFile(
+        prefix=".eduescale-export-",
+        suffix=suffix,
+        dir=output_path.parent,
+        delete=False,
+    ) as export_file:
+        return Path(export_file.name)
 
 
 def replace_export_pair(

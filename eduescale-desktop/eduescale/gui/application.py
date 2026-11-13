@@ -2,11 +2,16 @@ import logging
 import sys
 from collections.abc import Callable
 
+from dependency_injector import containers, providers
 from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication, QIcon
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
 from PySide6.QtWebEngineQuick import QtWebEngineQuick
 
+from eduescale.application.use_cases.export_data import ExportData
+from eduescale.application.use_cases.offline_database import (
+    OfflineDatabaseUseCases,
+)
 from eduescale.gui.controller import SchoolFinderController
 from eduescale.gui.export_runner import ExportRunner
 from eduescale.gui.local_database import LocalDatabaseSearchRunner
@@ -19,9 +24,59 @@ from eduescale.gui.ports import (
 )
 from eduescale.gui.resources import resource_path, resource_url
 from eduescale.gui.scrape_runner import ScrapeRunner
-from eduescale.logging_config import configure_logging
+from eduescale.infrastructure.escale.location_provider import ESCALELocationProvider
+from eduescale.infrastructure.exports.gateway import FilesystemExportGateway
+from eduescale.infrastructure.persistence.checkpoints import (
+    DownloadCheckpointGateway,
+)
+from eduescale.infrastructure.persistence.local_database import (
+    SqliteOfflineDatabaseRepository,
+)
+from eduescale.infrastructure.runtime.logging_config import configure_logging
+from eduescale.infrastructure.runtime.paths import application_data_directory
 
 LOGGER = logging.getLogger(__name__)
+
+
+class ApplicationContainer(containers.DeclarativeContainer):
+    location_gateway = providers.Singleton(ESCALELocationProvider)
+    location_service = providers.Factory(
+        LocationService,
+        provider=location_gateway,
+    )
+    checkpoint_gateway = providers.Singleton(DownloadCheckpointGateway)
+    scrape_runner = providers.Factory(
+        ScrapeRunner,
+        checkpoint_gateway=checkpoint_gateway,
+    )
+    export_gateway = providers.Singleton(FilesystemExportGateway)
+    export_data = providers.Singleton(
+        ExportData,
+        gateway=export_gateway,
+    )
+    export_runner = providers.Factory(
+        ExportRunner,
+        use_case=export_data,
+    )
+    offline_database_repository = providers.Singleton(SqliteOfflineDatabaseRepository)
+    offline_database_use_cases = providers.Singleton(
+        OfflineDatabaseUseCases,
+        repository=offline_database_repository,
+    )
+    local_database_search_runner = providers.Factory(
+        LocalDatabaseSearchRunner,
+        use_cases=offline_database_use_cases,
+    )
+    data_directory = providers.Callable(application_data_directory)
+    controller = providers.Factory(
+        SchoolFinderController,
+        location_service=location_service,
+        scrape_runner=scrape_runner,
+        export_runner=export_runner,
+        local_database_search_runner=local_database_search_runner,
+        offline_database_use_cases=offline_database_use_cases,
+        data_directory=data_directory,
+    )
 
 
 def configure_application_font(application: QGuiApplication) -> bool:
@@ -75,19 +130,24 @@ def create_controller(
     scrape_runner: ScrapeRunnerPort | None = None,
     export_runner: ExportRunnerPort | None = None,
     local_database_search_runner: LocalDatabaseSearchRunnerPort | None = None,
+    offline_database_use_cases: OfflineDatabaseUseCases | None = None,
 ) -> SchoolFinderController:
-    return SchoolFinderController(
-        location_service=(
-            LocationService() if location_service is None else location_service
-        ),
-        scrape_runner=ScrapeRunner() if scrape_runner is None else scrape_runner,
-        export_runner=ExportRunner() if export_runner is None else export_runner,
-        local_database_search_runner=(
-            LocalDatabaseSearchRunner()
-            if local_database_search_runner is None
-            else local_database_search_runner
-        ),
-    )
+    container = ApplicationContainer()
+    if location_service is not None:
+        container.location_service.override(providers.Object(location_service))
+    if scrape_runner is not None:
+        container.scrape_runner.override(providers.Object(scrape_runner))
+    if export_runner is not None:
+        container.export_runner.override(providers.Object(export_runner))
+    if local_database_search_runner is not None:
+        container.local_database_search_runner.override(
+            providers.Object(local_database_search_runner)
+        )
+    if offline_database_use_cases is not None:
+        container.offline_database_use_cases.override(
+            providers.Object(offline_database_use_cases)
+        )
+    return container.controller()
 
 
 def main(

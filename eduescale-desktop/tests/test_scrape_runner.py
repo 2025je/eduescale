@@ -5,8 +5,8 @@ from pathlib import Path
 import pytest
 from PySide6.QtCore import QCoreApplication, QProcess
 
-from eduescale.client import SchoolFilters
-from eduescale.export_files import android_data_path
+from eduescale.application.export_policy import android_data_path
+from eduescale.domain.schools import SchoolFilters
 from eduescale.gui import scrape_runner as scrape_runner_module
 from eduescale.gui.scrape_runner import (
     DATABASE_SCRAPE_TIMEOUT_MS,
@@ -157,7 +157,14 @@ def test_full_database_download_has_a_longer_timeout_and_specific_message(
     tmp_path,
     application,
 ):
-    runner = ScrapeRunner()
+    class FakeCheckpointGateway:
+        def prepare(self, output_path, filters):
+            return tmp_path / "checkpoint", "fingerprint"
+
+        def complete(self, checkpoint_directory):
+            return None
+
+    runner = ScrapeRunner(FakeCheckpointGateway())
     process = _replace_process(runner)
     failures = []
     runner.failed.connect(lambda title, details: failures.append((title, details)))

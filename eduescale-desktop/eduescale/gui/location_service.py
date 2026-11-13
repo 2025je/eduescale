@@ -1,29 +1,11 @@
 import logging
-from typing import Protocol
-from xml.etree import ElementTree
 
-import requests
 from PySide6.QtCore import QObject, Qt, QThread, QTimer, Signal, Slot
 
-from eduescale.client import fetch_districts, fetch_provinces, fetch_regions
+from eduescale.application.errors import LocationFetchError
+from eduescale.application.ports import LocationGateway
 
 LOGGER = logging.getLogger(__name__)
-LocationList = list[tuple[str, str]]
-
-
-class LocationProvider(Protocol):
-    def fetch(self, kind: str, parent_code: str) -> LocationList: ...
-
-
-class ESCALELocationProvider:
-    def fetch(self, kind: str, parent_code: str) -> LocationList:
-        if kind == "regions":
-            return fetch_regions()
-        if kind == "provinces":
-            return fetch_provinces(parent_code)
-        if kind == "districts":
-            return fetch_districts(parent_code)
-        raise ValueError(f"Tipo de ubicación desconocido: {kind}")
 
 
 class _LocationWorker(QObject):
@@ -32,7 +14,7 @@ class _LocationWorker(QObject):
 
     def __init__(
         self,
-        provider: LocationProvider,
+        provider: LocationGateway,
         kind: str,
         parent_code: str,
     ):
@@ -45,7 +27,7 @@ class _LocationWorker(QObject):
     def run(self):
         try:
             locations = self._provider.fetch(self._kind, self._parent_code)
-        except (requests.RequestException, ElementTree.ParseError, ValueError) as error:
+        except (LocationFetchError, ValueError) as error:
             LOGGER.exception(
                 "Failed to fetch %s for parent code %s.",
                 self._kind,
@@ -64,11 +46,11 @@ class LocationService(QObject):
 
     def __init__(
         self,
-        provider: LocationProvider | None = None,
+        provider: LocationGateway,
         parent: QObject | None = None,
     ):
         super().__init__(parent)
-        self._provider = provider or ESCALELocationProvider()
+        self._provider = provider
         self._threads: dict[QThread, _LocationWorker] = {}
         self._cache: dict[tuple[str, str], tuple[tuple[str, str], ...]] = {}
         self._in_flight: set[tuple[str, str]] = set()

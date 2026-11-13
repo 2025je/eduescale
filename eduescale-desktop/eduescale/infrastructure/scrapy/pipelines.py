@@ -1,16 +1,27 @@
 import json
 import logging
 import os
-import sqlite3
 import tempfile
+import time
 from pathlib import Path
 from typing import Protocol, cast
 
 from scrapy.crawler import Crawler
 from scrapy.exceptions import DropItem
+from sqlalchemy import insert
+from sqlalchemy.engine import Connection, Engine, Transaction
 
-from eduescale.export_files import android_data_path, replace_export_pair
-from eduescale.exports import export_eduescale, export_excel
+from eduescale.application.export_policy import android_data_path
+from eduescale.infrastructure.exports.eduescale import export_eduescale
+from eduescale.infrastructure.exports.excel import export_excel
+from eduescale.infrastructure.exports.files import replace_export_pair
+from eduescale.infrastructure.persistence.offline_database import (
+    create_database_engine,
+    database_metadata,
+    metadata,
+    record_search_keys,
+    records,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -35,6 +46,9 @@ class _SchoolSpiderState(Protocol):
     unique_items_received: int
     pages_received: int
     failed_pages: dict[tuple[int, int], str]
+    pages_retried: int
+    resumed_pages: int
+    started_monotonic: float
 
 
 class ExcelPipeline:
@@ -60,18 +74,11 @@ class ExcelPipeline:
         ) as spool_file:
             spool_path = Path(spool_file.name)
             self._spool_path: Path | None = spool_path
-        spool = sqlite3.connect(spool_path)
-        self._spool: sqlite3.Connection | None = spool
-        spool.execute(
-            """
-            CREATE TABLE records (
-                region TEXT NOT NULL,
-                province TEXT NOT NULL,
-                district TEXT NOT NULL,
-                payload TEXT NOT NULL
-            )
-            """
-        )
+        self._spool_engine: Engine | None = create_database_engine(spool_path)
+        metadata.create_all(self._spool_engine)
+        spool = self._spool_engine.connect()
+        self._spool: Connection | None = spool
+        self._spool_transaction: Transaction | None = spool.begin()
         self.row_count = 0
 
     def process_item(self, item):
@@ -83,17 +90,17 @@ class ExcelPipeline:
                 item[field]
         except KeyError as error:
             raise DropItem(f"Falta el campo requerido para Excel: {error}") from error
+        region = item.get("region") or "Departamento no identificado"
+        province = item.get("provincia") or "Provincia no identificada"
+        district = item.get("distrito") or "Distrito no identificado"
         spool.execute(
-            """
-            INSERT INTO records (region, province, district, payload)
-            VALUES (?, ?, ?, ?)
-            """,
-            (
-                item.get("region") or "Departamento no identificado",
-                item.get("provincia") or "Provincia no identificada",
-                item.get("distrito") or "Distrito no identificado",
-                json.dumps(item, ensure_ascii=False),
-            ),
+            insert(records).values(
+                region=region,
+                province=province,
+                district=district,
+                payload=json.dumps(item, ensure_ascii=False),
+                **record_search_keys(region, province, district, item),
+            )
         )
         self.row_count += 1
         return item
@@ -129,7 +136,43 @@ class ExcelPipeline:
                     message = f"{message} Páginas fallidas: {details}"
                 raise RuntimeError(message)
 
-            spool.commit()
+            if self.output_path.suffix.lower() == ".sqlite3":
+                spool.execute(
+                    insert(database_metadata),
+                    [
+                        {"key": "schema_version", "value": "3"},
+                        {
+                            "key": "download_duration_seconds",
+                            "value": str(
+                                max(
+                                    0,
+                                    int(time.monotonic() - spider.started_monotonic),
+                                )
+                            ),
+                        },
+                        {
+                            "key": "pages_retried",
+                            "value": str(spider.pages_retried),
+                        },
+                        {
+                            "key": "resumed_pages",
+                            "value": str(spider.resumed_pages),
+                        },
+                        {
+                            "key": "failed_pages",
+                            "value": str(len(spider.failed_pages)),
+                        },
+                        {
+                            "key": "verified_pages",
+                            "value": str(spider.pages_received),
+                        },
+                    ],
+                )
+            transaction = self._spool_transaction
+            if transaction is None:
+                raise RuntimeError("La transacción de la extracción no está abierta.")
+            transaction.commit()
+            self._spool_transaction = None
             if self.output_path.suffix.lower() == ".sqlite3":
                 self._close_spool()
                 os.replace(spool_path, self.output_path)
@@ -182,3 +225,6 @@ class ExcelPipeline:
         if self._spool is not None:
             self._spool.close()
             self._spool = None
+        if self._spool_engine is not None:
+            self._spool_engine.dispose()
+            self._spool_engine = None

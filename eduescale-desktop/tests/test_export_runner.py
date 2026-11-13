@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import sqlite3
 from pathlib import Path
 
@@ -7,7 +8,9 @@ from openpyxl import load_workbook
 from PySide6.QtCore import QEventLoop, QTimer
 from PySide6.QtGui import QGuiApplication
 
+from eduescale.application.use_cases.export_data import ExportData
 from eduescale.gui.export_runner import ExportRunner
+from eduescale.infrastructure.exports.gateway import FilesystemExportGateway
 
 
 def _create_database(path: Path, record_count: int = 1):
@@ -99,7 +102,7 @@ def test_export_runner_generates_each_requested_format(tmp_path):
     eduescale_path = tmp_path / "schools.eduescale"
     pdf_path = tmp_path / "schools.pdf"
     _create_database(database_path, record_count=60)
-    runner = ExportRunner()
+    runner = ExportRunner(ExportData(FilesystemExportGateway()))
 
     try:
         assert _run_export(runner, "excel", database_path, excel_path) == (
@@ -132,5 +135,13 @@ def test_export_runner_generates_each_requested_format(tmp_path):
         pdf_bytes = pdf_path.read_bytes()
         assert pdf_bytes.startswith(b"%PDF-")
         assert pdf_bytes.count(b"/Type /Page") >= 2
+        media_boxes = re.findall(rb"/MediaBox\s*\[([^\]]+)\]", pdf_bytes)
+        assert media_boxes
+        assert all(
+            float(width) > float(height)
+            for left, bottom, width, height in [
+                map(float, media_box.split()) for media_box in media_boxes
+            ]
+        )
     finally:
         runner.shutdown()

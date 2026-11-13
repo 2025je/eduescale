@@ -1,3 +1,5 @@
+"""Resolve the per-user EduEscale data directory."""
+
 import os
 from pathlib import Path
 

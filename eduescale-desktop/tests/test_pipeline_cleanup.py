@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from eduescale.pipelines import ExcelPipeline
+from eduescale.infrastructure.scrapy.pipelines import ExcelPipeline
 
 
 def test_incomplete_extraction_closes_and_removes_spool_database():

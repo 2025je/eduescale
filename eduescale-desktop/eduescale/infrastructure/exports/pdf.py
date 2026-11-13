@@ -3,6 +3,7 @@ import os
 import sqlite3
 import tempfile
 from contextlib import closing
+from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QMarginsF, QRect, Qt
@@ -17,7 +18,11 @@ from PySide6.QtGui import (
     QPdfWriter,
 )
 
-from eduescale.exports import EXCEL_FIELDS, EXCEL_LEVEL_LABELS, HEADERS
+from eduescale.infrastructure.exports.excel import (
+    EXCEL_FIELDS,
+    EXCEL_LEVEL_LABELS,
+    HEADERS,
+)
 
 PAGE_RESOLUTION = 120
 PAGE_MARGIN_MM = 5
@@ -50,6 +55,11 @@ class _PdfRenderer:
         self.title_font = QFont("Sans Serif")
         self.title_font.setPointSizeF(8.5)
         self.title_font.setBold(True)
+        self.summary_title_font = QFont("Sans Serif")
+        self.summary_title_font.setPointSizeF(14)
+        self.summary_title_font.setBold(True)
+        self.summary_font = QFont("Sans Serif")
+        self.summary_font.setPointSizeF(9)
         self.header_font = QFont("Sans Serif")
         self.header_font.setPointSizeF(7.5)
         self.header_font.setBold(True)
@@ -59,9 +69,60 @@ class _PdfRenderer:
         self.footer_font.setPointSizeF(7)
         self.widths = self._column_widths()
 
-    def start_district(self):
-        if self.page_has_content:
-            self._next_page()
+    def draw_summary(
+        self,
+        generated_at: str,
+        school_count: int,
+        region_count: int,
+        province_count: int,
+        district_count: int,
+        level_counts: dict[str, int],
+    ):
+        full_width = (sum(self.widths),)
+        self._draw_row(
+            ("Resumen del padrón educativo",),
+            self.summary_title_font,
+            QColor("#1E4D73"),
+            CELL_FLAGS,
+            widths=full_width,
+            text_color=QColor("#FFFFFF"),
+            minimum=36,
+        )
+        self._draw_row(
+            (f"Generado: {generated_at} (hora local)",),
+            self.summary_font,
+            QColor("#F1F5F8"),
+            CELL_FLAGS,
+            widths=full_width,
+        )
+        self._draw_row(
+            (
+                " | ".join(
+                    (
+                        f"Colegios registrados: {_format_count(school_count)}",
+                        f"Departamentos: {_format_count(region_count)}",
+                        f"Provincias: {_format_count(province_count)}",
+                        f"Distritos: {_format_count(district_count)}",
+                    )
+                ),
+            ),
+            self.summary_font,
+            QColor("#F1F5F8"),
+            CELL_FLAGS,
+            widths=full_width,
+        )
+        levels = " | ".join(
+            f"{label}: {_format_count(level_counts.get(level, 0))}"
+            for level, label in EXCEL_LEVEL_LABELS.items()
+        )
+        self._draw_row(
+            (f"Colegios por nivel: {levels}",),
+            self.summary_font,
+            QColor("#F1F5F8"),
+            CELL_FLAGS,
+            widths=full_width,
+        )
+        self.y += 8
 
     def start_table(self, region, province, district, level, first_row):
         self.current_heading = (
@@ -223,6 +284,7 @@ def export_pdf(database_path: Path, output_path: Path) -> None:
     if QGuiApplication.instance() is None:
         raise RuntimeError("La exportación PDF requiere una aplicación gráfica activa.")
 
+    generated_at = datetime.now().astimezone().strftime("%d/%m/%Y %H:%M:%S")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(
         prefix=".eduescale-pdf-",
@@ -259,6 +321,43 @@ def export_pdf(database_path: Path, output_path: Path) -> None:
         renderer = _PdfRenderer(writer, painter)
 
         with closing(sqlite3.connect(database_path)) as database:
+            (
+                school_count,
+                region_count,
+                province_count,
+                district_count,
+            ) = database.execute(
+                """
+                SELECT COUNT(*),
+                       COUNT(DISTINCT region),
+                       (SELECT COUNT(*) FROM (
+                           SELECT region, province FROM records
+                           GROUP BY region, province
+                       )),
+                       (SELECT COUNT(*) FROM (
+                           SELECT region, province, district FROM records
+                           GROUP BY region, province, district
+                       ))
+                FROM records
+                """
+            ).fetchone()
+            level_counts = dict(
+                database.execute(
+                    """
+                    SELECT json_extract(payload, '$.nivel'), COUNT(*)
+                    FROM records
+                    GROUP BY json_extract(payload, '$.nivel')
+                    """
+                )
+            )
+            renderer.draw_summary(
+                generated_at,
+                school_count,
+                region_count,
+                province_count,
+                district_count,
+                level_counts,
+            )
             cursor = database.execute(
                 """
                 SELECT region, province, district, payload
@@ -288,7 +387,6 @@ def export_pdf(database_path: Path, output_path: Path) -> None:
 
                 district_key = (region, province, district)
                 if district_key != current_district:
-                    renderer.start_district()
                     current_district = district_key
                     current_level = None
 
@@ -325,3 +423,7 @@ def export_pdf(database_path: Path, output_path: Path) -> None:
         painter = None
         writer = None
         temporary_path.unlink(missing_ok=True)
+
+
+def _format_count(value: int) -> str:
+    return f"{value:,}".replace(",", ".")

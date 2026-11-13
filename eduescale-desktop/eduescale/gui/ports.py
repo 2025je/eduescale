@@ -3,8 +3,8 @@ from typing import Protocol
 
 from PySide6.QtCore import SignalInstance
 
-from eduescale.client import SchoolFilters
-from eduescale.gui.local_database import LocalSearchFilter
+from eduescale.domain.offline_search import LocalSearchFilter
+from eduescale.domain.schools import SchoolFilters
 
 
 class LocationServicePort(Protocol):
@@ -25,6 +25,8 @@ class ScrapeRunnerPort(Protocol):
     warning: SignalInstance
 
     def start(self, output_path: Path, filter_sets: list[SchoolFilters]) -> None: ...
+
+    def complete_database_download(self) -> str | None: ...
 
     def cancel(self) -> None: ...
 

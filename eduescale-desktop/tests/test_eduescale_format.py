@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import json
 import sqlite3
@@ -9,8 +10,8 @@ from pathlib import Path
 import pytest
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
-from eduescale.encrypted_export import HEADER, MAGIC
-from eduescale.exports import export_eduescale
+from eduescale.infrastructure.exports.eduescale import export_eduescale
+from eduescale.infrastructure.exports.encryption import HEADER, MAGIC
 
 
 def _database(path: Path) -> None:
@@ -110,3 +111,31 @@ def test_encrypted_export_requires_a_minimum_password(tmp_path):
         export_eduescale(database_path, output_path, password="corta")
 
     assert not output_path.exists()
+
+
+def test_shared_android_fixture_uses_the_desktop_encrypted_format():
+    fixture_path = (
+        Path(__file__).resolve().parents[2]
+        / "test-fixtures"
+        / "desktop-encrypted-school-data.base64"
+    )
+    contents = base64.b64decode(
+        fixture_path.read_text(encoding="ascii").strip(),
+        validate=True,
+    )
+    header = contents[: HEADER.size]
+    magic, version, iterations, salt, nonce = HEADER.unpack(header)
+
+    assert magic == MAGIC
+    assert version == 1
+    ciphertext, tag = contents[HEADER.size : -16], contents[-16:]
+    key = hashlib.pbkdf2_hmac("sha256", b"fixture password", salt, iterations, dklen=32)
+    decryptor = Cipher(algorithms.AES(key), modes.GCM(nonce, tag)).decryptor()
+    decryptor.authenticate_additional_data(header)
+    plaintext = decryptor.update(ciphertext) + decryptor.finalize()
+    document = json.loads(zlib.decompress(plaintext))
+
+    assert document["formato"] == "eduescale"
+    assert document["version"] == 1
+    assert document["metadatos"]["cantidad_colegios"] == 1
+    assert document["colegios"][0]["nombre"] == "Fixture cruzado"

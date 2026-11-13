@@ -145,6 +145,33 @@ ApplicationWindow {
         controller.selectRegion("")
     }
 
+    function hasActiveFilters() {
+        return filterSetsModel.count > 0
+            || mapLevel !== "department"
+            || selectedDepartmentCodes.length > 0
+            || selectedProvinceCodes.length > 0
+            || selectedDistrictCodes.length > 0
+            || departmentCombo.currentValue
+            || provinceCombo.currentValue
+            || districtCombo.currentValue
+            || publicManagement.checked
+            || privateManagement.checked
+            || primaryLevel.checked
+            || secondaryLevel.checked
+            || cetproLevel.checked
+    }
+
+    function clearAllFilters() {
+        filterSetsModel.clear()
+        clearLocationSelection()
+        publicManagement.checked = false
+        privateManagement.checked = false
+        primaryLevel.checked = false
+        secondaryLevel.checked = false
+        cetproLevel.checked = false
+        filterNotice = ""
+    }
+
     function selectedManagement() {
         var selected = []
         if (publicManagement.checked)
@@ -729,6 +756,22 @@ ApplicationWindow {
                                     && window.selectedLevels().length > 0
                                 onClicked: window.addFilterSet()
                             }
+
+                            StyledButton {
+                                objectName: "clearAllFiltersButton"
+                                variant: "secondary"
+                                Layout.fillWidth: true
+                                Layout.maximumWidth: filterGrid.columns === 2
+                                    ? 260 : 16777215
+                                implicitHeight: window.actionButtonHeight
+                                font.pixelSize: window.bodyFontSize
+                                padding: 8
+                                text: "Limpiar todos los filtros"
+                                Accessible.name: "Limpiar todos los filtros"
+                                enabled: !controller.scrapeRunning
+                                    && window.hasActiveFilters()
+                                onClicked: window.clearAllFilters()
+                            }
                         }
                     }
                 }
@@ -782,7 +825,131 @@ ApplicationWindow {
         title: "Seleccionar base offline de EduEscale"
         fileMode: FileDialog.OpenFile
         nameFilters: ["Base de datos EduEscale (*.sqlite3)"]
-        onAccepted: controller.selectOfflineDatabase(selectedFile.toString())
+        onAccepted: {
+            if (controller.selectOfflineDatabase(selectedFile.toString()))
+                offlineDatabaseSummaryDialog.open()
+        }
+    }
+
+    StyledDialog {
+        id: offlineDatabaseSummaryDialog
+        objectName: "offlineDatabaseSummaryDialog"
+        title: "Resumen de colegios por ubicación"
+        modal: true
+        anchors.centerIn: parent
+        width: Math.min(window.width - 40, 760)
+        height: Math.min(window.height - 40, 560)
+        standardButtons: Dialog.NoButton
+
+        contentItem: ColumnLayout {
+            spacing: 10
+
+            Label {
+                Layout.fillWidth: true
+                text: {
+                    var summary = window.controller.offlineDatabaseLocationSummary
+                    return summary.total_schools.toLocaleString()
+                        + " colegios · "
+                        + summary.department_count.toLocaleString()
+                        + " departamentos · "
+                        + summary.province_count.toLocaleString()
+                        + " provincias · "
+                        + summary.district_count.toLocaleString()
+                        + " distritos"
+                }
+                color: EduStyle.Style.mutedTextColor
+                wrapMode: Text.WordWrap
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Label {
+                    Layout.fillWidth: true
+                    text: "Departamento / provincia / distrito"
+                    font.weight: Font.DemiBold
+                    color: EduStyle.Style.textColor
+                }
+                Label {
+                    Layout.preferredWidth: 90
+                    text: "Colegios"
+                    horizontalAlignment: Text.AlignRight
+                    font.weight: Font.DemiBold
+                    color: EduStyle.Style.textColor
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                visible: window.controller.offlineDatabaseLocationSummary
+                    .locations.length === 0
+                radius: EduStyle.Style.controlRadius
+                color: EduStyle.Style.subtleSurfaceColor
+                border.color: EduStyle.Style.borderColor
+
+                Label {
+                    anchors.centerIn: parent
+                    text: "La base no contiene colegios."
+                    color: EduStyle.Style.mutedTextColor
+                }
+            }
+
+            ListView {
+                id: offlineDatabaseLocationList
+                objectName: "offlineDatabaseLocationList"
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                spacing: 4
+                visible: window.controller.offlineDatabaseLocationSummary
+                    .locations.length > 0
+                model: window.controller.offlineDatabaseLocationSummary.locations
+
+                delegate: Frame {
+                    width: offlineDatabaseLocationList.width
+                        - offlineDatabaseLocationScrollBar.width
+                    padding: 8
+
+                    background: Rectangle {
+                        radius: EduStyle.Style.controlRadius
+                        color: EduStyle.Style.subtleSurfaceColor
+                        border.color: EduStyle.Style.borderColor
+                    }
+
+                    RowLayout {
+                        anchors.fill: parent
+                        Label {
+                            Layout.fillWidth: true
+                            text: modelData.region + " / " + modelData.province
+                                + " / " + modelData.district
+                            color: EduStyle.Style.textColor
+                            wrapMode: Text.WordWrap
+                        }
+                        Label {
+                            Layout.preferredWidth: 90
+                            text: modelData.schools.toLocaleString()
+                            color: EduStyle.Style.textColor
+                            horizontalAlignment: Text.AlignRight
+                        }
+                    }
+                }
+
+                ScrollBar.vertical: StyledScrollBar {
+                    id: offlineDatabaseLocationScrollBar
+                    objectName: "offlineDatabaseLocationScrollBar"
+                    policy: ScrollBar.AsNeeded
+                }
+            }
+
+            StyledButton {
+                objectName: "closeOfflineDatabaseSummaryButton"
+                Layout.alignment: Qt.AlignRight
+                text: "Cerrar"
+                variant: "secondary"
+                Accessible.name: "Cerrar resumen por ubicación"
+                onClicked: offlineDatabaseSummaryDialog.close()
+            }
+        }
     }
 
     FileDialog {

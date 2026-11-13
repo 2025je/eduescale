@@ -2,7 +2,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from eduescale.client import SchoolLevel, SchoolManagement
+from eduescale.domain.schools import SchoolLevel, SchoolManagement
 
 SAVED_SEARCHES_FORMAT: Literal["eduescale.saved-searches"] = "eduescale.saved-searches"
 SAVED_SEARCHES_VERSION: Literal[1] = 1

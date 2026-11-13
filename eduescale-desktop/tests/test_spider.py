@@ -3,10 +3,59 @@ import json
 import scrapy
 from scrapy.http import Response, TextResponse
 
-from eduescale.spiders.schools import RECORD_FIELDS, SchoolsSpider
+from eduescale.infrastructure.scrapy.spiders.schools import (
+    RECORD_FIELDS,
+    SchoolsSpider,
+)
 
 
 class TestSchoolsSpiderPage:
+    def test_replays_checkpoint_pages_before_requesting_missing_pages(self, tmp_path):
+        checkpoint_dir = tmp_path / "download-checkpoint"
+        count_url = "https://escale.minedu.gob.pe/padron/rest/instituciones/cuenta"
+        page_body = b"""<instituciones><items>
+            <cenEdu>Colegio reanudado</cenEdu>
+            <dirCen>Direccion</dirCen><localidad>Localidad</localidad>
+            <cenPob>Centro Poblado</cenPob>
+            <turno><valor>Manana</valor></turno>
+            <estadistica><talumno>10</talumno><tseccion>1</tseccion></estadistica>
+            <nlongIE>-77</nlongIE><nlatIE>-12</nlatIE>
+            <nivelModalidad><idCodigo>B0</idCodigo><valor>Primaria</valor></nivelModalidad>
+        </items></instituciones>"""
+
+        first_spider = SchoolsSpider(
+            output=str(tmp_path / "offline.sqlite3"),
+            checkpoint_dir=str(checkpoint_dir),
+            checkpoint_fingerprint="full-database",
+        )
+        count_request = scrapy.Request(count_url, meta={"filter_index": 0})
+        count_response = TextResponse(
+            count_url,
+            request=count_request,
+            body=b"1",
+            encoding="utf-8",
+        )
+        page_request = next(iter(first_spider.parse_count(count_response)))
+        first_page = Response(page_request.url, request=page_request, body=page_body)
+
+        assert len(list(first_spider.parse_page(first_page))) == 1
+        first_spider.closed("finished")
+
+        resumed_spider = SchoolsSpider(
+            output=str(tmp_path / "offline.sqlite3"),
+            checkpoint_dir=str(checkpoint_dir),
+            checkpoint_fingerprint="full-database",
+        )
+        resumed_output = list(resumed_spider.parse_count(count_response))
+
+        assert len(resumed_output) == 1
+        assert isinstance(resumed_output[0], dict)
+        assert resumed_output[0]["nombre"] == "Colegio reanudado"
+        assert resumed_spider.resumed_pages == 1
+        assert resumed_spider.pages_received == 1
+        assert resumed_spider.items_received == 1
+        resumed_spider.closed("finished")
+
     def test_removes_identical_filter_sets_before_querying(self):
         spider = SchoolsSpider(
             output="unused.xlsx",

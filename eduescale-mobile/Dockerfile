@@ -30,6 +30,7 @@ RUN android --sdk="${ANDROID_SDK_ROOT}" sdk install platforms/android-36 build-t
 WORKDIR /workspace
 ARG SOURCE_ROOT=.
 COPY ${SOURCE_ROOT}/. .
+COPY test-fixtures/ ./test-fixtures/
 
 RUN --mount=type=cache,target=/root/.gradle \
     --mount=type=secret,id=release_keystore,target=/run/secrets/release.jks,required=false \

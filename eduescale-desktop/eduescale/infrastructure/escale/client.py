@@ -1,15 +1,17 @@
 import math
 import unicodedata
-from typing import Literal
 from xml.etree import ElementTree
 
 import requests
-from pydantic import BaseModel, ConfigDict, field_validator
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-SchoolManagement = Literal["publica", "privada"]
-SchoolLevel = Literal["primaria", "secundaria", "cetpro"]
+from eduescale.domain.schools import (
+    SchoolFilters,
+    SchoolLevel,
+    SchoolManagement,
+    SchoolRecord,
+)
 
 API_URL = "https://escale.minedu.gob.pe/padron/rest"
 REQUEST_TIMEOUT = 30
@@ -28,26 +30,6 @@ HTTP_RETRY = Retry(
 )
 
 
-class SchoolRecord(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    nombre: str
-    direccion: str
-    localidad: str
-    cp: str
-    turno: str
-    alumnos: int | None
-    secciones: int | None
-    longitud: float | None
-    latitud: float | None
-    distrito: str = "Distrito no identificado"
-    provincia: str = "Provincia no identificada"
-    region: str = "Departamento no identificado"
-    gestion: SchoolManagement | None = None
-    nivel: SchoolLevel
-    codigo_local: str = ""
-
-
 MANAGEMENT_CODES: dict[SchoolManagement, tuple[str, ...]] = {
     "publica": ("A1", "A2", "A3", "A4"),
     "privada": ("B1", "B2", "B3", "B4", "B5", "B6"),
@@ -57,34 +39,6 @@ LEVEL_CODES: dict[SchoolLevel, tuple[str, ...]] = {
     "secundaria": ("F0",),
     "cetpro": ("L0",),
 }
-
-
-class SchoolFilters(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    region_code: str = ""
-    province_code: str = ""
-    district_code: str = ""
-    management: tuple[SchoolManagement, ...] = ()
-    level: tuple[SchoolLevel, ...] = ()
-
-    @field_validator("management", "level", mode="before")
-    @classmethod
-    def split_selections(cls, value: object) -> object:
-        if isinstance(value, str):
-            value = value.split(",")
-        if isinstance(value, (tuple, list)):
-            return tuple(
-                item.strip() if isinstance(item, str) else item
-                for item in value
-                if not isinstance(item, str) or item.strip()
-            )
-        return value
-
-    @field_validator("management", "level")
-    @classmethod
-    def remove_duplicate_selections(cls, value: tuple[str, ...]) -> tuple[str, ...]:
-        return tuple(dict.fromkeys(value))
 
 
 def _get_xml(

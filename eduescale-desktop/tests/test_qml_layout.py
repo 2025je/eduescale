@@ -21,6 +21,13 @@ from eduescale.gui.application import (
     configure_application_icon,
 )
 from eduescale.gui.controller import SchoolFinderController
+from eduescale.application.use_cases.offline_database import (
+    OfflineDatabaseUseCases,
+)
+from eduescale.gui.local_database import LocalDatabaseSearchRunner
+from eduescale.infrastructure.persistence.local_database import (
+    SqliteOfflineDatabaseRepository,
+)
 
 
 class FakeLocationService(QObject):
@@ -58,6 +65,9 @@ class FakeScrapeRunner(QObject):
 
     def cancel(self):
         pass
+
+    def complete_database_download(self):
+        return None
 
     def shutdown(self):
         pass
@@ -101,11 +111,19 @@ settings = QSettings(sys.argv[2], QSettings.Format.IniFormat)
 settings.setValue("export/lastDirectory", str(Path(sys.argv[2]).parent))
 scrape_runner = FakeScrapeRunner()
 export_runner = FakeExportRunner()
+offline_database_use_cases = OfflineDatabaseUseCases(
+    SqliteOfflineDatabaseRepository()
+)
 controller = SchoolFinderController(
     FakeLocationService(),
     scrape_runner,
     settings=settings,
     export_runner=export_runner,
+    local_database_search_runner=LocalDatabaseSearchRunner(
+        offline_database_use_cases
+    ),
+    offline_database_use_cases=offline_database_use_cases,
+    data_directory=Path(sys.argv[2]).parent,
 )
 engine = QQmlApplicationEngine()
 qml_warnings = []
@@ -203,6 +221,7 @@ map_advance_button_label = child("mapAdvanceButtonLabel")
 map_back_button = child("mapBackButton")
 map_clear_button = child("mapClearButton")
 map_clear_button_label = child("mapClearButtonLabel")
+clear_all_filters_button = child("clearAllFiltersButton")
 empty_state = child("emptySearchState")
 brand_title = child("brandTitle")
 brand_logo = child("brandLogo")
@@ -219,6 +238,7 @@ download_button = child("scrapeButton")
 scrape_button_label = child("scrapeButtonLabel")
 history_button = child("exportHistoryButton")
 history_dialog = child("exportHistoryDialog")
+offline_database_summary_dialog = child("offlineDatabaseSummaryDialog")
 add_filter_button_label = child("addFilterSetButtonLabel")
 history_button.click()
 application.processEvents()
@@ -226,6 +246,7 @@ assert history_dialog.property("visible")
 assert child("exportHistoryWarning").property("visible") is False
 child("closeExportHistoryButton").click()
 application.processEvents()
+assert not offline_database_summary_dialog.property("visible")
 assert district_map.property("featureCount") == controller.property("districtCount")
 deadline = time.monotonic() + 35
 while (
@@ -562,7 +583,11 @@ for width, height in ((560, 600), (1280, 720), (1366, 768), (1600, 900), (1920, 
         ).x()
         assert map_right <= controls_left + 1
         assert controls_right <= filter_grid.property("width") + 1
-        for control in (map_clear_button, child("addFilterSetButton")):
+        for control in (
+            map_clear_button,
+            child("addFilterSetButton"),
+            clear_all_filters_button,
+        ):
             control_right = control.mapToItem(
                 selection_controls,
                 QPointF(control.property("width"), 0),
@@ -584,6 +609,7 @@ for width, height in ((560, 600), (1280, 720), (1366, 768), (1600, 900), (1920, 
             child("secondaryLevel"),
             child("cetproLevel"),
             child("addFilterSetButton"),
+            clear_all_filters_button,
         )
         map_bottom = district_map.mapToItem(
             viewport,
@@ -811,6 +837,26 @@ assert data_source_combo.property("displayText") == "Base offline", (
 )
 assert offline_database_controls.property("visible")
 assert not child("scrapeButton").property("enabled")
+assert clear_all_filters_button.property("enabled")
+clear_all_filters_button.click()
+application.processEvents()
+assert filter_sets.property("count") == 0
+assert window.property("mapLevel") == "department"
+assert qml_value(window, "selectedDepartmentCodes") == []
+assert qml_value(window, "selectedProvinceCodes") == []
+assert qml_value(window, "selectedDistrictCodes") == []
+for control_name in (
+    "publicManagement",
+    "privateManagement",
+    "primaryLevel",
+    "secondaryLevel",
+    "cetproLevel",
+):
+    assert not child(control_name).property("checked")
+assert child("departmentCombo").property("currentIndex") == 0
+assert child("provinceCombo").property("currentIndex") == 0
+assert child("districtCombo").property("currentIndex") == 0
+assert not clear_all_filters_button.property("enabled")
 window.resize(560, 600)
 application.processEvents()
 assert (

@@ -5,6 +5,7 @@ import java.io.ByteArrayOutputStream
 import java.io.StringReader
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
+import java.nio.file.Paths
 import java.util.Base64
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
@@ -76,7 +77,7 @@ class SchoolDataReaderTest {
 
     @Test
     fun readsDesktopEncryptedFileAndPersistsOnlyDecryptedData() {
-        val encryptedBytes = Base64.getDecoder().decode(ENCRYPTED_FIXTURE)
+        val encryptedBytes = desktopEncryptedFixtureBytes()
         val directory = Files.createTempDirectory("eduescale-protected").toFile()
         try {
             val storage = SchoolFileStorage(directory)
@@ -96,7 +97,7 @@ class SchoolDataReaderTest {
 
     @Test
     fun rejectsIncorrectPasswordForEncryptedFile() {
-        val encryptedBytes = Base64.getDecoder().decode(ENCRYPTED_FIXTURE)
+        val encryptedBytes = desktopEncryptedFixtureBytes()
 
         assertThrows(IllegalArgumentException::class.java) {
             SchoolDataReader.read(
@@ -366,7 +367,18 @@ class SchoolDataReaderTest {
     }
 
     private companion object {
-        const val ENCRYPTED_FIXTURE =
-            "RURVU0NFTkMBAAknwAABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhuYA6/Incsj+5T3yjd3UCEMxCpihXliZ5aDhl5w5jItsDaa3T1CluRSZn7lU/CLi8TezbCNbUXEXO2Y+/8lNIpQSnlvlUuJpPayef2q7QH+SM6sf9i96IU4d5bow5wx2DtiBa3lHQGRixSCE0kG4+dlj9ZHO+wgIcQ7hyxNPPGH6elqOtMKTB9R4CEdQ1avdNIN5/+QuZdtqpXjTqTlUllfOH7VxqrGDngRK3gFs6Y4K5uglStDQaiXDqxtCGrrGEQBaS7xRT4ikwJD0NMbVBZYR0AUFQlh1AU="
+        const val DESKTOP_ENCRYPTED_FIXTURE = "desktop-encrypted-school-data.base64"
+    }
+
+    private fun desktopEncryptedFixtureBytes(): ByteArray {
+        val fixturePaths = listOf(
+            Paths.get("..", "..", "test-fixtures", DESKTOP_ENCRYPTED_FIXTURE),
+            Paths.get("..", "test-fixtures", DESKTOP_ENCRYPTED_FIXTURE),
+        )
+        val fixturePath = fixturePaths.firstOrNull { Files.isRegularFile(it) }
+            ?: error("No se encontró el fixture cifrado de Desktop.")
+        return Base64.getDecoder().decode(
+            String(Files.readAllBytes(fixturePath), StandardCharsets.US_ASCII).trim(),
+        )
     }
 }

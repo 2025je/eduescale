@@ -3,8 +3,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal
 
-from eduescale.exports import export_eduescale, export_excel
-from eduescale.pdf_exports import export_pdf
+from eduescale.application.use_cases.export_data import ExportData
 
 LOGGER = logging.getLogger(__name__)
 
@@ -20,6 +19,7 @@ class _ExportJob(QRunnable):
         export_type: str,
         database_path: Path,
         output_path: Path,
+        use_case: ExportData,
         password: str | None = None,
         compressed: bool = False,
     ):
@@ -27,27 +27,20 @@ class _ExportJob(QRunnable):
         self.export_type = export_type
         self.database_path = database_path
         self.output_path = output_path
+        self.use_case = use_case
         self.password = password
         self.compressed = compressed
         self.signals = _ExportSignals()
 
     def run(self):
         try:
-            if self.export_type == "excel":
-                export_excel(self.database_path, self.output_path)
-            elif self.export_type == "pdf":
-                export_pdf(self.database_path, self.output_path)
-            elif self.export_type == "eduescale":
-                export_eduescale(
-                    self.database_path,
-                    self.output_path,
-                    password=self.password,
-                    compressed=self.compressed,
-                )
-            else:
-                raise ValueError(
-                    f"Formato de exportación desconocido: {self.export_type}"
-                )
+            self.use_case.execute(
+                self.export_type,
+                self.database_path,
+                self.output_path,
+                self.password,
+                self.compressed,
+            )
         except Exception as error:
             LOGGER.exception(
                 "Failed to export %s to %s.", self.export_type, self.output_path
@@ -64,8 +57,13 @@ class ExportRunner(QObject):
     completed = Signal(str, str)
     failed = Signal(str, str, str)
 
-    def __init__(self, parent: QObject | None = None):
+    def __init__(
+        self,
+        use_case: ExportData,
+        parent: QObject | None = None,
+    ):
         super().__init__(parent)
+        self._use_case = use_case
         self._thread_pool = QThreadPool(self)
         self._active_job: _ExportJob | None = None
 
@@ -84,7 +82,8 @@ class ExportRunner(QObject):
             export_type,
             database_path,
             output_path,
-            password=password,
+            self._use_case,
+            password,
             compressed=compressed,
         )
         job.signals.completed.connect(self._export_completed)

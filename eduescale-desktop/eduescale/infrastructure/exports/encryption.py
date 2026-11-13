@@ -1,4 +1,7 @@
 import hashlib
+
+"""Encrypt exported EduEscale data files."""
+
 import os
 import struct
 import zlib

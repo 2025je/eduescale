@@ -5,6 +5,8 @@ import sqlite3
 import struct
 from pathlib import Path
 
+from eduescale.domain.location_names import canonical_department_name
+
 EXPECTED_DISTRICTS = 1892
 SIMPLIFICATION_TOLERANCE = 0.0004
 
@@ -410,6 +412,11 @@ def build_map_data(geopackage: Path) -> dict[str, object]:
         raise ValueError("Un distrito derivado ya existe en la capa INEI.")
 
     features.extend(derived)
+    for feature in features:
+        properties = feature["properties"]
+        properties["department"] = canonical_department_name(
+            properties["department"]
+        )
     features.sort(
         key=lambda feature: (
             feature["properties"]["boundary_quality"] == "official",

@@ -4,9 +4,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import pytest
 from pydantic import ValidationError
 
-from eduescale import client
-from eduescale.client import (
-    SchoolFilters,
+from eduescale.domain.schools import SchoolFilters
+from eduescale.infrastructure.escale import client
+from eduescale.infrastructure.escale.client import (
     build_search_params,
     parse_institutions,
 )
