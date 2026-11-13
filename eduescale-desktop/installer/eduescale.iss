@@ -22,7 +22,7 @@ DefaultDirName={autopf}\EduEscale
 DefaultGroupName=EduEscale
 DisableProgramGroupPage=yes
 UninstallDisplayIcon={app}\{#AppExeName}
-ArchitecturesInstallIn64BitMode=x64
+ArchitecturesInstallIn64BitMode=x64compatible
 SetupIconFile={#ProjectDir}\eduescale\gui\assets\edutrack-logo.ico
 OutputDir={#DistDir}\installer
 OutputBaseFilename=EduEscale-Setup-{#AppVersion}
@@ -36,7 +36,7 @@ VersionInfoVersion={#AppVersion}.0
 Name: "desktopicon"; Description: "Crear un acceso directo en el escritorio"; GroupDescription: "Accesos directos:"; Flags: unchecked
 
 [Files]
-Source: "{#DistDir}\{#AppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#DistDir}\eduescale-gui\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#DistDir}\eduescale-scraper\*"; DestDir: "{app}\eduescale-scraper"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]

@@ -1,10 +1,9 @@
 # -*- mode: python ; coding: utf-8 -*-
-from PyInstaller.utils.hooks import collect_data_files, copy_metadata
+from PyInstaller.utils.hooks import copy_metadata
 
 datas = [
     ('eduescale/gui/resources.rcc', 'eduescale/gui'),
 ]
-datas += collect_data_files('PySide6')
 datas += copy_metadata('eduescale')
 
 
@@ -14,6 +13,8 @@ a = Analysis(
     binaries=[],
     datas=datas,
     hiddenimports=[
+        'dependency_injector.errors',
+        'dependency_injector.wiring',
         'PySide6.QtWebChannel',
         'PySide6.QtWebEngineCore',
         'PySide6.QtWebEngineQuick',
@@ -37,15 +38,14 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
+    exclude_binaries=True,
     name='eduescale-gui',
     icon='eduescale/gui/assets/edutrack-logo.ico',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
     console=False,
@@ -54,4 +54,13 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=False,
+    name='eduescale-gui',
 )
