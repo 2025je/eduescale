@@ -26,6 +26,14 @@ QtObject {
     readonly property color dangerSurfaceColor: darkTheme ? "#442622" : "#FCE8E6"
     readonly property color dangerHoverColor: darkTheme ? "#59332D" : "#FFF4F2"
     readonly property color dangerBorderColor: darkTheme ? "#805047" : "#E6B8B3"
+    readonly property color logTimestampColor: mutedTextColor
+    readonly property color logSourceColor: darkTheme ? "#9CD1B6" : "#1C6A48"
+    readonly property color logDebugColor: darkTheme ? "#BDC3CF" : "#555E6D"
+    readonly property color logInfoColor: darkTheme ? "#6CCAE6" : "#00617D"
+    readonly property color logWarningColor: darkTheme ? "#F2C46D" : "#805000"
+    readonly property color logErrorColor: dangerColor
+    readonly property color logCriticalColor: darkTheme ? "#FF91C4" : "#A51651"
+    readonly property color logDetailColor: darkTheme ? "#A3C9FF" : "#005EAA"
 
     readonly property int appTitleFontSize: 22
     readonly property int sectionTitleFontSize: 18

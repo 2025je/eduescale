@@ -9,6 +9,7 @@ Item {
     objectName: "schoolWizardReviewPage"
 
     required property var window
+    signal logsRequested()
     anchors.fill: parent
     z: 10
     visible: window.workflowStep === 1
@@ -23,12 +24,24 @@ Item {
         anchors.margins: 24
         spacing: 16
 
-        Label {
+        RowLayout {
             Layout.fillWidth: true
-            text: "Paso 2 de 4 · Revisar búsqueda"
-            color: window.textColor
-            font.pixelSize: window.appTitleFontSize
-            font.weight: Font.DemiBold
+
+            Label {
+                objectName: "reviewTitle"
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                text: "Paso 2 de 4 · Revisar búsqueda"
+                color: window.textColor
+                font.pixelSize: window.appTitleFontSize
+                font.weight: Font.DemiBold
+                elide: Text.ElideRight
+            }
+
+            LogsButton {
+                objectName: "reviewLogsButton"
+                onClicked: root.logsRequested()
+            }
         }
 
         Label {
@@ -41,8 +54,10 @@ Item {
         }
 
         Frame {
+            objectName: "searchReviewFrame"
             Layout.fillWidth: true
             Layout.fillHeight: true
+            Layout.minimumHeight: 0
             padding: 16
 
             background: Rectangle {
@@ -62,14 +77,53 @@ Item {
                     font.weight: Font.DemiBold
                 }
 
-                Label {
-                    objectName: "searchReviewSummary"
+                ScrollView {
+                    id: summaryScroll
+                    objectName: "searchReviewScroll"
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    text: window.currentSearchSummary()
-                    color: window.mutedTextColor
-                    wrapMode: Text.WordWrap
-                    verticalAlignment: Text.AlignTop
+                    Layout.minimumHeight: 0
+                    clip: true
+                    contentWidth: Math.max(
+                        0, availableWidth - reviewScrollBar.width - 4
+                    )
+
+                    ScrollBar.vertical: StyledScrollBar {
+                        id: reviewScrollBar
+                        objectName: "searchReviewScrollBar"
+                        parent: summaryScroll
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        anchors.right: parent.right
+                        z: 2
+                        policy: ScrollBar.AsNeeded
+                        visible: summaryScroll.contentHeight
+                            > summaryScroll.availableHeight + 1
+                        interactive: true
+                        active: true
+                        opacity: 1
+                        minimumSize: 0.08
+                        transitions: []
+
+                        background: Rectangle {
+                            radius: width / 2
+                            color: EduStyle.Style.subtleSurfaceColor
+                        }
+                        contentItem: Rectangle {
+                            implicitWidth: EduStyle.Style.scrollBarThumbWidth
+                            implicitHeight: EduStyle.Style.scrollBarThumbWidth
+                            radius: width / 2
+                            color: EduStyle.Style.primaryColor
+                        }
+                    }
+
+                    Label {
+                        objectName: "searchReviewSummary"
+                        width: summaryScroll.contentWidth
+                        text: window.currentSearchSummary()
+                        color: window.mutedTextColor
+                        wrapMode: Text.Wrap
+                    }
                 }
             }
         }

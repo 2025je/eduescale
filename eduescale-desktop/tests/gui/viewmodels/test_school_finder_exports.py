@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -91,7 +92,7 @@ def test_export_buttons_generate_and_open_the_requested_file(
     ]
 
 def test_starts_optional_compressed_and_protected_export(
-    view_model_components, tmp_path
+    view_model_components, tmp_path, caplog
 ):
     view_model, _scrape_runner, _errors = view_model_components
     view_model._dataset_path = tmp_path / "schools.sqlite3"
@@ -99,12 +100,19 @@ def test_starts_optional_compressed_and_protected_export(
     view_model._exports_available = True
     output_path = tmp_path / "schools.eduescale"
 
-    view_model.exportEduEscaleFile(
-        QUrl.fromLocalFile(str(output_path)).toString(),
-        "contraseña segura",
-        True,
-    )
+    with caplog.at_level(logging.INFO, logger="eduescale"):
+        view_model.exportEduEscaleFile(
+            QUrl.fromLocalFile(str(output_path)).toString(),
+            "contraseña segura",
+            True,
+        )
 
+    start_record = next(
+        record for record in caplog.records if record.message == "Starting export."
+    )
+    assert start_record.export_type == "eduescale"
+    assert start_record.compressed is True
+    assert "contraseña segura" not in repr(start_record.__dict__)
     assert view_model._export_runner.started_requests == [
         (
             "eduescale",

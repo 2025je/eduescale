@@ -10,11 +10,13 @@ import sys
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QPointF, Q_ARG, QMetaObject, QObject, QSettings, Signal, QUrl
+from PySide6.QtCore import QPointF, Q_ARG, QMetaObject, QObject, QSettings, Signal, Qt, QUrl
 from PySide6.QtGui import QGuiApplication, QImageReader
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
+from PySide6.QtTest import QTest
 from PySide6.QtWebEngineQuick import QtWebEngineQuick
+from shiboken6 import delete
 
 from eduescale.gui.application import (
     configure_application_font,
@@ -286,6 +288,171 @@ history_button = child("exportHistoryButton")
 history_dialog = child("exportHistoryDialog")
 offline_database_summary_dialog = child("offlineDatabaseSummaryDialog")
 add_filter_button_label = child("addFilterSetButtonLabel")
+log_directory = Path(sys.argv[2]).parent / "logs"
+log_directory.mkdir()
+active_log = log_directory / "eduescale.log"
+backup_log = log_directory / "eduescale.log.1"
+active_log.write_text("primer mensaje\n", encoding="utf-8")
+backup_log.write_text("mensaje anterior\n", encoding="utf-8")
+logs_button = child("openLogsButton")
+logs_dialog = child("logViewerDialog")
+log_selector = child("logFileSelector")
+log_content = child("logViewerContent")
+assert not logs_dialog.property("visible")
+logs_button.click()
+deadline = time.monotonic() + 5
+while log_content.property("text") != "primer mensaje\n" and time.monotonic() < deadline:
+    application.processEvents()
+    time.sleep(0.025)
+assert logs_dialog.property("visible")
+assert log_content.property("readOnly")
+assert log_content.property("selectByMouse")
+assert log_content.property("text") == "primer mensaje\n"
+active_log.write_text("mensaje actualizado\n", encoding="utf-8")
+deadline = time.monotonic() + 5
+while log_content.property("text") != "mensaje actualizado\n" and time.monotonic() < deadline:
+    application.processEvents()
+    time.sleep(0.025)
+assert log_content.property("text") == "mensaje actualizado\n"
+active_log.write_text("línea de registro\n" * 280000 + "último\n", encoding="utf-8")
+deadline = time.monotonic() + 5
+while not log_content.property("text").endswith("último\n") and time.monotonic() < deadline:
+    application.processEvents()
+    time.sleep(0.025)
+assert log_content.property("text").endswith("último\n")
+assert len(log_content.property("text").encode("utf-8")) <= 16387
+previous_page_button = child("previousLogPageButton")
+next_page_button = child("nextLogPageButton")
+first_page_button = child("firstLogPageButton")
+last_page_button = child("lastLogPageButton")
+page_selector = child("logPageSelector")
+assert previous_page_button.property("enabled")
+assert not next_page_button.property("enabled")
+initial_window_size = (window.width(), window.height())
+window.resize(560, 600)
+application.processEvents()
+dialog_content = logs_dialog.property("contentItem")
+assert last_page_button.mapToItem(
+    dialog_content, QPointF(last_page_button.width(), 0)
+).x() <= dialog_content.width() + 1
+first_page_button.click()
+application.processEvents()
+assert page_selector.property("value") == 1
+assert not first_page_button.property("enabled")
+page_editor = page_selector.property("contentItem")
+page_editor.forceActiveFocus()
+QTest.keyClick(window, Qt.Key_A, Qt.ControlModifier)
+QTest.keyClick(window, Qt.Key_7)
+QTest.keyClick(window, Qt.Key_Return)
+application.processEvents()
+assert page_selector.property("value") == 7
+assert view_model.logViewer.pageNumber == 7
+last_page_button.click()
+application.processEvents()
+assert page_selector.property("value") == view_model.logViewer.pageCount
+window.resize(*initial_window_size)
+application.processEvents()
+previous_page_button.click()
+application.processEvents()
+assert next_page_button.property("enabled")
+assert not log_content.property("text").endswith("último\n")
+next_page_button.click()
+application.processEvents()
+assert log_content.property("text").endswith("último\n")
+log_selector.setProperty("currentIndex", 1)
+assert QMetaObject.invokeMethod(log_selector, "activated", Q_ARG(int, 1))
+application.processEvents()
+assert log_content.property("text") == "mensaje anterior\n"
+structured_log = json.dumps({
+    "timestamp": "2026-11-19T15:00:00Z",
+    "level": "warning",
+    "logger": "eduescale.gui",
+    "event": "Mensaje estructurado",
+    "😀operation": "search",
+}, ensure_ascii=False) + "\n"
+backup_log.write_text(structured_log, encoding="utf-8")
+view_model.logViewer.refresh()
+application.processEvents()
+assert "WARNING" in log_content.property("text")
+assert "Mensaje estructurado" in log_content.property("text")
+assert "😀operation: search" in log_content.property("text")
+assert structured_log not in log_content.property("text")
+quick_log_document = log_content.property("textDocument")
+log_document = quick_log_document.textDocument()
+
+
+def color_for_text(block, value):
+    assert value in block.text()
+    offset = len(block.text().split(value, 1)[0].encode("utf-16-le")) // 2
+    for item in block.layout().formats():
+        if item.start <= offset < item.start + item.length:
+            return item.format.foreground().color().name()
+    return None
+
+
+header = log_document.firstBlock()
+assert color_for_text(header, "2026") is not None
+assert color_for_text(header, "WARNING") is not None
+assert color_for_text(header, "eduescale.gui") is not None
+detail = log_document.findBlockByNumber(2)
+assert color_for_text(detail, "😀") == color_for_text(detail, "operation")
+assert color_for_text(detail, "operation") is not None
+assert color_for_text(detail, "search") is None
+child("rawLogToggle").click()
+application.processEvents()
+assert log_content.property("text") == structured_log
+assert not log_document.firstBlock().layout().formats()
+child("rawLogToggle").click()
+application.processEvents()
+assert color_for_text(log_document.firstBlock(), "WARNING") is not None
+records = [
+    json.dumps({
+        "timestamp": "2026-11-19T15:00:00Z",
+        "level": level,
+        "logger": "eduescale.gui",
+        "event": "Mensaje <seguro> 😀",
+    }, ensure_ascii=False)
+    for level in ("debug", "info", "warning", "error", "critical")
+]
+backup_log.write_text("\n".join(records) + "\n", encoding="utf-8")
+view_model.setThemeMode("light")
+view_model.logViewer.refresh()
+application.processEvents()
+light_colors = [
+    color_for_text(log_document.findBlockByNumber(index * 3), level.upper())
+    for index, level in enumerate(("debug", "info", "warning", "error", "critical"))
+]
+assert None not in light_colors and len(set(light_colors)) == 5
+first_header = log_document.firstBlock()
+assert color_for_text(first_header, "2026") is not None
+assert color_for_text(first_header, "eduescale.gui") is not None
+assert color_for_text(first_header, "2026") != color_for_text(first_header, "eduescale.gui")
+assert "Mensaje <seguro> 😀" in log_content.property("text")
+view_model.setThemeMode("dark")
+application.processEvents()
+dark_colors = [
+    color_for_text(log_document.findBlockByNumber(index * 3), level.upper())
+    for index, level in enumerate(("debug", "info", "warning", "error", "critical"))
+]
+assert None not in dark_colors and len(set(dark_colors)) == 5
+assert all(light != dark for light, dark in zip(light_colors, dark_colors))
+view_model.setThemeMode("system")
+application.processEvents()
+child("closeLogsButton").click()
+application.processEvents()
+assert not logs_dialog.property("visible")
+
+
+def assert_logs_accessible(button):
+    assert button.property("visible")
+    button.click()
+    application.processEvents()
+    assert logs_dialog.property("visible")
+    child("closeLogsButton").click()
+    application.processEvents()
+    assert not logs_dialog.property("visible")
+
+
 history_button.click()
 application.processEvents()
 assert history_dialog.property("visible")
@@ -714,7 +881,68 @@ application.processEvents()
 confirmation_dialog = child("exportConfirmationDialog")
 assert not confirmation_dialog.property("visible")
 assert school_wizard_review_page.property("visible")
-assert "primaria" in child("searchReviewSummary").property("text")
+assert_logs_accessible(child("reviewLogsButton"))
+review_summary = child("searchReviewSummary")
+assert "primaria" in review_summary.property("text")
+original_summary = review_summary.property("text")
+review_summary.setProperty(
+    "text",
+    "\n".join(f"Búsqueda {index}: " + "departamento " * 12 for index in range(1, 101)),
+)
+review_scroll = child("searchReviewScroll")
+review_scrollbar = child("searchReviewScrollBar")
+review_frame = child("searchReviewFrame")
+for width, theme, thumb_color in (
+    (560, "dark", "#78d9b2"),
+    (1280, "light", "#0f6b4e"),
+):
+    view_model.setThemeMode(theme)
+    window.resize(width, 600)
+    application.processEvents()
+    assert review_scroll.property("contentHeight") > review_scroll.property("height")
+    assert review_scrollbar.property("visible")
+    assert review_scrollbar.property("opacity") == 1
+    assert review_scrollbar.property("contentItem").property("opacity") == 1
+    assert review_scrollbar.property("visualSize") >= 0.08
+    assert review_scrollbar.property("height") >= review_scroll.property("height") - 1
+    assert review_scrollbar.property("contentItem").property("height") > 0
+    assert review_scrollbar.property("contentItem").property("color").name() == thumb_color
+    bar_right = review_scrollbar.mapToItem(
+        review_scroll, QPointF(review_scrollbar.width(), 0)
+    ).x()
+    assert abs(bar_right - review_scroll.width()) <= 1, bar_right
+    review_title = child("reviewTitle")
+    review_logs_button = child("reviewLogsButton")
+    assert review_title.mapToItem(
+        school_wizard_review_page, QPointF(review_title.width(), 0)
+    ).x() <= review_logs_button.mapToItem(school_wizard_review_page, QPointF(0, 0)).x()
+    back_button = child("backToSearchButton")
+    start_button = child("startSearchButton")
+    assert review_frame.mapToItem(
+        school_wizard_review_page, QPointF(0, review_frame.height())
+    ).y() <= back_button.mapToItem(school_wizard_review_page, QPointF(0, 0)).y()
+    for button in (back_button, start_button):
+        assert button.mapToItem(
+            school_wizard_review_page, QPointF(button.width(), button.height())
+        ).y() <= school_wizard_review_page.height()
+    review_scrollbar.setProperty("position", 0.0)
+    application.processEvents()
+    track_click = review_scrollbar.mapToItem(
+        window.contentItem(),
+        QPointF(review_scrollbar.width() / 2, review_scrollbar.height() - 4),
+    ).toPoint()
+    QTest.mouseClick(window, Qt.LeftButton, Qt.NoModifier, track_click)
+    application.processEvents()
+    flickable = review_scroll.property("contentItem")
+    assert flickable.property("contentY") > 0
+    review_scrollbar.setProperty("position", 1.0 - review_scrollbar.property("size"))
+    application.processEvents()
+    assert flickable.property("contentY") + flickable.property("height") >= (
+        flickable.property("contentHeight") - 1
+    )
+view_model.setThemeMode("system")
+review_summary.setProperty("text", original_summary)
+application.processEvents()
 assert not action_bar.property("visible")
 child("startSearchButton").click()
 application.processEvents()
@@ -735,6 +963,7 @@ assert [item.district_code for item in scrape_runner.started_requests[0][1]] == 
 cancel_button = child("cancelScrapeButton")
 assert not cancel_button.property("visible")
 assert school_wizard_page.property("visible")
+assert_logs_accessible(child("wizardLogsButton"))
 assert school_wizard_cancel_button.property("visible")
 assert not download_button.property("visible")
 for width in (560, 1280):
@@ -744,6 +973,11 @@ for width in (560, 1280):
     assert school_wizard_page.property("visible")
     assert live_schools_map.property("width") > 0
     assert live_schools_map.property("height") >= 180
+    wizard_title = child("schoolWizardTitle")
+    wizard_logs = child("wizardLogsButton")
+    assert wizard_title.mapToItem(
+        school_wizard_page, QPointF(wizard_title.width(), 0)
+    ).x() <= wizard_logs.mapToItem(school_wizard_page, QPointF(0, 0)).x()
     for button in (school_wizard_cancel_button,):
         assert button.property("visible")
         assert button.mapToItem(
@@ -836,6 +1070,7 @@ database_path = Path(sys.argv[2]).parent / "schools.sqlite3"
 scrape_runner.completed.emit(str(database_path), 1, 1, 1)
 application.processEvents()
 assert school_wizard_page.property("visible")
+assert_logs_accessible(child("wizardLogsButton"))
 assert not school_wizard_progress.property("visible")
 assert school_wizard_excel_button.property("visible")
 assert school_wizard_pdf_button.property("visible")
@@ -991,12 +1226,47 @@ assert child("districtCombo").property("currentIndex") == 0
 assert not clear_all_filters_button.property("enabled")
 window.resize(560, 600)
 application.processEvents()
+subtitle = child("brandSubtitle")
+assert (
+    subtitle.mapToItem(dashboard_header, QPointF(subtitle.width(), 0)).x()
+    <= logs_button.mapToItem(dashboard_header, QPointF(0, 0)).x()
+)
+assert (
+    logs_button.mapToItem(dashboard_header, QPointF(logs_button.width(), 0)).x()
+    <= theme_selector.mapToItem(dashboard_header, QPointF(0, 0)).x()
+)
 assert (
     action_bar.mapToItem(window.contentItem(), QPointF(0, action_bar.height())).y()
     <= window.height() + 1
 )
 
 view_model.shutdown()
+logs_button.click()
+application.processEvents()
+assert logs_dialog.property("visible")
+qml_warnings.clear()
+delete(view_model.logViewer)
+application.processEvents()
+assert not qml_warnings, "\n".join(warning.toString() for warning in qml_warnings)
+assert child("logViewerError").property("visible")
+assert "no está disponible" in child("logViewerError").property("text")
+assert not child("logRefreshTimer").property("running")
+assert not log_selector.property("enabled")
+assert not page_selector.property("enabled")
+assert not first_page_button.property("enabled")
+assert not last_page_button.property("enabled")
+assert QMetaObject.invokeMethod(log_selector, "activated", Q_ARG(int, 0))
+assert QMetaObject.invokeMethod(page_selector, "valueModified")
+child("closeLogsButton").click()
+application.processEvents()
+assert not logs_dialog.property("visible")
+logs_button.click()
+application.processEvents()
+assert logs_dialog.property("visible")
+assert child("logViewerError").property("visible")
+assert not qml_warnings, "\n".join(warning.toString() for warning in qml_warnings)
+child("closeLogsButton").click()
+application.processEvents()
 """
 
 
@@ -1013,7 +1283,7 @@ def test_main_qml_fits_supported_window_sizes(tmp_path):
         [
             sys.executable,
             "-",
-            "qrc:/eduescale/gui/qml/pages/Main.qml",
+            "qrc:/eduescale/gui/qml/Main.qml",
             str(tmp_path / "settings.ini"),
             str(assets_path),
         ],

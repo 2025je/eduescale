@@ -1,6 +1,10 @@
 # -*- mode: python ; coding: utf-8 -*-
+from pathlib import Path
+
 from PyInstaller.utils.hooks import collect_submodules
 from PyInstaller.utils.hooks import copy_metadata
+
+PROJECT_ROOT = Path(SPECPATH).parent
 
 datas = []
 hiddenimports = [
@@ -19,7 +23,7 @@ hiddenimports += collect_submodules('eduescale.infrastructure.scrapy.spiders')
 
 
 a = Analysis(
-    ['eduescale/scrape_worker.py'],
+    [str(PROJECT_ROOT / 'eduescale' / 'scrape_worker.py')],
     pathex=[],
     binaries=[],
     datas=datas,

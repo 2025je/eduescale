@@ -1,14 +1,18 @@
 # -*- mode: python ; coding: utf-8 -*-
+from pathlib import Path
+
 from PyInstaller.utils.hooks import copy_metadata
 
+PROJECT_ROOT = Path(SPECPATH).parent
+
 datas = [
-    ('eduescale/gui/resources.rcc', 'eduescale/gui'),
+    (str(PROJECT_ROOT / 'eduescale' / 'gui' / 'resources.rcc'), 'eduescale/gui'),
 ]
 datas += copy_metadata('eduescale')
 
 
 a = Analysis(
-    ['app.py'],
+    [str(PROJECT_ROOT / 'app.py')],
     pathex=[],
     binaries=[],
     datas=datas,
@@ -41,7 +45,7 @@ exe = EXE(
     [],
     exclude_binaries=True,
     name='eduescale-gui',
-    icon='eduescale/gui/assets/edutrack-logo.ico',
+    icon=str(PROJECT_ROOT / 'eduescale' / 'gui' / 'assets' / 'edutrack-logo.ico'),
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

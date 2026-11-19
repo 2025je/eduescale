@@ -1,8 +1,9 @@
 <RCC>
   <qresource prefix="/eduescale/gui">
-    <file alias="qml/pages/Main.qml">qml/pages/Main.qml</file>
+    <file alias="qml/Main.qml">qml/Main.qml</file>
     <file alias="qml/EduEscale/Gui/Components/qmldir">qml/components/qmldir</file>
     <file alias="qml/EduEscale/Gui/Components/DashboardHeader.qml">qml/components/DashboardHeader.qml</file>
+    <file alias="qml/EduEscale/Gui/Components/LogsButton.qml">qml/components/LogsButton.qml</file>
     <file alias="qml/EduEscale/Gui/Components/SearchActionBar.qml">qml/components/SearchActionBar.qml</file>
     <file alias="qml/EduEscale/Gui/Components/SchoolDetailsCard.qml">qml/components/SchoolDetailsCard.qml</file>
     <file alias="qml/EduEscale/Gui/Components/StyledButton.qml">qml/components/StyledButton.qml</file>
@@ -17,6 +18,7 @@
     <file alias="qml/EduEscale/Gui/Dialogs/qmldir">qml/dialogs/qmldir</file>
     <file alias="qml/EduEscale/Gui/Dialogs/ExportConfirmationDialog.qml">qml/dialogs/ExportConfirmationDialog.qml</file>
     <file alias="qml/EduEscale/Gui/Dialogs/ExportHistoryDialog.qml">qml/dialogs/ExportHistoryDialog.qml</file>
+    <file alias="qml/EduEscale/Gui/Dialogs/LogViewerDialog.qml">qml/dialogs/LogViewerDialog.qml</file>
     <file alias="qml/EduEscale/Gui/Maps/qmldir">qml/maps/qmldir</file>
     <file alias="qml/EduEscale/Gui/Maps/DistrictMap.qml">qml/maps/DistrictMap.qml</file>
     <file alias="qml/EduEscale/Gui/Pages/qmldir">qml/pages/qmldir</file>

@@ -363,6 +363,7 @@ ApplicationWindow {
             Layout.fillWidth: true
             Layout.margins: 10
             viewModel: window.viewModel
+            onLogsRequested: logViewerDialog.open()
         }
 
         Frame {
@@ -1183,6 +1184,7 @@ ApplicationWindow {
     SchoolSearchReviewPage {
         id: schoolWizardReviewPage
         window: window
+        onLogsRequested: logViewerDialog.open()
     }
     Item {
         id: schoolWizardPage
@@ -1201,15 +1203,26 @@ ApplicationWindow {
             anchors.margins: 16
             spacing: 10
 
-            Label {
-                objectName: "schoolWizardTitle"
+            RowLayout {
                 Layout.fillWidth: true
-                text: window.workflowStep === 2
-                    ? "Paso 3 de 4 · Descarga y mapa"
-                    : "Paso 4 de 4 · Resultados"
-                color: window.textColor
-                font.pixelSize: window.appTitleFontSize
-                font.weight: Font.DemiBold
+
+                Label {
+                    objectName: "schoolWizardTitle"
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    text: window.workflowStep === 2
+                        ? "Paso 3 de 4 · Descarga y mapa"
+                        : "Paso 4 de 4 · Resultados"
+                    color: window.textColor
+                    font.pixelSize: window.appTitleFontSize
+                    font.weight: Font.DemiBold
+                    elide: Text.ElideRight
+                }
+
+                LogsButton {
+                    objectName: "wizardLogsButton"
+                    onClicked: logViewerDialog.open()
+                }
             }
 
             Label {
@@ -1352,6 +1365,11 @@ ApplicationWindow {
                 }
             }
         }
+    }
+
+    LogViewerDialog {
+        id: logViewerDialog
+        viewModel: window.viewModel ? window.viewModel.logViewer : null
     }
 
     ExportHistoryDialog {

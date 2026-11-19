@@ -3,7 +3,7 @@ import sys
 from collections.abc import Callable
 
 from dependency_injector import containers, providers
-from PySide6.QtCore import QSettings
+from PySide6.QtCore import QSettings, qInstallMessageHandler
 from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication, QIcon
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
@@ -16,6 +16,7 @@ from eduescale.application.use_cases.offline_database import (
 from eduescale.gui.adapters.export_runner import ExportRunner
 from eduescale.gui.adapters.local_database import LocalDatabaseSearchRunner
 from eduescale.gui.adapters.location_service import LocationService
+from eduescale.gui.adapters.qt_logging import log_qt_message
 from eduescale.gui.adapters.resources import resource_path, resource_url
 from eduescale.gui.adapters.scrape_runner import ScrapeRunner
 from eduescale.gui.contracts.ports import (
@@ -259,31 +260,40 @@ def create_view_model(
 def main(
     view_model_factory: Callable[[], SchoolFinderViewModel] = create_view_model,
 ) -> int:
-    QtWebEngineQuick.initialize()
-    QQuickStyle.setStyle("Universal")
-    application = QGuiApplication(sys.argv)
-    if not configure_application_font(application):
-        return 1
-    if not configure_application_icon(application):
-        return 1
-    application.setOrganizationName("2025je")
-    application.setApplicationName("EduEscale")
-    application.setApplicationDisplayName("Buscador de colegios - ESCALE")
     log_path = configure_logging()
     LOGGER.info("Starting EduEscale; log file: %s", log_path)
-    engine = QQmlApplicationEngine()
-    engine.addImportPath(resource_url("qml").toString())
-    view_model = view_model_factory()
-    engine.setInitialProperties({"viewModel": view_model})
-    qml_url = resource_url("qml/pages/Main.qml")
-    engine.load(qml_url)
-    if not engine.rootObjects():
-        LOGGER.error(
-            "Could not load the main QML interface from %s", qml_url.toString()
-        )
-        view_model.shutdown()
-        return 1
-    return application.exec()
+    previous_qt_handler = qInstallMessageHandler(log_qt_message)
+    try:
+        QtWebEngineQuick.initialize()
+        QQuickStyle.setStyle("Universal")
+        application = QGuiApplication(sys.argv)
+        if not configure_application_font(application):
+            return 1
+        if not configure_application_icon(application):
+            return 1
+        application.setOrganizationName("2025je")
+        application.setApplicationName("EduEscale")
+        application.setApplicationDisplayName("Buscador de colegios - ESCALE")
+        engine = QQmlApplicationEngine()
+        engine.addImportPath(resource_url("qml").toString())
+        view_model = view_model_factory()
+        engine.setInitialProperties({"viewModel": view_model})
+        qml_url = resource_url("qml/Main.qml")
+        engine.load(qml_url)
+        if not engine.rootObjects():
+            LOGGER.error(
+                "Could not load the main QML interface from %s", qml_url.toString()
+            )
+            view_model.shutdown()
+            return 1
+        exit_code = application.exec()
+        LOGGER.info("EduEscale exited with code %d.", exit_code)
+        return exit_code
+    except Exception:
+        LOGGER.exception("EduEscale terminated unexpectedly.")
+        raise
+    finally:
+        qInstallMessageHandler(previous_qt_handler)
 
 
 if __name__ == "__main__":

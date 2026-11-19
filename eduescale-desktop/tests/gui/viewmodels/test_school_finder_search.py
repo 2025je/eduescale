@@ -1,3 +1,4 @@
+import logging
 
 from PySide6.QtCore import QUrl
 
@@ -38,24 +39,30 @@ def test_rejects_non_local_output_urls(view_model_components):
     ]
     assert scrape_runner.started_requests == []
 
-def test_starts_scrape_with_multiple_filter_sets(view_model_components):
+def test_starts_scrape_with_multiple_filter_sets(view_model_components, caplog):
     view_model, scrape_runner, _errors = view_model_components
-    view_model.startScrape(
-        "file:///tmp/schools.xlsx",
-        [
-            {
-                "region_code": "01",
-                "management": "publica",
-                "level": "primaria",
-            },
-            {
-                "region_code": "02",
-                "management": "privada",
-                "level": "primaria,secundaria",
-            },
-        ],
-    )
+    with caplog.at_level(logging.INFO, logger="eduescale"):
+        view_model.startScrape(
+            "file:///tmp/schools.xlsx",
+            [
+                {
+                    "region_code": "01",
+                    "management": "publica",
+                    "level": "primaria",
+                },
+                {
+                    "region_code": "02",
+                    "management": "privada",
+                    "level": "primaria,secundaria",
+                },
+            ],
+        )
 
+    start_record = next(
+        record for record in caplog.records if record.message == "Starting school search."
+    )
+    assert start_record.data_source == "online"
+    assert start_record.filter_count == 2
     assert len(scrape_runner.started_requests) == 1
     filters = scrape_runner.started_requests[0][1]
     assert len(filters) == 2

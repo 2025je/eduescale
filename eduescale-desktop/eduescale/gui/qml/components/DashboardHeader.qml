@@ -8,6 +8,7 @@ Frame {
     objectName: "dashboardHeader"
 
     property var viewModel: null
+    signal logsRequested()
 
     padding: 10
 
@@ -32,21 +33,33 @@ Frame {
 
         ColumnLayout {
             Layout.fillWidth: true
+            Layout.minimumWidth: 0
             spacing: 2
 
             Label {
                 objectName: "brandTitle"
+                Layout.fillWidth: true
                 text: "EduEscale"
+                elide: Text.ElideRight
                 color: EduStyle.Style.textColor
                 font.pixelSize: EduStyle.Style.appTitleFontSize
                 font.weight: Font.DemiBold
             }
 
             Label {
+                objectName: "brandSubtitle"
+                Layout.fillWidth: true
                 text: "Panel de control · Instituciones educativas del Perú"
+                elide: Text.ElideRight
                 color: EduStyle.Style.mutedTextColor
                 font.pixelSize: EduStyle.Style.bodyFontSize
             }
+        }
+
+        LogsButton {
+            objectName: "openLogsButton"
+            Layout.alignment: Qt.AlignVCenter
+            onClicked: root.logsRequested()
         }
 
         StyledComboBox {

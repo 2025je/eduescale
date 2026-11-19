@@ -54,6 +54,7 @@ from eduescale.gui.services.school_search_workflow import (
     SchoolSearchWorkflowPort,
     SearchProgress,
 )
+from eduescale.gui.viewmodels.log_viewer import LogViewerViewModel
 
 LOGGER = logging.getLogger(__name__)
 
@@ -110,6 +111,7 @@ class SchoolFinderViewModel(QObject):
         self._export_history_store = export_history_store
         self._district_map_catalog = district_map_catalog
         self._data_directory = data_directory
+        self._log_viewer = LogViewerViewModel(data_directory / "logs", self)
         self._preferences = preferences
         self._saved_search_service = saved_search_service
         self._school_search_service = school_search_service
@@ -214,6 +216,10 @@ class SchoolFinderViewModel(QObject):
         self._export_runner.failed.connect(self._export_failed)
         LOGGER.info("Loaded local district boundary data.")
         self._request_locations("regions")
+
+    @Property(QObject, constant=True)
+    def logViewer(self) -> QObject:
+        return self._log_viewer
 
     @Property(list, notify=regionsChanged)
     def regions(self):
@@ -820,6 +826,7 @@ class SchoolFinderViewModel(QObject):
                 self._offline_database_path,
             )
         except SchoolSearchRequestError as error:
+            LOGGER.warning("Search request rejected: %s", error.title)
             self.errorRaised.emit(error.title, error.details)
             return
 
@@ -851,9 +858,11 @@ class SchoolFinderViewModel(QObject):
         self.stateChanged.emit()
 
         LOGGER.info(
-            "Starting extraction for %s with filters %s.",
-            self._output_path,
-            [filters.model_dump(mode="json") for filters in request.filter_sets],
+            "Starting school search.",
+            extra={
+                "data_source": self._data_source,
+                "filter_count": len(request.filter_sets),
+            },
         )
         self._school_search_workflow.start_search(request, self._data_source)
 
@@ -1075,7 +1084,7 @@ class SchoolFinderViewModel(QObject):
 
     @Slot(str, str, str)
     def _scrape_failed(self, operation, title, details):
-        LOGGER.error("Extraction failed (%s): %s", title, details)
+        LOGGER.error("%s failed (%s): %s", operation, title, details)
         if operation == "database_update":
             self._database_update_target = None
             self._scrape_running = False
@@ -1138,6 +1147,11 @@ class SchoolFinderViewModel(QObject):
             return
 
         metadata = update_result.metadata
+        LOGGER.info(
+            "Offline database update completed: %d unique records across %d pages.",
+            records,
+            pages,
+        )
         checkpoint_cleanup_error = update_result.checkpoint_cleanup_error
         if checkpoint_cleanup_error:
             LOGGER.warning(
@@ -1236,6 +1250,7 @@ class SchoolFinderViewModel(QObject):
                 export_type,
             )
         except ExportRequestError as error:
+            LOGGER.warning("Export request rejected: %s", error.title)
             self.errorRaised.emit(error.title, error.details)
             return
         output_path = request.output_path
@@ -1249,6 +1264,10 @@ class SchoolFinderViewModel(QObject):
         self._progress_message = request.format.progress_message
         self._status_text = self._progress_message
         self.stateChanged.emit()
+        LOGGER.info(
+            "Starting export.",
+            extra={"export_type": export_type, "compressed": compressed},
+        )
         if password is not None or compressed:
             self._export_runner.start(
                 export_type,

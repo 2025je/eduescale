@@ -88,6 +88,24 @@ ejecuta:
 uv run pyside6-rcc --binary eduescale/gui/resources.qrc -o eduescale/gui/resources.rcc
 ```
 
+### Registros de diagnóstico
+
+La aplicación guarda eventos de Python y mensajes de Qt/QML en formato JSON,
+usando `structlog` y `logging`. El archivo es `EduEscale/logs/eduescale.log`
+dentro de `%LOCALAPPDATA%` en Windows; en otros sistemas se usa
+`$XDG_STATE_HOME` o `~/.local/state`. Se conservan hasta tres archivos rotados
+de 5 MiB, además del archivo activo. Los registros pueden incluir rutas,
+detalles de errores y mensajes de Qt; revísalos antes de compartirlos.
+No se registran las contraseñas de exportación en los eventos de inicio.
+El botón **Registros**, disponible en todos los pasos, abre un visor de solo lectura que se
+actualiza automáticamente; permite seleccionar el archivo activo o cualquiera
+de sus copias rotadas. Los eventos JSON y los registros antiguos se muestran
+con fecha, nivel y detalles resaltados por color según el tema;
+también se puede consultar el texto original. Los archivos grandes se muestran
+en bloques navegables, con acceso directo a cualquier bloque; al llegar al
+último bloque se siguen los nuevos registros automáticamente. Los fragmentos
+de eventos excepcionalmente largos se muestran como texto original.
+
 ## Uso
 
 ### Fuentes de datos
@@ -340,8 +358,8 @@ de Scrapy como proceso separado y recibir su progreso; por eso el ejecutable
 del worker debe permanecer junto a la aplicación. Se distribuye como carpeta
 para que, al cancelar una extracción, Windows cierre el proceso que mantiene
 abierta la base de datos temporal.
-Nox usa `eduescale-gui.spec` y `eduescale-scraper.spec` como configuración de
-empaquetado. GitHub Actions ejecuta las pruebas, Ruff, mypy, ambos builds de
+Nox usa `packaging/eduescale-gui.spec` y `packaging/eduescale-scraper.spec`
+como configuración de empaquetado. GitHub Actions ejecuta las pruebas, Ruff, mypy, ambos builds de
 Windows y una comprobación del comando `list` del scraper, los recursos QML de Material,
 los certificados, MapLibre y Qt WebEngine incluidos en la GUI en cada push y pull request.
 También se puede ejecutar manualmente desde GitHub Actions; ese flujo permite

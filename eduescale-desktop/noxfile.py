@@ -70,13 +70,13 @@ def build(session: Session) -> None:
         "pyinstaller",
         "--noconfirm",
         "--clean",
-        "eduescale-gui.spec",
+        str(PROJECT_ROOT / "packaging" / "eduescale-gui.spec"),
     )
     session.run(
         "pyinstaller",
         "--noconfirm",
         "--clean",
-        "eduescale-scraper.spec",
+        str(PROJECT_ROOT / "packaging" / "eduescale-scraper.spec"),
     )
     version = session.run(
         "uv",

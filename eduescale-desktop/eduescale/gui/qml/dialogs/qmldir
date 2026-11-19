@@ -1,3 +1,4 @@
 module EduEscale.Gui.Dialogs
 ExportConfirmationDialog 1.0 ExportConfirmationDialog.qml
 ExportHistoryDialog 1.0 ExportHistoryDialog.qml
+LogViewerDialog 1.0 LogViewerDialog.qml

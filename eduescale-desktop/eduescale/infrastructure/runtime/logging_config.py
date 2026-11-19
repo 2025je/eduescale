@@ -4,10 +4,13 @@ import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+import structlog
+
 from eduescale.infrastructure.runtime.paths import application_data_directory
 
 MAX_LOG_BYTES = 5 * 1024 * 1024
 LOG_BACKUP_COUNT = 3
+LOG_FILE_NAME = "eduescale.log"
 
 
 def _default_log_directory() -> Path:
@@ -17,7 +20,7 @@ def _default_log_directory() -> Path:
 def configure_logging(directory: Path | None = None) -> Path:
     log_directory = _default_log_directory() if directory is None else directory
     log_directory.mkdir(parents=True, exist_ok=True)
-    log_path = log_directory / "eduescale.log"
+    log_path = log_directory / LOG_FILE_NAME
 
     logger = logging.getLogger("eduescale")
     logger.setLevel(logging.INFO)
@@ -34,9 +37,18 @@ def configure_logging(directory: Path | None = None) -> Path:
             encoding="utf-8",
         )
         handler.setFormatter(
-            logging.Formatter(
-                "%(asctime)s %(levelname)s %(name)s: %(message)s",
-                datefmt="%Y-%m-%d %H:%M:%S",
+            structlog.stdlib.ProcessorFormatter(
+                foreign_pre_chain=[
+                    structlog.stdlib.add_logger_name,
+                    structlog.stdlib.add_log_level,
+                    structlog.processors.TimeStamper(fmt="iso", utc=True),
+                    structlog.stdlib.ExtraAdder(),
+                ],
+                processors=[
+                    structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+                    structlog.processors.format_exc_info,
+                    structlog.processors.JSONRenderer(ensure_ascii=False),
+                ],
             )
         )
         logger.addHandler(handler)
