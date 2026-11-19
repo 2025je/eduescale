@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from eduescale.application.ports import ExportGateway
+from eduescale.application.ports import ExportGateway, ExportType
 
 
 class ExportData:
@@ -9,7 +9,7 @@ class ExportData:
 
     def execute(
         self,
-        export_type: str,
+        export_type: ExportType,
         database_path: Path,
         output_path: Path,
         password: str | None = None,

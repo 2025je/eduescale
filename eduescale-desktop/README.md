@@ -65,19 +65,22 @@ El código sigue Clean Architecture: `domain/` contiene modelos y reglas
 independientes de Qt y de la base de datos; `application/` define puertos y
 coordina casos de uso; `infrastructure/` implementa ESCALE, SQLite/SQLAlchemy,
 Scrapy, exportaciones y acceso al sistema operativo; `gui/` contiene la
-presentación Qt/QML. Pydantic valida los modelos de dominio y los manifiestos
-persistidos. `gui.application.ApplicationContainer` usa `dependency-injector`
-para construir y conectar adaptadores, casos de uso y servicios Qt. Se crea un
-contenedor por controlador; `gui.application.create_controller` conserva los
-overrides para pruebas y usos personalizados. Los módulos antiguos de nivel
-superior se conservan como fachadas de compatibilidad para las importaciones
-públicas existentes.
+presentación Qt/QML, organizada en contratos, adaptadores, servicios, modelos y
+ViewModels. Pydantic valida los modelos de dominio y los manifiestos persistidos.
+`gui.application.ApplicationContainer` usa `dependency-injector` para construir
+y conectar adaptadores, casos de uso y servicios Qt. Se crea un contenedor por
+ViewModel; `gui.application.create_view_model` conserva los overrides para
+pruebas y usos personalizados. Los módulos antiguos de nivel superior se
+conservan como fachadas de compatibilidad para las importaciones públicas
+existentes. Las vistas QML se agrupan en `pages/`, `components/`, `dialogs/`,
+`panels/`, `maps/` y `styles/`; cada grupo se publica como módulo
+`EduEscale.Gui.*` y el motor carga estos módulos desde los recursos Qt.
 El comando `eduescale-gui` es el entry point instalado para iniciar esa
 interfaz. Los tokens visuales compartidos por las vistas se definen en el
 singleton QML `eduescale/gui/qml/styles/Style.qml`; todos los desplegables usan
-el componente `eduescale/gui/qml/StyledComboBox.qml` para mantener el mismo
-estilo en su lista emergente. La interfaz, el mapa, sus datos, las imágenes y
-la fuente se compilan en `eduescale/gui/resources.rcc` a partir del manifiesto
+el componente `eduescale/gui/qml/components/StyledComboBox.qml` para mantener
+el mismo estilo en su lista emergente. La interfaz, el mapa, sus datos, las
+imágenes y la fuente se compilan en `eduescale/gui/resources.rcc` a partir del manifiesto
 `eduescale/gui/resources.qrc`. Para regenerarlo desde `eduescale-desktop`,
 ejecuta:
 
@@ -222,13 +225,14 @@ Este comando también genera `colegios_escale.eduescale` en la misma carpeta.
 ### Límites del mapa
 
 El mapa usa MapLibre GL JS 5.24.0 y las capas GeoJSON incluidas localmente. Como
-fondo muestra el estilo Liberty de OpenFreeMap, más colorido, y requiere
-conexión a Internet. El relleno de los límites GeoJSON es transparente; los
-contornos y etiquetas se mantienen para facilitar la selección.
-El selector sobre el mapa permite cambiar entre Liberty, Bright, Positron,
-Dark y Fiord, además de los mapas estándar de OpenStreetMap, topográfico de
-OpenTopoMap y satelital de Esri World Imagery. Estas capas externas requieren
-conexión a Internet y conservan la atribución de cada proveedor en el mapa.
+fondo, ambos mapas muestran por defecto el mapa estándar de OpenStreetMap, con
+calles y etiquetas, y requieren conexión a Internet. El relleno de los límites
+GeoJSON es transparente; los contornos y etiquetas se mantienen para facilitar
+la selección.
+El selector sobre cada mapa permite cambiar entre OpenStreetMap, Liberty,
+Bright, Positron, Dark y Fiord, además del mapa topográfico de OpenTopoMap y el
+satelital de Esri World Imagery. Estas capas externas requieren conexión a
+Internet y conservan la atribución de cada proveedor en el mapa.
 OpenStreetMap usa una caché persistente y un identificador de aplicación para
 respetar la política de uso de sus teselas. En los estilos de OpenFreeMap se
 ocultan las etiquetas del mapa base; los fondos raster conservan las etiquetas
@@ -236,6 +240,13 @@ integradas por su proveedor. Los nombres de los elementos GeoJSON se muestran
 centrados sobre sus límites. La atribución de los datos del mapa permanece
 visible. MapLibre se distribuye bajo BSD-3-Clause; su licencia está en
 `eduescale/gui/assets/maplibre/LICENSE.txt`.
+
+El mapa permite acercarse hasta el nivel 19. En la vista de colegios, los
+puntos cercanos se agrupan con un contador para mantener legible el mapa con
+miles de resultados; al pulsar un grupo, el mapa se acerca, y al seleccionar
+un punto individual se abre la ficha del colegio. Durante la descarga, los
+puntos se envían al mapa en lotes de hasta 500 ubicaciones, espaciados para
+mantener ágil la interfaz sin reemplazar la capa incremental ni el clustering.
 
 La capa distrital descargable del INEI está actualizada al 2023 y contiene
 1.890 UBIGEO únicos. La consulta en vivo de ESCALE usada para esta versión
@@ -279,6 +290,25 @@ respuestas HTTP recuperables con backoff acotado y respetan `Retry-After`.
 La aplicación recuerda el tamaño de la ventana y la última carpeta de exportación
 en las preferencias locales. En Windows, los logs rotativos se guardan en
 `%LOCALAPPDATA%\EduEscale\logs` (5 MiB por archivo y tres respaldos).
+
+## Arquitectura de la interfaz
+
+La interfaz desktop sigue MVVM: QML declara la vista y se enlaza a
+`SchoolFinderViewModel`, que expone propiedades y comandos de presentación.
+El ViewModel coordina los casos de uso y servicios definidos por interfaces;
+el dominio y la capa de aplicación conservan las reglas y modelos. La
+composición de dependencias y la creación del ViewModel se realizan en
+`eduescale/gui/application.py`. El catálogo jerárquico del mapa, la preparación
+de solicitudes de búsqueda, las preferencias y los historiales de búsquedas y
+exportaciones son colaboradores independientes inyectados mediante interfaces.
+La publicación de la base offline y la preparación de exportaciones también
+están separadas del ViewModel. Los formatos se registran en una única política
+de presentación, mientras que los puertos de scraping y de finalización de
+descargas exponen capacidades distintas.
+El runner recibe explícitamente si ejecuta una búsqueda online o actualiza la
+base offline; no infiere el modo a partir de la extensión del archivo. Un parser
+separado interpreta la salida de Scrapy y emite métricas estructuradas que el
+ViewModel convierte en mensajes localizados para la interfaz.
 
 ## Pruebas
 

@@ -37,6 +37,7 @@ from eduescale.infrastructure.persistence.offline_database import (
 
 REQUIRED_RECORD_COLUMNS = {"region", "province", "district", "payload"}
 SEARCH_BATCH_SIZE = 500
+SCHOOL_MAP_BATCH_SIZE = 50
 PROGRESS_INTERVAL = 100
 
 
@@ -214,6 +215,7 @@ def filter_local_database(
     filters: list[LocalSearchFilter],
     cancelled: Callable[[], bool],
     progress: Callable[[int, int, int], None],
+    school_batch: Callable[[list[dict[str, object]]], None] | None = None,
 ) -> tuple[int, int]:
     if not filters:
         raise ValueError("Agrega al menos una combinación de filtros.")
@@ -226,6 +228,7 @@ def filter_local_database(
     matched_records = 0
     processed_records = 0
     batch: list[dict[str, str]] = []
+    school_records: list[dict[str, object]] = []
     try:
         source_records = Table("records", MetaData(), autoload_with=source_engine)
         source_columns = set(source_records.c.keys())
@@ -270,6 +273,16 @@ def filter_local_database(
                 for row in cursor.mappings():
                     if cancelled():
                         raise SearchCancelled
+                    if school_batch is not None:
+                        school_records.append(
+                            _decode_school_payload(
+                                row["payload"],
+                                processed_records + 1,
+                            )
+                        )
+                        if len(school_records) >= SCHOOL_MAP_BATCH_SIZE:
+                            school_batch(school_records)
+                            school_records = []
                     batch.append(dict(row))
                     processed_records += 1
                     if len(batch) >= SEARCH_BATCH_SIZE:
@@ -294,12 +307,10 @@ def filter_local_database(
                         raise TypeError(
                             f"El registro {processed_records + 1} no contiene texto JSON."
                         )
-                    record = json.loads(payload)
-                    if not isinstance(record, dict):
-                        raise TypeError(
-                            f"El registro {processed_records + 1} "
-                            "no contiene un objeto JSON."
-                        )
+                    record = _decode_school_payload(
+                        payload,
+                        processed_records + 1,
+                    )
                     region_value = str(region or "")
                     province_value = str(province or "")
                     district_value = str(district or "")
@@ -325,6 +336,11 @@ def filter_local_database(
                             }
                         )
                         matched_records += 1
+                        if school_batch is not None:
+                            school_records.append(record)
+                            if len(school_records) >= SCHOOL_MAP_BATCH_SIZE:
+                                school_batch(school_records)
+                                school_records = []
                     processed_records += 1
                     if len(batch) >= SEARCH_BATCH_SIZE:
                         output.execute(insert(records), batch)
@@ -334,11 +350,24 @@ def filter_local_database(
 
             if batch:
                 output.execute(insert(records), batch)
+        if school_batch is not None and school_records:
+            school_batch(school_records)
         progress(processed_records, total_records, matched_records)
         return total_records, matched_records
     finally:
         source_engine.dispose()
         output_engine.dispose()
+
+
+def _decode_school_payload(payload: object, record_number: int) -> dict[str, object]:
+    if not isinstance(payload, str):
+        raise TypeError(f"El registro {record_number} no contiene texto JSON.")
+    record = json.loads(payload)
+    if not isinstance(record, dict):
+        raise TypeError(
+            f"El registro {record_number} no contiene un objeto JSON."
+        )
+    return record
 
 
 def _stored_search_key_variants(
@@ -579,6 +608,7 @@ class SqliteOfflineDatabaseRepository:
         filters: list[LocalSearchFilter],
         cancelled: Callable[[], bool],
         progress: Callable[[int, int, int], None],
+        school_batch: Callable[[list[dict[str, object]]], None] | None = None,
     ) -> tuple[int, int]:
         try:
             return filter_local_database(
@@ -587,6 +617,7 @@ class SqliteOfflineDatabaseRepository:
                 filters,
                 cancelled,
                 progress,
+                school_batch,
             )
         except (sqlite3.Error, SQLAlchemyError) as error:
             raise DataAccessError(str(error)) from error

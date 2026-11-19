@@ -1,0 +1,3 @@
+module EduEscale.Gui.Dialogs
+ExportConfirmationDialog 1.0 ExportConfirmationDialog.qml
+ExportHistoryDialog 1.0 ExportHistoryDialog.qml

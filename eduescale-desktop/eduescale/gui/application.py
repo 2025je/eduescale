@@ -3,6 +3,7 @@ import sys
 from collections.abc import Callable
 
 from dependency_injector import containers, providers
+from PySide6.QtCore import QSettings
 from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication, QIcon
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
@@ -12,18 +13,49 @@ from eduescale.application.use_cases.export_data import ExportData
 from eduescale.application.use_cases.offline_database import (
     OfflineDatabaseUseCases,
 )
-from eduescale.gui.controller import SchoolFinderController
-from eduescale.gui.export_runner import ExportRunner
-from eduescale.gui.local_database import LocalDatabaseSearchRunner
-from eduescale.gui.location_service import LocationService
-from eduescale.gui.ports import (
+from eduescale.gui.adapters.export_runner import ExportRunner
+from eduescale.gui.adapters.local_database import LocalDatabaseSearchRunner
+from eduescale.gui.adapters.location_service import LocationService
+from eduescale.gui.adapters.resources import resource_path, resource_url
+from eduescale.gui.adapters.scrape_runner import ScrapeRunner
+from eduescale.gui.contracts.ports import (
+    DistrictMapCatalogPort,
     ExportRunnerPort,
     LocalDatabaseSearchRunnerPort,
     LocationServicePort,
+    OfflineDatabaseUseCasesPort,
     ScrapeRunnerPort,
 )
-from eduescale.gui.resources import resource_path, resource_url
-from eduescale.gui.scrape_runner import ScrapeRunner
+from eduescale.gui.services.district_map_catalog import DistrictMapCatalog
+from eduescale.gui.services.export_history import (
+    ExportHistoryStorePort,
+    QSettingsExportHistoryStore,
+)
+from eduescale.gui.services.export_request_service import (
+    ExportRequestService,
+    ExportRequestServicePort,
+)
+from eduescale.gui.services.offline_database_update import (
+    OfflineDatabaseUpdateService,
+    OfflineDatabaseUpdateServicePort,
+)
+from eduescale.gui.services.preferences import (
+    DesktopPreferencesPort,
+    QSettingsDesktopPreferences,
+)
+from eduescale.gui.services.saved_search_service import (
+    PortableSavedSearchService,
+    PortableSavedSearchServicePort,
+)
+from eduescale.gui.services.school_search_service import (
+    SchoolSearchRequestService,
+    SchoolSearchRequestServicePort,
+)
+from eduescale.gui.services.school_search_workflow import (
+    SchoolSearchWorkflow,
+    SchoolSearchWorkflowPort,
+)
+from eduescale.gui.viewmodels import SchoolFinderViewModel
 from eduescale.infrastructure.escale.location_provider import ESCALELocationProvider
 from eduescale.infrastructure.exports.gateway import FilesystemExportGateway
 from eduescale.infrastructure.persistence.checkpoints import (
@@ -39,13 +71,14 @@ LOGGER = logging.getLogger(__name__)
 
 
 class ApplicationContainer(containers.DeclarativeContainer):
+    settings = providers.Singleton(QSettings)
     location_gateway = providers.Singleton(ESCALELocationProvider)
     location_service = providers.Factory(
         LocationService,
         provider=location_gateway,
     )
     checkpoint_gateway = providers.Singleton(DownloadCheckpointGateway)
-    scrape_runner = providers.Factory(
+    scrape_runner = providers.Singleton(
         ScrapeRunner,
         checkpoint_gateway=checkpoint_gateway,
     )
@@ -67,14 +100,49 @@ class ApplicationContainer(containers.DeclarativeContainer):
         LocalDatabaseSearchRunner,
         use_cases=offline_database_use_cases,
     )
-    data_directory = providers.Callable(application_data_directory)
-    controller = providers.Factory(
-        SchoolFinderController,
-        location_service=location_service,
+    school_search_workflow = providers.Factory(
+        SchoolSearchWorkflow,
         scrape_runner=scrape_runner,
-        export_runner=export_runner,
         local_database_search_runner=local_database_search_runner,
+    )
+    data_directory = providers.Callable(application_data_directory)
+    export_history_store = providers.Factory(
+        QSettingsExportHistoryStore,
+        settings=settings,
+    )
+    preferences = providers.Factory(
+        QSettingsDesktopPreferences,
+        settings=settings,
+    )
+    district_map_catalog = providers.Singleton(DistrictMapCatalog)
+    saved_search_service = providers.Factory(
+        PortableSavedSearchService,
+        district_map_catalog=district_map_catalog,
+    )
+    school_search_service = providers.Factory(
+        SchoolSearchRequestService,
+        district_map_catalog=district_map_catalog,
         offline_database_use_cases=offline_database_use_cases,
+    )
+    offline_database_update_service = providers.Factory(
+        OfflineDatabaseUpdateService,
+        offline_database_use_cases=offline_database_use_cases,
+        offline_database_download=scrape_runner,
+    )
+    export_request_service = providers.Factory(ExportRequestService)
+    school_finder_view_model = providers.Factory(
+        SchoolFinderViewModel,
+        location_service=location_service,
+        school_search_workflow=school_search_workflow,
+        preferences=preferences,
+        export_runner=export_runner,
+        offline_database_use_cases=offline_database_use_cases,
+        offline_database_update_service=offline_database_update_service,
+        export_history_store=export_history_store,
+        district_map_catalog=district_map_catalog,
+        saved_search_service=saved_search_service,
+        school_search_service=school_search_service,
+        export_request_service=export_request_service,
         data_directory=data_directory,
     )
 
@@ -125,13 +193,21 @@ def configure_application_icon(application: QGuiApplication) -> bool:
     return True
 
 
-def create_controller(
+def create_view_model(
     location_service: LocationServicePort | None = None,
     scrape_runner: ScrapeRunnerPort | None = None,
     export_runner: ExportRunnerPort | None = None,
     local_database_search_runner: LocalDatabaseSearchRunnerPort | None = None,
-    offline_database_use_cases: OfflineDatabaseUseCases | None = None,
-) -> SchoolFinderController:
+    offline_database_use_cases: OfflineDatabaseUseCasesPort | None = None,
+    offline_database_update_service: OfflineDatabaseUpdateServicePort | None = None,
+    export_history_store: ExportHistoryStorePort | None = None,
+    district_map_catalog: DistrictMapCatalogPort | None = None,
+    preferences: DesktopPreferencesPort | None = None,
+    saved_search_service: PortableSavedSearchServicePort | None = None,
+    school_search_service: SchoolSearchRequestServicePort | None = None,
+    export_request_service: ExportRequestServicePort | None = None,
+    school_search_workflow: SchoolSearchWorkflowPort | None = None,
+) -> SchoolFinderViewModel:
     container = ApplicationContainer()
     if location_service is not None:
         container.location_service.override(providers.Object(location_service))
@@ -147,11 +223,41 @@ def create_controller(
         container.offline_database_use_cases.override(
             providers.Object(offline_database_use_cases)
         )
-    return container.controller()
+    if offline_database_update_service is not None:
+        container.offline_database_update_service.override(
+            providers.Object(offline_database_update_service)
+        )
+    if export_history_store is not None:
+        container.export_history_store.override(
+            providers.Object(export_history_store)
+        )
+    if district_map_catalog is not None:
+        container.district_map_catalog.override(
+            providers.Object(district_map_catalog)
+        )
+    if preferences is not None:
+        container.preferences.override(providers.Object(preferences))
+    if saved_search_service is not None:
+        container.saved_search_service.override(
+            providers.Object(saved_search_service)
+        )
+    if school_search_service is not None:
+        container.school_search_service.override(
+            providers.Object(school_search_service)
+        )
+    if export_request_service is not None:
+        container.export_request_service.override(
+            providers.Object(export_request_service)
+        )
+    if school_search_workflow is not None:
+        container.school_search_workflow.override(
+            providers.Object(school_search_workflow)
+        )
+    return container.school_finder_view_model()
 
 
 def main(
-    controller_factory: Callable[[], SchoolFinderController] = create_controller,
+    view_model_factory: Callable[[], SchoolFinderViewModel] = create_view_model,
 ) -> int:
     QtWebEngineQuick.initialize()
     QQuickStyle.setStyle("Universal")
@@ -166,15 +272,16 @@ def main(
     log_path = configure_logging()
     LOGGER.info("Starting EduEscale; log file: %s", log_path)
     engine = QQmlApplicationEngine()
-    controller = controller_factory()
-    engine.setInitialProperties({"controller": controller})
-    qml_url = resource_url("qml/Main.qml")
+    engine.addImportPath(resource_url("qml").toString())
+    view_model = view_model_factory()
+    engine.setInitialProperties({"viewModel": view_model})
+    qml_url = resource_url("qml/pages/Main.qml")
     engine.load(qml_url)
     if not engine.rootObjects():
         LOGGER.error(
             "Could not load the main QML interface from %s", qml_url.toString()
         )
-        controller.shutdown()
+        view_model.shutdown()
         return 1
     return application.exec()
 

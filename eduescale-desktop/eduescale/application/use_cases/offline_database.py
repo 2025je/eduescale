@@ -6,7 +6,11 @@ from eduescale.application.models import (
     LocationSchoolCount,
     OfflineDatabaseLocationSummary,
 )
-from eduescale.application.ports import OfflineDatabaseRepository, SearchProgress
+from eduescale.application.ports import (
+    OfflineDatabaseRepository,
+    SearchProgress,
+    SearchSchoolBatch,
+)
 from eduescale.domain.offline_search import LocalSearchFilter
 
 
@@ -78,6 +82,7 @@ class OfflineDatabaseUseCases:
         filters: list[LocalSearchFilter],
         cancelled: Callable[[], bool],
         progress: SearchProgress,
+        school_batch: SearchSchoolBatch | None = None,
     ) -> tuple[int, int]:
         return self._repository.filter(
             source_path,
@@ -85,4 +90,5 @@ class OfflineDatabaseUseCases:
             filters,
             cancelled,
             progress,
+            school_batch,
         )

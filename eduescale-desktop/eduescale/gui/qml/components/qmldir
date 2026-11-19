@@ -1,0 +1,13 @@
+module EduEscale.Gui.Components
+DashboardHeader 1.0 DashboardHeader.qml
+SearchActionBar 1.0 SearchActionBar.qml
+SchoolDetailsCard 1.0 SchoolDetailsCard.qml
+StyledButton 1.0 StyledButton.qml
+StyledCheckBox 1.0 StyledCheckBox.qml
+StyledComboBox 1.0 StyledComboBox.qml
+StyledDialog 1.0 StyledDialog.qml
+StyledProgressBar 1.0 StyledProgressBar.qml
+StyledScrollBar 1.0 StyledScrollBar.qml
+StyledTabButton 1.0 StyledTabButton.qml
+StyledTextArea 1.0 StyledTextArea.qml
+StyledTextField 1.0 StyledTextField.qml

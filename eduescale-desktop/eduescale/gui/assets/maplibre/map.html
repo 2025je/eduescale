@@ -36,11 +36,15 @@
         let districtFeaturesPromise = null;
         let currentLevel = "department";
         let currentFeatures = [];
+        let schoolFeatures = [];
+        let schoolFeatureIds = new Set();
+        let schoolMode = false;
+        let schoolLayerReady = false;
         let selectedCodes = new Set();
         let currentRequestId = 0;
         let currentParentCodes = [];
         let currentSelectionCodes = [];
-        let currentMapStyle = "liberty";
+        let currentMapStyle = "osm";
         let mapStyleChangeId = 0;
         let pendingError = "";
         let popup = null;
@@ -90,6 +94,29 @@
                     'Source: <a href="https://goto.arcgisonline.com/maps/World_Imagery">Esri</a>, Vantor, Earthstar Geographics, and the GIS User Community'
             }
         };
+
+        function mapStyleDefinition(styleConfig) {
+            if (styleConfig.type === "style")
+                return styleConfig.url;
+            return {
+                version: 8,
+                sources: {
+                    basemap: {
+                        type: "raster",
+                        tiles: styleConfig.tiles,
+                        tileSize: 256,
+                        attribution: styleConfig.attribution
+                    }
+                },
+                layers: [
+                    {
+                        id: "basemap",
+                        type: "raster",
+                        source: "basemap"
+                    }
+                ]
+            };
+        }
 
         function reportError(error) {
             const message = error && error.message ? error.message : String(error);
@@ -300,7 +327,187 @@
                     "text-halo-blur": 0.2
                 }
             });
+            map.addSource("schools-live", {
+                type: "geojson",
+                data: {
+                    type: "FeatureCollection",
+                    features: []
+                },
+                promoteId: "schoolId",
+                cluster: true,
+                clusterRadius: 48,
+                clusterMaxZoom: 15
+            });
+            map.addLayer({
+                id: "school-clusters",
+                type: "circle",
+                source: "schools-live",
+                filter: ["has", "point_count"],
+                layout: {
+                    visibility: schoolMode ? "visible" : "none"
+                },
+                paint: {
+                    "circle-color": [
+                        "step",
+                        ["get", "point_count"],
+                        "#358B67",
+                        25,
+                        "#D28B25",
+                        100,
+                        "#B5473B"
+                    ],
+                    "circle-radius": [
+                        "step",
+                        ["get", "point_count"],
+                        16,
+                        10,
+                        19,
+                        100,
+                        24,
+                        1000,
+                        30
+                    ],
+                    "circle-stroke-color": "#FFFFFF",
+                    "circle-stroke-width": 2
+                }
+            });
+            map.addLayer({
+                id: "school-cluster-count",
+                type: "symbol",
+                source: "schools-live",
+                filter: ["has", "point_count"],
+                layout: {
+                    visibility: schoolMode ? "visible" : "none",
+                    "text-field": ["get", "point_count_abbreviated"],
+                    "text-font": ["Noto Sans Regular"],
+                    "text-size": 12,
+                    "text-allow-overlap": true
+                },
+                paint: {
+                    "text-color": "#FFFFFF",
+                    "text-halo-color": "#176B50",
+                    "text-halo-width": 1
+                }
+            });
+            map.addLayer({
+                id: "school-points",
+                type: "circle",
+                source: "schools-live",
+                filter: ["!", ["has", "point_count"]],
+                layout: {
+                    visibility: schoolMode ? "visible" : "none"
+                },
+                paint: {
+                    "circle-color": "#176B50",
+                    "circle-radius": [
+                        "interpolate",
+                        ["linear"],
+                        ["zoom"],
+                        3,
+                        3,
+                        10,
+                        7,
+                        19,
+                        10
+                    ],
+                    "circle-stroke-color": "#FFFFFF",
+                    "circle-stroke-width": 1.5
+                }
+            });
+            schoolLayerReady = true;
         }
+
+        function fitSchoolFeatures() {
+            if (!schoolFeatures.length)
+                return;
+            const bounds = new maplibregl.LngLatBounds();
+            for (const feature of schoolFeatures)
+                bounds.extend(feature.geometry.coordinates);
+            map.resize();
+            const camera = map.cameraForBounds(bounds, {padding: 48});
+            if (schoolFeatures.length === 1)
+                camera.zoom = Math.max(camera.zoom, 15);
+            map.easeTo({...camera, duration: 250});
+        }
+
+        window.appendSchoolLocations = function(locations) {
+            if (!map || !Array.isArray(locations) || !locations.length)
+                return;
+            const source = map.getSource("schools-live");
+            if (!source)
+                return;
+            const isFirstBatch = schoolFeatures.length === 0;
+            const additions = [];
+            for (const location of locations) {
+                if (!location || typeof location.schoolId !== "string"
+                        || !location.schoolId.length
+                        || !Number.isFinite(location.longitud)
+                        || !Number.isFinite(location.latitud)
+                        || Math.abs(location.longitud) > 180
+                        || Math.abs(location.latitud) > 90
+                        || schoolFeatureIds.has(location.schoolId))
+                    continue;
+                const feature = {
+                    type: "Feature",
+                    id: location.schoolId,
+                    properties: {schoolId: location.schoolId},
+                    geometry: {
+                        type: "Point",
+                        coordinates: [location.longitud, location.latitud]
+                    }
+                };
+                schoolFeatureIds.add(location.schoolId);
+                schoolFeatures.push(feature);
+                additions.push(feature);
+            }
+            if (additions.length) {
+                source.updateData({add: additions});
+                if (isFirstBatch && schoolMode)
+                    fitSchoolFeatures();
+            }
+        };
+
+        window.clearSchoolLocations = function() {
+            schoolFeatures = [];
+            schoolFeatureIds.clear();
+            const source = map && map.getSource("schools-live");
+            if (source)
+                source.updateData({removeAll: true});
+        };
+
+        window.setSchoolMode = function(enabled) {
+            schoolMode = Boolean(enabled);
+            if (!map || !schoolLayerReady)
+                return;
+            for (const layerId of [
+                "boundary-fill",
+                "boundary-outline",
+                "boundary-labels"
+            ]) {
+                map.setLayoutProperty(
+                    layerId,
+                    "visibility",
+                    schoolMode ? "none" : "visible"
+                );
+            }
+            map.setLayoutProperty(
+                "school-clusters",
+                "visibility",
+                schoolMode ? "visible" : "none"
+            );
+            map.setLayoutProperty(
+                "school-cluster-count",
+                "visibility",
+                schoolMode ? "visible" : "none"
+            );
+            map.setLayoutProperty(
+                "school-points",
+                "visibility",
+                schoolMode ? "visible" : "none"
+            );
+            if (schoolMode)
+                fitSchoolFeatures();
+        };
 
         function applySelection(codes) {
             const visibleCodes = new Set(currentFeatures.map(featureCode));
@@ -413,28 +620,12 @@
                     type: "FeatureCollection",
                     features: currentFeatures
                 });
+                const schoolsSource = map.getSource("schools-live");
+                if (schoolFeatures.length)
+                    schoolsSource.updateData({add: schoolFeatures});
+                window.setSchoolMode(schoolMode);
             });
-            const style = styleConfig.type === "style"
-                ? styleConfig.url
-                : {
-                    version: 8,
-                    sources: {
-                        basemap: {
-                            type: "raster",
-                            tiles: styleConfig.tiles,
-                            tileSize: 256,
-                            attribution: styleConfig.attribution
-                        }
-                    },
-                    layers: [
-                        {
-                            id: "basemap",
-                            type: "raster",
-                            source: "basemap"
-                        }
-                    ]
-                };
-            map.setStyle(style);
+            map.setStyle(mapStyleDefinition(styleConfig));
         };
 
         window.selectBoundary = function(code) {
@@ -467,11 +658,11 @@
                 center: [-75, -9],
                 zoom: 3,
                 minZoom: 1,
-                maxZoom: 13,
+                maxZoom: 19,
                 dragRotate: false,
                 pitchWithRotate: false,
                 attributionControl: false,
-                style: "https://tiles.openfreemap.org/styles/liberty"
+                style: mapStyleDefinition(MAP_STYLES[currentMapStyle])
             });
             map.addControl(
                 new maplibregl.AttributionControl({compact: false}),
@@ -494,12 +685,76 @@
             });
 
             map.on("click", "boundary-fill", event => {
+                if (schoolMode)
+                    return;
                 const feature = event.features && event.features[0];
                 if (feature)
                     window.selectBoundary(featureCode(feature));
             });
 
+            map.on("click", event => {
+                if (!schoolMode || !schoolLayerReady)
+                    return;
+
+                const clusters = map.queryRenderedFeatures(event.point, {
+                    layers: ["school-clusters", "school-cluster-count"]
+                });
+                if (clusters.length) {
+                    map.easeTo({
+                        center: clusters[0].geometry.coordinates,
+                        zoom: Math.min(map.getZoom() + 2, map.getMaxZoom()),
+                        duration: 250
+                    });
+                    return;
+                }
+
+                if (!bridge)
+                    return;
+                const hitTolerance = 8;
+                const nearbyPoints = map.queryRenderedFeatures([
+                    [event.point.x - hitTolerance, event.point.y - hitTolerance],
+                    [event.point.x + hitTolerance, event.point.y + hitTolerance]
+                ], {layers: ["school-points"]});
+                let nearestSchool = null;
+                let nearestDistance = Infinity;
+                for (const feature of nearbyPoints) {
+                    const screenPoint = map.project(feature.geometry.coordinates);
+                    const distance = Math.hypot(
+                        screenPoint.x - event.point.x,
+                        screenPoint.y - event.point.y
+                    );
+                    if (distance < nearestDistance) {
+                        nearestSchool = feature;
+                        nearestDistance = distance;
+                    }
+                }
+                if (nearestSchool && nearestSchool.properties)
+                    bridge.selectSchoolFromWeb(
+                        String(nearestSchool.properties.schoolId)
+                    );
+            });
+
+            map.on("mouseenter", "school-clusters", () => {
+                if (schoolMode)
+                    map.getCanvas().style.cursor = "pointer";
+            });
+            map.on("mouseleave", "school-clusters", () => {
+                if (schoolMode)
+                    map.getCanvas().style.cursor = "";
+            });
+
+            map.on("mouseenter", "school-points", () => {
+                if (schoolMode)
+                    map.getCanvas().style.cursor = "pointer";
+            });
+            map.on("mouseleave", "school-points", () => {
+                if (schoolMode)
+                    map.getCanvas().style.cursor = "";
+            });
+
             map.on("mousemove", "boundary-fill", event => {
+                if (schoolMode)
+                    return;
                 const feature = event.features && event.features[0];
                 if (!feature || !feature.properties)
                     return;
@@ -515,7 +770,8 @@
             });
 
             map.on("mouseleave", "boundary-fill", () => {
-                map.getCanvas().style.cursor = "";
+                if (!schoolMode)
+                    map.getCanvas().style.cursor = "";
                 popup.remove();
             });
         }

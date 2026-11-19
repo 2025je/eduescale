@@ -1,12 +1,14 @@
 from collections.abc import Callable
 from pathlib import Path
-from typing import Protocol
+from typing import Literal, Protocol
 
 from eduescale.domain.offline_search import LocalSearchFilter
 from eduescale.domain.schools import SchoolFilters
 
 LocationList = list[tuple[str, str]]
 SearchProgress = Callable[[int, int, int], None]
+SearchSchoolBatch = Callable[[list[dict[str, object]]], None]
+ExportType = Literal["excel", "eduescale", "pdf"]
 
 
 class LocationGateway(Protocol):
@@ -40,6 +42,7 @@ class OfflineDatabaseRepository(Protocol):
         filters: list[LocalSearchFilter],
         cancelled: Callable[[], bool],
         progress: SearchProgress,
+        school_batch: SearchSchoolBatch | None = None,
     ) -> tuple[int, int]: ...
 
     def publish(self, staged_path: Path, target_path: Path) -> None: ...
@@ -48,7 +51,7 @@ class OfflineDatabaseRepository(Protocol):
 class ExportGateway(Protocol):
     def export(
         self,
-        export_type: str,
+        export_type: ExportType,
         database_path: Path,
         output_path: Path,
         password: str | None = None,

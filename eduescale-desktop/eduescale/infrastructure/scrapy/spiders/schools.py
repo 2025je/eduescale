@@ -1,3 +1,4 @@
+import json
 import math
 import os
 import sqlite3
@@ -99,6 +100,7 @@ class SchoolsSpider(scrapy.Spider):
         self.pages_retried = 0
         self.resumed_pages = 0
         self.started_monotonic = time.monotonic()
+        self._map_records: list[dict[str, object]] = []
         self._checkpoint = (
             DownloadCheckpoint(Path(checkpoint_dir), checkpoint_fingerprint)
             if checkpoint_dir and checkpoint_fingerprint
@@ -262,6 +264,7 @@ class SchoolsSpider(scrapy.Spider):
             self._checkpoint.save_page(filter_index, offset, response.body)
         self.pages_received += 1
         self.items_received += source_item_count
+        map_records = []
         for record in records:
             if not self._is_new_record(record):
                 continue
@@ -273,7 +276,13 @@ class SchoolsSpider(scrapy.Spider):
                 raise CloseSpider(
                     "Los resultados únicos superan el límite de filas de una hoja de Excel."
                 )
+            map_records.append(record)
             yield record
+        if map_records:
+            self.logger.info(
+                "SCRAPE_SCHOOLS=%s",
+                json.dumps(map_records, ensure_ascii=False, separators=(",", ":")),
+            )
         self._log_progress()
 
     def _is_new_record(self, record):
