@@ -15,6 +15,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import pe.eduescale.mobile.ui.OfflineMapAreaUi
+import pe.eduescale.mobile.routing.RoadRoutingState
 
 @OptIn(ExperimentalTestApi::class)
 class OfflineDeletionRestorationTest {
@@ -28,6 +29,8 @@ class OfflineDeletionRestorationTest {
         restoration.setContent {
             MaterialTheme {
                 FilesScreen(
+                    roadState = RoadRoutingState(),
+                    onDownloadRoadData = {},
                     file = null,
                     fileName = null,
                     importing = false,

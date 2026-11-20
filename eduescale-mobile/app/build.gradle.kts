@@ -42,7 +42,7 @@ android {
 
     defaultConfig {
         applicationId = "pe.eduescale.mobile"
-        minSdk = 24
+        minSdk = 26
         targetSdk = 36
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         versionCode = 1
@@ -110,8 +110,12 @@ dependencies {
     kapt("androidx.room:room-compiler:$roomVersion")
     implementation("com.google.dagger:hilt-android:2.57.2")
     kapt("com.google.dagger:hilt-android-compiler:2.57.2")
+    kapt("org.jetbrains.kotlin:kotlin-metadata-jvm:2.3.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.maplibre.gl:android-sdk-opengl:13.6.1")
+    implementation("io.github.rallista:valhalla-mobile:0.6.6")
+    implementation("io.github.rallista:valhalla-models:0.6.0")
+    implementation("io.github.rallista:valhalla-models-config:0.6.0")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")

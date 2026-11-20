@@ -31,6 +31,7 @@ class SchoolDetailsRestorationTest {
                 SchoolDetailsSheet(
                     school = school(),
                     userLocation = null,
+                    roadState = pe.eduescale.mobile.routing.RoadRoutingState(),
                     onSheetShown = { _, _ -> },
                     onDismiss = {},
                     onDirections = {},

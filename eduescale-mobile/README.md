@@ -26,9 +26,13 @@ La interfaz usa la familia `sans-serif` de Android, basada en Roboto.
   mapa, los locales cercanos forman grupos con su cantidad; al tocarlos, el mapa
   se acerca y muestra marcadores individuales al aumentar el zoom.
 - Permite buscar colegios por nombre, sin distinguir mayúsculas ni tildes.
-- Ordena la pestaña **Colegios** por cercanía y muestra la distancia aproximada en
-  kilómetros; identifica los colegios sin ubicación, permite abrir sus detalles
-  y muestra cuántos hay entre los resultados.
+- Ordena **Colegios** por la distancia de la ruta en automóvil calculada por
+  Valhalla; identifica los colegios sin coordenadas o sin ruta y permite abrir
+  sus detalles. El cálculo puede tardar para listas grandes.
+- En **Archivos**, descarga por separado la red vial de Perú (aproximadamente
+  425 MiB) para calcular rutas sin conexión. No es el mismo archivo que los
+  mapas visuales: se necesita ubicación y espacio libre para la descarga; al
+  actualizarla se conserva la versión anterior hasta verificar la nueva.
 - En **Archivos**, distingue los registros originales del archivo, los locales
   agrupados con ubicación y los registros sin coordenadas utilizables.
 - Filtra los resultados por departamento, provincia, distrito, gestión y nivel
@@ -90,6 +94,12 @@ los registros importados; la ficha del colegio se presenta en una hoja inferior
 con opciones para abrir rutas en Google Maps o Waze y compartir la ubicación.
 El borrador de filtros y la confirmación de eliminación de un mapa se conservan
 al girar la pantalla.
+
+Las rutas usan datos de [OpenStreetMap](https://www.openstreetmap.org/copyright)
+© sus colaboradores, obtenidos de [Geofabrik](https://download.geofabrik.de/south-america/peru.html).
+La cobertura y los resultados dependen de esos datos; pueden faltar carreteras,
+conexiones o restricciones, especialmente cerca de las fronteras. La distancia
+corresponde a la ruta calculada, no necesariamente a la ruta más corta.
 
 Las búsquedas guardadas solo contienen sus filtros, nunca datos de colegios ni
 secretos. Su documento portátil usa el formato `eduescale.saved-searches`,
@@ -153,8 +163,8 @@ La inyección de dependencias usa Hilt (`MainActivity`, receivers y
 ## Abrir y ejecutar
 
 Abre esta carpeta (`eduescale-mobile`) en Android Studio y sincroniza Gradle.
-Se requiere JDK 17 y Android SDK Platform 36. Ejecuta la configuración `app` en
-un dispositivo o emulador con Android 7.0 (API 24) o posterior y conexión a
+Se requiere JDK 21 y Android SDK Platform 36. Ejecuta la configuración `app` en
+un dispositivo o emulador con Android 8.0 (API 26) o posterior y conexión a
 Internet.
 
 Desde PowerShell, también puedes compilar e instalar las pruebas unitarias con
@@ -174,7 +184,7 @@ docker buildx build --target apk --output type=local,dest=dist .
 ```
 
 Docker genera `dist/EduEscale-debug.apk` y `dist/EduEscale-debug-androidTest.apk`.
-La imagen instala JDK 17, Android SDK Platform 36 y Build Tools 36.0.0, ejecuta
+La imagen instala JDK 21, Android SDK Platform 36 y Build Tools 36.0.0, ejecuta
 las pruebas unitarias y compila las pruebas instrumentadas. Se requiere Docker
 BuildKit y conexión a Internet durante la primera compilación.
 

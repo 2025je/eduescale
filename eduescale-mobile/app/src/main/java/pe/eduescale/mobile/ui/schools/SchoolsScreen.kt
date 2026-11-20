@@ -37,18 +37,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import java.util.Locale
-import pe.eduescale.mobile.data.SchoolCoordinates
 import pe.eduescale.mobile.data.SchoolFilters
 import pe.eduescale.mobile.data.SchoolRecord
 import pe.eduescale.mobile.data.SavedSearch
-import pe.eduescale.mobile.data.distanceInMeters
 import pe.eduescale.mobile.ui.EduEscaleUiState
+import pe.eduescale.mobile.routing.RoadRoutingState
 import pe.eduescale.mobile.ui.components.BrandHeader
 import pe.eduescale.mobile.ui.components.EmptyState
 
 @Composable
 internal fun SchoolsScreen(
     state: EduEscaleUiState,
+    roadState: RoadRoutingState,
     onQueryChanged: (String) -> Unit,
     onApplyFilters: (SchoolFilters) -> Unit,
     onOpenFilters: () -> Unit,
@@ -113,6 +113,8 @@ internal fun SchoolsScreen(
         }
         ActiveFilterChips(state.filters, Modifier.padding(top = 4.dp))
         val schoolsWithoutCoordinates = state.visibleSchools.count { !it.hasCoordinates }
+        val matchingRoadInputs = roadState.inputSchools == state.visibleSchools &&
+            roadState.inputOrigin == state.userLocation
         Text(
             if (state.schoolFile == null) {
                 "Importa un archivo desde la sección Archivos."
@@ -125,8 +127,12 @@ internal fun SchoolsScreen(
                     append(
                         if (state.userLocation == null) {
                             " · activa la ubicación en Mapa"
+                        } else if (roadState.calculating || !matchingRoadInputs) {
+                            " · calculando rutas"
+                        } else if (roadState.available && roadState.error == null) {
+                            " · ordenadas por carretera"
                         } else {
-                            " · ordenadas por cercanía"
+                            " · rutas no disponibles"
                         },
                     )
                 }
@@ -135,6 +141,10 @@ internal fun SchoolsScreen(
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        roadState.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        if (!roadState.available && state.schoolFile != null) {
+            Text("Descarga los datos de carreteras en Archivos para calcular distancias.")
+        }
         if (state.schoolFile == null) {
             EmptyState("Aún no hay colegios cargados", "Abre Archivos para importar un archivo .eduescale.")
         } else if (state.visibleSchools.isEmpty()) {
@@ -145,10 +155,20 @@ internal fun SchoolsScreen(
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                items(state.schoolsByDistance, key = SchoolRecord::id) { school ->
+                items(
+                    if (matchingRoadInputs) {
+                        roadState.orderedSchools
+                    } else {
+                        state.visibleSchools
+                    },
+                    key = SchoolRecord::id,
+                ) { school ->
                     SchoolListCard(
                         school = school,
-                        userLocation = state.userLocation,
+                        distance = if (matchingRoadInputs) {
+                            roadState.distances[school.id]
+                        } else null,
+                        calculating = roadState.calculating || !matchingRoadInputs,
                         onClick = { onSchoolSelected(school) },
                     )
                 }
@@ -190,10 +210,10 @@ internal fun SchoolsScreen(
 @Composable
 internal fun SchoolListCard(
     school: SchoolRecord,
-    userLocation: SchoolCoordinates?,
+    distance: Double?,
+    calculating: Boolean,
     onClick: () -> Unit,
 ) {
-    val distance = userLocation?.let { distanceInMeters(school, it) }
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -228,10 +248,12 @@ internal fun SchoolListCard(
                     color = MaterialTheme.colorScheme.secondary,
                 )
                 distance != null -> Text(
-                    formatDistanceKm(distance),
+                    "${formatDistanceKm(distance)} por carretera",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary,
                 )
+                calculating -> Text("Calculando ruta…", style = MaterialTheme.typography.labelMedium)
+                else -> Text("Ruta no disponible", style = MaterialTheme.typography.labelMedium)
             }
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),

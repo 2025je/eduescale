@@ -68,7 +68,7 @@ import pe.eduescale.mobile.data.SchoolCoordinates
 import pe.eduescale.mobile.data.SchoolRecord
 import pe.eduescale.mobile.activity.SchoolReminder
 import pe.eduescale.mobile.data.SchoolScheduleRow
-import pe.eduescale.mobile.data.distanceInMeters
+import pe.eduescale.mobile.routing.RoadRoutingState
 import pe.eduescale.mobile.reminders.ReminderDateTimePicker
 import pe.eduescale.mobile.reminders.ReminderPrompt
 import pe.eduescale.mobile.ui.history.formatActivityDate
@@ -80,6 +80,7 @@ import pe.eduescale.mobile.ui.history.reminderStatusLabel
 internal fun SchoolDetailsSheet(
     school: SchoolRecord?,
     userLocation: SchoolCoordinates?,
+    roadState: RoadRoutingState,
     onSheetShown: (SchoolRecord, Float) -> Unit,
     onDismiss: () -> Unit,
     onDirections: (SchoolRecord) -> Unit,
@@ -157,9 +158,12 @@ internal fun SchoolDetailsSheet(
                                     "Distancia no disponible · sin coordenadas"
                                 userLocation == null ->
                                     "Activa la ubicación para calcular la distancia"
-                                else -> distanceInMeters(school, userLocation)?.let { distance ->
-                                    "${formatDistanceKm(distance)} desde tu ubicación"
-                                } ?: "Distancia no disponible"
+                                roadState.calculating -> "Calculando ruta…"
+                                !roadState.available -> "Descarga las carreteras en Archivos"
+                                roadState.error != null -> "No se pudo calcular la ruta"
+                                else -> roadState.distances[school.id]?.let { distance ->
+                                    "${formatDistanceKm(distance)} por carretera"
+                                } ?: "Ruta no disponible"
                             },
                             style = MaterialTheme.typography.labelMedium,
                             color = if (school.hasCoordinates && userLocation != null) {

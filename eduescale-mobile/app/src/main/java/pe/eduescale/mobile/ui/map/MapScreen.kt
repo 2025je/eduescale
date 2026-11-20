@@ -63,6 +63,7 @@ import pe.eduescale.mobile.ui.components.BrandHeader
 import pe.eduescale.mobile.ui.components.LegendRow
 import pe.eduescale.mobile.ui.files.formatMapBytes
 import pe.eduescale.mobile.ui.schools.SchoolDetailsSheet
+import pe.eduescale.mobile.routing.RoadRoutingState
 import pe.eduescale.mobile.ui.theme.EduGray
 import pe.eduescale.mobile.ui.theme.EduGreen
 import pe.eduescale.mobile.ui.theme.EduOrange
@@ -70,6 +71,7 @@ import pe.eduescale.mobile.ui.theme.EduOrange
 @Composable
 internal fun MapScreen(
     state: EduEscaleUiState,
+    roadState: RoadRoutingState,
     activityState: SchoolActivityUiState,
     offlineMapsState: OfflineMapsUiState,
     onMapTopOverlayBottomChanged: (Float) -> Unit,
@@ -308,6 +310,9 @@ internal fun MapScreen(
     SchoolDetailsSheet(
         school = state.selectedSchool,
         userLocation = state.userLocation,
+        roadState = roadState.takeIf {
+            it.inputSchools == state.visibleSchools && it.inputOrigin == state.userLocation
+        } ?: RoadRoutingState(calculating = true),
         onSheetShown = onSchoolDetailsSheetShown,
         onDismiss = onClearSelection,
         onDirections = onDirections,

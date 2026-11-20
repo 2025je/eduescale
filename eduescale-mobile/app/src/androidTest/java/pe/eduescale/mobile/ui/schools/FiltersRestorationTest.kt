@@ -17,6 +17,7 @@ import pe.eduescale.mobile.data.SchoolFile
 import pe.eduescale.mobile.data.SchoolFilters
 import pe.eduescale.mobile.data.SchoolRecord
 import pe.eduescale.mobile.ui.EduEscaleViewModel
+import pe.eduescale.mobile.routing.RoadRoutingState
 
 @OptIn(ExperimentalTestApi::class)
 class FiltersRestorationTest {
@@ -39,6 +40,7 @@ class FiltersRestorationTest {
             MaterialTheme {
                 SchoolsScreen(
                     state = state,
+                    roadState = RoadRoutingState(orderedSchools = state.visibleSchools),
                     onQueryChanged = model::setQuery,
                     onApplyFilters = model::setFilters,
                     onOpenFilters = model::openFilters,

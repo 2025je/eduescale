@@ -10,6 +10,8 @@ import javax.inject.Singleton
 import okhttp3.OkHttpClient
 import org.maplibre.android.offline.OfflineManager
 import pe.eduescale.mobile.createMapHttpClient
+import pe.eduescale.mobile.routing.RoadRouting
+import pe.eduescale.mobile.routing.RoadRoutingPort
 import pe.eduescale.mobile.activity.SchoolActivityStore
 import pe.eduescale.mobile.activity.ReminderStore
 import pe.eduescale.mobile.activity.ActivityBackupStore
@@ -35,6 +37,9 @@ import pe.eduescale.mobile.ui.theme.SharedPreferencesThemeSettingsStore
 @Module
 @InstallIn(SingletonComponent::class)
 object AppModule {
+    @Provides
+    fun provideRoadRouting(routing: RoadRouting): RoadRoutingPort = routing
+
     @Provides
     fun provideSchoolActivityStore(repository: SchoolActivityRepository): SchoolActivityStore = repository
 

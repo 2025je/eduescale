@@ -44,11 +44,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import pe.eduescale.mobile.data.SchoolFile
 import pe.eduescale.mobile.ui.OfflineMapAreaUi
+import pe.eduescale.mobile.routing.RoadRoutingState
 import pe.eduescale.mobile.ui.components.BrandHeader
 import pe.eduescale.mobile.ui.schools.StatisticLine
 
 @Composable
 internal fun FilesScreen(
+    roadState: RoadRoutingState,
+    onDownloadRoadData: () -> Unit,
     file: SchoolFile?,
     fileName: String?,
     importing: Boolean,
@@ -199,6 +202,19 @@ internal fun FilesScreen(
                     onDelete = { pendingOfflineAreaDeletion = area.id },
                 )
             }
+        }
+        HorizontalDivider()
+        Text("Carreteras sin conexión", style = MaterialTheme.typography.titleMedium)
+        Text("Descarga la red de carreteras de Perú para calcular distancias sin conexión.")
+        Text("Datos de carreteras © colaboradores de OpenStreetMap (openstreetmap.org/copyright).")
+        if (roadState.downloading) {
+            val total = roadState.totalBytes
+            Text("Descargando: ${formatMapBytes(roadState.downloadedBytes)}" +
+                if (total > 0) " / ${formatMapBytes(total)}" else "")
+        }
+        roadState.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        Button(onClick = onDownloadRoadData, enabled = !roadState.downloading) {
+            Text(if (roadState.available) "Actualizar carreteras" else "Descargar carreteras")
         }
         HorizontalDivider()
         Text("Copia local", style = MaterialTheme.typography.titleMedium)

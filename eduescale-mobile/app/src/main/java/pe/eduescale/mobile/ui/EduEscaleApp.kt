@@ -35,6 +35,7 @@ import pe.eduescale.mobile.activity.SchoolActivityViewModel
 import pe.eduescale.mobile.map.OfflineMapBounds
 import pe.eduescale.mobile.reminders.ReminderPrompt
 import pe.eduescale.mobile.reminders.ReminderViewModel
+import pe.eduescale.mobile.routing.RoadRoutingViewModel
 import pe.eduescale.mobile.ui.files.FilesScreen
 import pe.eduescale.mobile.ui.files.SchoolFileImportViewModel
 import pe.eduescale.mobile.ui.files.StorageSpaceViewModel
@@ -56,6 +57,7 @@ fun EduEscaleApp(
     storageSpaceViewModel: StorageSpaceViewModel,
     themeViewModel: ThemeViewModel,
     reminderViewModel: ReminderViewModel,
+    roadRoutingViewModel: RoadRoutingViewModel,
     onReminderMessage: (String) -> Unit,
     onMapTouchEnabled: (Boolean) -> Unit,
     onThemeChanged: (Boolean) -> Unit,
@@ -94,6 +96,10 @@ fun EduEscaleApp(
     val storageState by storageSpaceViewModel.state.collectAsStateWithLifecycle()
     val themeMode by themeViewModel.mode.collectAsStateWithLifecycle()
     val reminderPrompt by reminderViewModel.prompt.collectAsStateWithLifecycle()
+    val roadState by roadRoutingViewModel.state.collectAsStateWithLifecycle()
+    LaunchedEffect(state.visibleSchools, state.userLocation) {
+        roadRoutingViewModel.updateInputs(state.visibleSchools, state.userLocation)
+    }
     val systemDarkTheme = isSystemInDarkTheme()
     val darkTheme = themeMode.isDark(systemDarkTheme)
     val navController = rememberNavController()
@@ -156,6 +162,7 @@ fun EduEscaleApp(
                 composable("map") {
                     MapScreen(
                         state = state,
+                        roadState = roadState,
                         activityState = activityState,
                         offlineMapsState = offlineMapsState,
                         onMapTopOverlayBottomChanged = onMapTopOverlayBottomChanged,
@@ -188,6 +195,7 @@ fun EduEscaleApp(
                 composable("schools") {
                     SchoolsScreen(
                         state = state,
+                        roadState = roadState,
                         onQueryChanged = viewModel::setQuery,
                         onApplyFilters = onApplyFilters,
                         onOpenFilters = viewModel::openFilters,
@@ -215,6 +223,8 @@ fun EduEscaleApp(
                         storageSpaceViewModel.refresh()
                     }
                     FilesScreen(
+                        roadState = roadState,
+                        onDownloadRoadData = roadRoutingViewModel::download,
                         file = state.schoolFile,
                         fileName = state.fileName,
                         importing = schoolFileImportState.isImporting,

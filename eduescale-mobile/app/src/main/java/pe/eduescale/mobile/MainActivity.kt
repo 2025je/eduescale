@@ -42,6 +42,7 @@ import pe.eduescale.mobile.ui.map.OfflineMapsViewModel
 import pe.eduescale.mobile.navigation.SchoolNavigator
 import pe.eduescale.mobile.reminders.ReminderController
 import pe.eduescale.mobile.reminders.ReminderViewModel
+import pe.eduescale.mobile.routing.RoadRoutingViewModel
 import pe.eduescale.mobile.ui.EduEscaleApp
 import pe.eduescale.mobile.ui.AppEventCoordinator
 import pe.eduescale.mobile.ui.EduEscaleViewModel
@@ -54,6 +55,7 @@ class MainActivity : ComponentActivity() {
     private val viewModel: EduEscaleViewModel by viewModels()
     private val activityViewModel: SchoolActivityViewModel by viewModels()
     private val reminderViewModel: ReminderViewModel by viewModels()
+    private val roadRoutingViewModel: RoadRoutingViewModel by viewModels()
     private val activityBackupViewModel: ActivityBackupViewModel by viewModels()
     private val savedSearchViewModel: SavedSearchViewModel by viewModels()
     private val offlineMapsViewModel: OfflineMapsViewModel by viewModels()
@@ -182,6 +184,7 @@ class MainActivity : ComponentActivity() {
                         storageSpaceViewModel = storageSpaceViewModel,
                         themeViewModel = themeViewModel,
                         reminderViewModel = reminderViewModel,
+                        roadRoutingViewModel = roadRoutingViewModel,
                         onReminderMessage = ::showReminderMessage,
                         onMapTouchEnabled = { enabled -> root.mapTouchEnabled = enabled },
                         onThemeChanged = { darkTheme ->
