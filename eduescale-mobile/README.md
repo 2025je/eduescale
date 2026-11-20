@@ -22,8 +22,9 @@ La interfaz usa la familia `sans-serif` de Android, basada en Roboto.
 - Al abrir uno desde otra app, EduEscale queda en una tarea separada. El botón
   Atrás regresa a la app de origen y deja EduEscale disponible en **Recientes**
   para volver al mapa con los datos cargados.
-- Muestra un marcador por local educativo con coordenadas válidas y agrupa sus
-  registros por código de local, nombre, gestión y ubicación.
+- Agrupa los registros por código de local, nombre, gestión y ubicación. En el
+  mapa, los locales cercanos forman grupos con su cantidad; al tocarlos, el mapa
+  se acerca y muestra marcadores individuales al aumentar el zoom.
 - Permite buscar colegios por nombre, sin distinguir mayúsculas ni tildes.
 - Ordena la pestaña **Colegios** por cercanía y muestra la distancia aproximada en
   kilómetros; identifica los colegios sin ubicación, permite abrir sus detalles
@@ -67,7 +68,9 @@ La interfaz usa la familia `sans-serif` de Android, basada en Roboto.
   notificaciones y acceso a alarmas exactas; las alarmas pendientes se
   restauran al abrir la app o después de reiniciar el dispositivo, siempre que
   ambos permisos sigan habilitados. El historial conserva el estado de cada
-  alarma, incluso después de dispararse o cancelarse.
+  alarma, incluso después de dispararse o cancelarse. Si Android recrea el
+  proceso mientras se solicitan permisos, conserva el recordatorio ya fechado
+  y espera el resultado del permiso antes de programarlo.
 - Exporta comentarios y recordatorios como un archivo JSON desde **Archivos** y
   permite restaurarlo en otro dispositivo. La restauración combina la copia con
   los datos existentes y omite registros duplicados.
@@ -85,6 +88,8 @@ elegir **Sistema**, **Claro** u **Oscuro**; Sistema es la opción inicial y la
 preferencia se guarda en el dispositivo. La búsqueda y los filtros se aplican localmente a
 los registros importados; la ficha del colegio se presenta en una hoja inferior
 con opciones para abrir rutas en Google Maps o Waze y compartir la ubicación.
+El borrador de filtros y la confirmación de eliminación de un mapa se conservan
+al girar la pantalla.
 
 Las búsquedas guardadas solo contienen sus filtros, nunca datos de colegios ni
 secretos. Su documento portátil usa el formato `eduescale.saved-searches`,
@@ -115,17 +120,32 @@ Paquete base `pe.eduescale.mobile`:
 
 - `di/`: módulo Hilt (`AppModule`) con OkHttp, almacenamiento y OfflineManager.
 - `data/`: modelos, Room (`SchoolActivityRepository`), lectura de archivos,
-  `SavedSearchJson` (serialización validada de búsquedas), `SchoolImportController`
-  (importar/restaurar el archivo) y
-  `ActivityBackupController` (copia JSON).
-- `activity/`: `SchoolActivityController` (comentarios e historial).
-- `map/`: estilo, cámara, marcadores, `SchoolMapController` (mapa y selección) y `OfflineMapController`.
-- `location/`: `LocationController` (permisos y ubicación).
+  `SavedSearchJson` (serialización validada de búsquedas), `SchoolFileImportStore`
+  (importar/restaurar el archivo) y `ActivityBackupFile` (acceso a copias JSON).
+- `activity/`: `SchoolActivityViewModel` (estado, búsqueda y filtros del historial
+  y operaciones de comentarios), `ActivityBackupViewModel` (importación y exportación de copias) y
+  modelos y contratos de persistencia independientes de las entidades Room.
+- `ui/schools/`: `SavedSearchViewModel` gestiona las búsquedas y su
+  importación/exportación mediante contratos; los adaptadores están en `data/`.
+- `ui/files/`: `SchoolFileImportViewModel` conserva el progreso de importación y
+  publica la solicitud de contraseña y el resultado para la actividad;
+  `StorageSpaceViewModel` consulta el espacio disponible mediante `StorageSpace`.
+- `map/`: adaptadores de MapLibre para cámara, marcadores y conteos de grupos,
+  además de `OfflineMapStore`
+  y su adaptador `MapLibreOfflineMapStore`. `OfflineMapsViewModel` gestiona las
+  descargas, sus límites, su estado y los errores sin depender de una actividad.
+- `location/`: `LocationController` (permisos y ubicación) y el adaptador
+  `MapLibreLocationDisplay` para mostrarla en el mapa.
 - `navigation/`: enlaces de navegación y `SchoolNavigator` (cómo llegar y compartir).
-- `reminders/`: alarmas, `ReminderController` (flujo de recordatorios y permisos)
-  y `ReminderDialogs` (selector de fecha y diálogos de permisos).
-- `ui/`: `EduEscaleApp` (navegación) y pantallas en `map`, `schools`,
-  `history`, `files`, `components` y `theme`.
+- `reminders/`: `ReminderViewModel` coordina persistencia y alarmas mediante
+  `ReminderStore` y `ReminderAlarmPort`; `ReminderController` y
+  `ReminderDialogs` adaptan permisos y selectores de Android.
+- `ui/`: `EduEscaleViewModel` prepara el listado ordenado y las opciones y el
+  borrador de filtros; `AppEventCoordinator` coordina importaciones y restauración.
+  `EduEscaleApp` gestiona la navegación y las pantallas en `map`, `schools`,
+  `history`, `files`, `components` y `theme`; `ThemeViewModel` gestiona la
+  preferencia de apariencia mediante `ThemeSettingsStore`. `SchoolMapCoordinator`
+  sincroniza la selección, el archivo y el estado del mapa.
 
 La inyección de dependencias usa Hilt (`MainActivity`, receivers y
 `EduEscaleApplication`).
@@ -153,10 +173,19 @@ Desde esta carpeta, ejecuta:
 docker buildx build --target apk --output type=local,dest=dist .
 ```
 
-Docker genera `dist/EduEscale-debug.apk`. La imagen instala JDK 17, Android
-SDK Platform 36 y Build Tools 36.0.0, ejecuta las pruebas unitarias y empaqueta
-la aplicación como APK de depuración. Se requiere Docker BuildKit y conexión a
-Internet durante la primera compilación.
+Docker genera `dist/EduEscale-debug.apk` y `dist/EduEscale-debug-androidTest.apk`.
+La imagen instala JDK 17, Android SDK Platform 36 y Build Tools 36.0.0, ejecuta
+las pruebas unitarias y compila las pruebas instrumentadas. Se requiere Docker
+BuildKit y conexión a Internet durante la primera compilación.
+
+Para ejecutar las pruebas instrumentadas, conecta un dispositivo o inicia un
+emulador y, desde esta carpeta, ejecuta:
+
+```powershell
+adb install -r dist\EduEscale-debug.apk
+adb install -r dist\EduEscale-debug-androidTest.apk
+adb shell am instrument -w pe.eduescale.mobile.test/androidx.test.runner.AndroidJUnitRunner
+```
 
 El workflow móvil de GitHub Actions usa este mismo `docker-compose.yml` para ejecutar las pruebas y
 generar el APK en cada push y pull request. Para firmar builds desde una

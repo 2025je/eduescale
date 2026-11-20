@@ -8,11 +8,10 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertSame
 import org.junit.Test
 import pe.eduescale.mobile.data.SchoolFile
+import pe.eduescale.mobile.data.SchoolFilters
 import pe.eduescale.mobile.data.SchoolRecord
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -78,17 +77,48 @@ class EduEscaleViewModelTest {
     }
 
     @Test
-    fun importFailureKeepsTheLastSuccessfullyLoadedFile() {
+    fun sortsOnlyTheListAndUpdatesItWhenLocationOrFiltersChange() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val viewModel = EduEscaleViewModel(StandardTestDispatcher(testScheduler))
+            val far = school(1, "Lejos").copy(latitud = -13.0)
+            val near = school(2, "Cerca")
+            val unlocated = school(3, "Sin coordenadas").copy(latitud = null, longitud = null)
+            viewModel.setSchoolFile(SchoolFile(3, 1, listOf(far, near), listOf(unlocated)), "test")
+            viewModel.setUserLocation(-12.0, -77.0)
+            advanceUntilIdle()
+            assertEquals(listOf(1, 2, 3), viewModel.state.value.visibleSchools.map { it.id })
+            assertEquals(listOf(2, 1, 3), viewModel.state.value.schoolsByDistance.map { it.id })
+
+            viewModel.setQuery("lejos")
+            advanceUntilIdle()
+            assertEquals(listOf(1), viewModel.state.value.schoolsByDistance.map { it.id })
+            viewModel.setQuery("")
+            viewModel.setUserLocation(-13.0, -77.0)
+            advanceUntilIdle()
+            assertEquals(listOf(1, 2, 3), viewModel.state.value.schoolsByDistance.map { it.id })
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun filterDraftIsSeparateFromAppliedFiltersAndProvidesDependentOptions() {
         val viewModel = EduEscaleViewModel()
-        val file = SchoolFile(1, 0, listOf(school(1, "Colegio")))
-        viewModel.setSchoolFile(file, "colegios.eduescale")
+        val lima = school(1, "Lima").copy(provincia = "Lima", distrito = "Miraflores")
+        val cusco = school(2, "Cusco").copy(departamento = "Cusco", provincia = "Cusco", distrito = "Wanchaq")
+        viewModel.setSchoolFile(SchoolFile(2, 0, listOf(lima, cusco)), "test")
+        viewModel.openFilters()
+        viewModel.updateFilterDraft(SchoolFilters(departamento = "Cusco"))
 
-        viewModel.setImporting(true)
-        viewModel.setImportError("El archivo no es válido.")
-
-        assertSame(file, viewModel.state.value.schoolFile)
-        assertEquals("El archivo no es válido.", viewModel.state.value.importError)
-        assertFalse(viewModel.state.value.isImporting)
+        assertEquals(SchoolFilters(), viewModel.state.value.filters)
+        assertEquals(listOf("Cusco"), viewModel.state.value.filterOptions.provinces)
+        assertEquals(listOf("Wanchaq"), viewModel.state.value.filterOptions.districts)
+        viewModel.updateFilterDraft(SchoolFilters(departamento = "Cusco", provincia = "Cusco"))
+        assertEquals(listOf("Wanchaq"), viewModel.state.value.filterOptions.districts)
+        viewModel.dismissFilters()
+        viewModel.openFilters()
+        assertEquals(SchoolFilters(), viewModel.state.value.filterDraft)
     }
 
     private fun school(id: Int, name: String) = SchoolRecord(

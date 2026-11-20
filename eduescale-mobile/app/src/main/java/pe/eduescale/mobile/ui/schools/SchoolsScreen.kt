@@ -29,7 +29,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -43,7 +42,6 @@ import pe.eduescale.mobile.data.SchoolFilters
 import pe.eduescale.mobile.data.SchoolRecord
 import pe.eduescale.mobile.data.SavedSearch
 import pe.eduescale.mobile.data.distanceInMeters
-import pe.eduescale.mobile.data.sortSchoolsByDistance
 import pe.eduescale.mobile.ui.EduEscaleUiState
 import pe.eduescale.mobile.ui.components.BrandHeader
 import pe.eduescale.mobile.ui.components.EmptyState
@@ -53,6 +51,9 @@ internal fun SchoolsScreen(
     state: EduEscaleUiState,
     onQueryChanged: (String) -> Unit,
     onApplyFilters: (SchoolFilters) -> Unit,
+    onOpenFilters: () -> Unit,
+    onFilterDraftChanged: (SchoolFilters) -> Unit,
+    onDismissFilters: () -> Unit,
     savedSearches: List<SavedSearch>,
     savedSearchMessage: String?,
     savedSearchMessageIsError: Boolean,
@@ -63,7 +64,6 @@ internal fun SchoolsScreen(
     onExportSavedSearches: () -> Unit,
     onSchoolSelected: (SchoolRecord) -> Unit,
 ) {
-    var filtersOpen by rememberSaveable { mutableStateOf(false) }
     var savedSearchesOpen by rememberSaveable { mutableStateOf(false) }
     Column(
         modifier = Modifier
@@ -90,7 +90,7 @@ internal fun SchoolsScreen(
             FilterButton(
                 count = activeFilterCount(state.filters),
                 enabled = state.schoolFile != null,
-                onClick = { filtersOpen = true },
+                onClick = onOpenFilters,
             )
         }
         OutlinedButton(
@@ -140,15 +140,12 @@ internal fun SchoolsScreen(
         } else if (state.visibleSchools.isEmpty()) {
             EmptyState("No hay resultados", "Prueba con otro nombre o cambia los filtros.")
         } else {
-            val schoolsByDistance = remember(state.visibleSchools, state.userLocation) {
-                sortSchoolsByDistance(state.visibleSchools, state.userLocation)
-            }
             LazyColumn(
                 modifier = Modifier.weight(1f),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                items(schoolsByDistance, key = SchoolRecord::id) { school ->
+                items(state.schoolsByDistance, key = SchoolRecord::id) { school ->
                     SchoolListCard(
                         school = school,
                         userLocation = state.userLocation,
@@ -158,14 +155,15 @@ internal fun SchoolsScreen(
             }
         }
     }
-    if (filtersOpen && state.schoolFile != null) {
+    state.filterDraft?.let { draft ->
         SchoolFiltersDialog(
-            schools = state.schoolFile.schools + state.schoolFile.schoolsWithoutCoordinates,
-            filters = state.filters,
-            onDismiss = { filtersOpen = false },
+            filters = draft,
+            options = state.filterOptions,
+            onChange = onFilterDraftChanged,
+            onDismiss = onDismissFilters,
             onApply = {
                 onApplyFilters(it)
-                filtersOpen = false
+                onDismissFilters()
             },
         )
     }

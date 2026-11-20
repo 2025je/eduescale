@@ -38,7 +38,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -46,136 +45,36 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import pe.eduescale.mobile.data.SchoolComment
-import pe.eduescale.mobile.data.SchoolReminder
-import pe.eduescale.mobile.data.activityKey
-import pe.eduescale.mobile.ui.EduEscaleUiState
+import pe.eduescale.mobile.activity.SchoolComment
+import pe.eduescale.mobile.activity.SchoolReminder
+import pe.eduescale.mobile.activity.SchoolActivityUiState
+import pe.eduescale.mobile.reminders.ReminderDateTimePicker
 import pe.eduescale.mobile.ui.components.BrandHeader
 import pe.eduescale.mobile.ui.components.EmptyState
 
-internal enum class ActivityHistoryFilter {
-    ALL,
-    COMMENTS,
-    PENDING_REMINDERS,
-    NON_PENDING_REMINDERS,
-}
-
-internal data class ActivityHistoryEntry(
-    val id: String,
-    val type: String,
-    val status: String,
-    val schoolName: String,
-    val message: String,
-    val date: String,
-    val timestamp: Long,
-    val isReminder: Boolean,
-    val isPending: Boolean,
-    val comment: SchoolComment? = null,
-    val reminder: SchoolReminder? = null,
-)
-
 @Composable
 internal fun ActivityHistoryScreen(
-    state: EduEscaleUiState,
+    activityState: SchoolActivityUiState,
+    onQueryChanged: (String) -> Unit,
+    onFilterChanged: (ActivityHistoryFilter) -> Unit,
     onRefresh: () -> Unit,
     onEditComment: (SchoolComment, String) -> Unit,
     onEditReminder: (SchoolReminder, String, Long) -> Unit,
-    onPickReminderDateTime: (Long, (Long) -> Unit) -> Unit,
+    onReminderMessage: (String) -> Unit,
 ) {
-    var query by rememberSaveable { mutableStateOf("") }
-    var selectedFilter by rememberSaveable {
-        mutableStateOf(ActivityHistoryFilter.ALL)
-    }
-    var commentBeingEdited by remember { mutableStateOf<SchoolComment?>(null) }
-    var commentEditText by remember { mutableStateOf("") }
-    var reminderBeingEdited by remember { mutableStateOf<SchoolReminder?>(null) }
-    var reminderEditText by remember { mutableStateOf("") }
-    var reminderEditScheduledAt by remember { mutableStateOf(0L) }
-    val schoolNames = remember(state.schoolFile) {
-        state.schoolFile?.schools
-            ?.associate { school ->
-                school.activityKey() to (
-                    school.nombre?.takeIf(String::isNotBlank) ?: "Colegio sin nombre"
-                    )
-            }
-            .orEmpty()
-    }
-    val entries = remember(
-        state.activityHistoryComments,
-        state.activityHistoryReminders,
-        schoolNames,
-        query,
-        selectedFilter,
-    ) {
-        val now = System.currentTimeMillis()
-        buildList {
-            if (
-                selectedFilter == ActivityHistoryFilter.ALL ||
-                selectedFilter == ActivityHistoryFilter.COMMENTS
-            ) {
-                state.activityHistoryComments.forEach { comment ->
-                    val updatedAt = comment.updatedAtMillis
-                    add(
-                        ActivityHistoryEntry(
-                            id = "comment-${comment.id}",
-                            type = "Comentario",
-                            status = if (updatedAt == null) "Guardado" else "Editado",
-                            schoolName = schoolNames[comment.schoolKey]
-                                ?: "Colegio no disponible",
-                            message = comment.text,
-                            date = buildString {
-                                append("Creado: ${formatActivityDate(comment.createdAtMillis)}")
-                                updatedAt?.let {
-                                    append(" · Editado: ${formatActivityDate(it)}")
-                                }
-                            },
-                            timestamp = updatedAt ?: comment.createdAtMillis,
-                            isReminder = false,
-                            isPending = false,
-                            comment = comment,
-                        ),
-                    )
-                }
-            }
-            if (
-                selectedFilter != ActivityHistoryFilter.COMMENTS
-            ) {
-                state.activityHistoryReminders.forEach { reminder ->
-                    val isPending = isReminderPending(reminder, now)
-                    if (
-                        selectedFilter == ActivityHistoryFilter.PENDING_REMINDERS &&
-                        !isPending
-                    ) {
-                        return@forEach
-                    }
-                    if (
-                        selectedFilter == ActivityHistoryFilter.NON_PENDING_REMINDERS &&
-                        isPending
-                    ) {
-                        return@forEach
-                    }
-                    add(
-                        ActivityHistoryEntry(
-                            id = "reminder-${reminder.id}",
-                            type = "Alarma",
-                            status = reminderStatusLabel(reminder, now),
-                            schoolName = reminder.schoolName,
-                            message = reminder.message,
-                            date = formatActivityDate(reminder.scheduledAtMillis),
-                            timestamp = reminder.scheduledAtMillis,
-                            isReminder = true,
-                            isPending = isPending,
-                            reminder = reminder,
-                        ),
-                    )
-                }
-            }
-        }.filter { entry ->
-            query.isBlank() ||
-                entry.schoolName.contains(query.trim(), ignoreCase = true) ||
-                entry.message.contains(query.trim(), ignoreCase = true)
-        }.sortedByDescending(ActivityHistoryEntry::timestamp)
-    }
+    val query = activityState.historyQuery
+    val selectedFilter = activityState.historyFilter
+    var commentBeingEditedId by rememberSaveable { mutableStateOf<String?>(null) }
+    var commentEditText by rememberSaveable { mutableStateOf("") }
+    var reminderBeingEditedId by rememberSaveable { mutableStateOf<String?>(null) }
+    var reminderEditText by rememberSaveable { mutableStateOf("") }
+    var reminderEditScheduledAt by rememberSaveable { mutableStateOf(0L) }
+    var pickingReminderDate by rememberSaveable { mutableStateOf(false) }
+    val reminderBeingEdited = activityState.activityHistoryReminders
+        .firstOrNull { it.id == reminderBeingEditedId }
+    val commentBeingEdited = activityState.activityHistoryComments
+        .firstOrNull { it.id == commentBeingEditedId }
+    val entries = activityState.historyEntries
 
     Column(
         modifier = Modifier
@@ -188,7 +87,7 @@ internal fun ActivityHistoryScreen(
         Text("Historial", style = MaterialTheme.typography.headlineSmall)
         OutlinedTextField(
             value = query,
-            onValueChange = { query = it },
+            onValueChange = onQueryChanged,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 10.dp),
@@ -207,7 +106,7 @@ internal fun ActivityHistoryScreen(
             ActivityHistoryFilter.entries.forEach { filter ->
                 FilterChip(
                     selected = selectedFilter == filter,
-                    onClick = { selectedFilter = filter },
+                    onClick = { onFilterChanged(filter) },
                     label = {
                         Text(
                             when (filter) {
@@ -221,10 +120,10 @@ internal fun ActivityHistoryScreen(
                 )
             }
         }
-        if (state.isLoadingActivityHistory) {
+        if (activityState.isLoadingActivityHistory) {
             LinearProgressIndicator(Modifier.fillMaxWidth())
         }
-        state.activityHistoryError?.let { error ->
+        activityState.activityHistoryError?.let { error ->
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -251,20 +150,20 @@ internal fun ActivityHistoryScreen(
                 items(entries, key = ActivityHistoryEntry::id) { entry ->
                     ActivityHistoryCard(entry) {
                         entry.comment?.let { comment ->
-                            commentBeingEdited = comment
+                            commentBeingEditedId = comment.id
                             commentEditText = comment.text
                         }
                         entry.reminder?.let { reminder ->
-                            reminderBeingEdited = reminder
+                            reminderBeingEditedId = reminder.id
                             reminderEditText = reminder.message
                             reminderEditScheduledAt = reminder.scheduledAtMillis
                         }
                     }
                 }
             }
-        } else if (state.isLoadingActivityHistory) {
+        } else if (activityState.isLoadingActivityHistory) {
             EmptyState("Cargando historial", "Consultando comentarios y alarmas guardados.")
-        } else if (state.activityHistoryError == null) {
+        } else if (activityState.activityHistoryError == null) {
             EmptyState(
                 title = if (query.isBlank()) "Aún no hay actividad" else "Sin resultados",
                 message = if (query.isBlank()) {
@@ -277,7 +176,7 @@ internal fun ActivityHistoryScreen(
     }
     commentBeingEdited?.let { comment ->
         AlertDialog(
-            onDismissRequest = { commentBeingEdited = null },
+            onDismissRequest = { commentBeingEditedId = null },
             title = { Text("Editar comentario") },
             text = {
                 OutlinedTextField(
@@ -294,18 +193,21 @@ internal fun ActivityHistoryScreen(
                     enabled = commentEditText.isNotBlank(),
                     onClick = {
                         onEditComment(comment, commentEditText)
-                        commentBeingEdited = null
+                        commentBeingEditedId = null
                     },
                 ) { Text("Guardar") }
             },
             dismissButton = {
-                TextButton(onClick = { commentBeingEdited = null }) { Text("Cancelar") }
+                TextButton(onClick = { commentBeingEditedId = null }) { Text("Cancelar") }
             },
         )
     }
     reminderBeingEdited?.let { reminder ->
         AlertDialog(
-            onDismissRequest = { reminderBeingEdited = null },
+            onDismissRequest = {
+                reminderBeingEditedId = null
+                pickingReminderDate = false
+            },
             title = { Text("Editar alarma") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -318,11 +220,7 @@ internal fun ActivityHistoryScreen(
                         maxLines = 4,
                     )
                     OutlinedButton(
-                        onClick = {
-                            onPickReminderDateTime(reminderEditScheduledAt) { selectedAt ->
-                                reminderEditScheduledAt = selectedAt
-                            }
-                        },
+                        onClick = { pickingReminderDate = true },
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text("Fecha y hora: ${formatActivityDate(reminderEditScheduledAt)}")
@@ -332,6 +230,17 @@ internal fun ActivityHistoryScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    if (pickingReminderDate) {
+                        ReminderDateTimePicker(
+                            initialScheduledAtMillis = reminderEditScheduledAt,
+                            showMessage = onReminderMessage,
+                            onSelected = { selectedAt ->
+                                reminderEditScheduledAt = selectedAt
+                                pickingReminderDate = false
+                            },
+                            onCancelled = { pickingReminderDate = false },
+                        )
+                    }
                 }
             },
             confirmButton = {
@@ -340,17 +249,16 @@ internal fun ActivityHistoryScreen(
                         reminderEditScheduledAt > System.currentTimeMillis(),
                     onClick = {
                         onEditReminder(reminder, reminderEditText, reminderEditScheduledAt)
-                        reminderBeingEdited = null
+                        reminderBeingEditedId = null
                     },
                 ) { Text("Guardar y reactivar") }
             },
             dismissButton = {
-                TextButton(onClick = { reminderBeingEdited = null }) { Text("Cancelar") }
+                TextButton(onClick = { reminderBeingEditedId = null }) { Text("Cancelar") }
             },
         )
     }
 }
-
 @Composable
 internal fun ActivityHistoryCard(entry: ActivityHistoryEntry, onEdit: () -> Unit) {
     Card(shape = RoundedCornerShape(18.dp)) {
@@ -417,27 +325,4 @@ internal fun ActivityHistoryCard(entry: ActivityHistoryEntry, onEdit: () -> Unit
             }
         }
     }
-}
-
-internal fun formatActivityDate(timestamp: Long): String =
-    java.text.DateFormat.getDateTimeInstance(
-        java.text.DateFormat.SHORT,
-        java.text.DateFormat.SHORT,
-    ).format(java.util.Date(timestamp))
-
-internal fun isReminderPending(
-    reminder: SchoolReminder,
-    nowMillis: Long = System.currentTimeMillis(),
-): Boolean =
-    reminder.status == SchoolReminder.STATUS_PENDING &&
-        reminder.scheduledAtMillis > nowMillis
-
-internal fun reminderStatusLabel(
-    reminder: SchoolReminder,
-    nowMillis: Long = System.currentTimeMillis(),
-): String = when {
-    isReminderPending(reminder, nowMillis) -> "Pendiente"
-    reminder.status == SchoolReminder.STATUS_TRIGGERED -> "Disparada"
-    reminder.status == SchoolReminder.STATUS_CANCELLED -> "Cancelada"
-    else -> "Vencida"
 }

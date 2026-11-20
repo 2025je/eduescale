@@ -35,7 +35,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,13 +57,14 @@ internal fun FilesScreen(
     onExportActivityBackup: () -> Unit,
     onImportActivityBackup: () -> Unit,
     offlineMapAreas: List<OfflineMapAreaUi>,
-    deviceAvailableBytes: Long,
+    deviceAvailableBytes: Long?,
+    storageError: String?,
     offlineMapMessage: String?,
     offlineMapMessageIsError: Boolean,
     onToggleOfflineMapArea: (Long, Boolean) -> Unit,
     onDeleteOfflineMapArea: (Long) -> Unit,
 ) {
-    var pendingOfflineAreaDeletion by remember { mutableStateOf<OfflineMapAreaUi?>(null) }
+    var pendingOfflineAreaDeletion by rememberSaveable { mutableStateOf<Long?>(null) }
     val context = LocalContext.current
     Column(
         modifier = Modifier
@@ -168,7 +169,8 @@ internal fun FilesScreen(
         )
         StatisticLine(
             "Espacio disponible en el almacenamiento interno",
-            android.text.format.Formatter.formatFileSize(context, deviceAvailableBytes),
+            deviceAvailableBytes?.let { android.text.format.Formatter.formatFileSize(context, it) }
+                ?: (storageError ?: "Consultando…"),
         )
         Text(
             "Descarga el área visible desde Mapa. Los mapas guardados se pueden reanudar o eliminar aquí.",
@@ -194,7 +196,7 @@ internal fun FilesScreen(
                 OfflineMapAreaCard(
                     area = area,
                     onToggle = { onToggleOfflineMapArea(area.id, !area.isDownloading) },
-                    onDelete = { pendingOfflineAreaDeletion = area },
+                    onDelete = { pendingOfflineAreaDeletion = area.id },
                 )
             }
         }
@@ -228,7 +230,7 @@ internal fun FilesScreen(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
-    pendingOfflineAreaDeletion?.let { area ->
+    offlineMapAreas.find { it.id == pendingOfflineAreaDeletion }?.let { area ->
         AlertDialog(
             onDismissRequest = { pendingOfflineAreaDeletion = null },
             title = { Text("Eliminar mapa sin conexión") },

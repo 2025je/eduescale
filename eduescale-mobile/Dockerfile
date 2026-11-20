@@ -42,7 +42,7 @@ RUN --mount=type=cache,target=/root/.gradle \
         echo "Se requieren tanto release.jks como keystore.properties para firmar." >&2; \
         exit 1; \
     fi \
-    && ./gradlew --no-daemon --console=plain :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease :app:bundleRelease
+    && ./gradlew --no-daemon --console=plain :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:assembleRelease :app:bundleRelease
 
 FROM scratch AS apk
 COPY --from=android-build /workspace/app/build/outputs/apk/debug/app-debug.apk /EduEscale-debug.apk

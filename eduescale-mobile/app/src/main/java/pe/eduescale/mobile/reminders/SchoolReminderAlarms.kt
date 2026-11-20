@@ -9,7 +9,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.database.sqlite.SQLiteException
 import android.net.Uri
 import android.os.Build
 import android.util.Log
@@ -26,7 +25,7 @@ import kotlinx.coroutines.launch
 import pe.eduescale.mobile.MainActivity
 import pe.eduescale.mobile.R
 import pe.eduescale.mobile.data.SchoolActivityRepository
-import pe.eduescale.mobile.data.SchoolReminder
+import pe.eduescale.mobile.activity.SchoolReminder
 
 object SchoolReminderAlarms {
     const val CHANNEL_ID = "school_reminders"
@@ -133,8 +132,6 @@ object SchoolReminderAlarms {
                     repository.markReminderTriggered(reminderId)
                 } catch (error: IOException) {
                     Log.e(TAG, "No se pudo registrar la alarma activada.", error)
-                } catch (error: SQLiteException) {
-                    Log.e(TAG, "No se pudo registrar la alarma activada.", error)
                 } finally {
                     pendingResult.finish()
                 }
@@ -221,8 +218,6 @@ object SchoolReminderAlarms {
                     val reminders = repository.pendingReminders()
                     reminders.forEach { reminder -> schedule(context, reminder) }
                 } catch (error: IOException) {
-                    Log.e(TAG, "No se pudieron restaurar los recordatorios guardados.", error)
-                } catch (error: SQLiteException) {
                     Log.e(TAG, "No se pudieron restaurar los recordatorios guardados.", error)
                 } catch (error: SecurityException) {
                     Log.e(TAG, "Android no permitió restaurar las alarmas.", error)

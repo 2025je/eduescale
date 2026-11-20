@@ -11,7 +11,7 @@ internal const val THEME_PREFERENCES_NAME = "eduescale_settings"
 internal const val DARK_THEME_PREFERENCE_KEY = "dark_theme"
 internal const val THEME_MODE_PREFERENCE_KEY = "theme_mode"
 
-internal enum class ThemeMode(val preferenceValue: String, val label: String) {
+enum class ThemeMode(val preferenceValue: String, val label: String) {
     SYSTEM("system", "Sistema"),
     LIGHT("light", "Claro"),
     DARK("dark", "Oscuro"),

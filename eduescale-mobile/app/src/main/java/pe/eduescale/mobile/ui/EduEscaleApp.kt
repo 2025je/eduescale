@@ -1,6 +1,5 @@
 package pe.eduescale.mobile.ui
 
-import android.content.Context
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.navigationBars
@@ -20,38 +19,44 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import android.os.StatFs
-import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import pe.eduescale.mobile.data.SchoolComment
+import pe.eduescale.mobile.activity.SchoolComment
 import pe.eduescale.mobile.data.SchoolFilters
 import pe.eduescale.mobile.data.SchoolRecord
-import pe.eduescale.mobile.data.SchoolReminder
-import pe.eduescale.mobile.data.SavedSearchJson
-import pe.eduescale.mobile.data.SavedSearch
+import pe.eduescale.mobile.activity.SchoolReminder
+import pe.eduescale.mobile.activity.SchoolActivityViewModel
+import pe.eduescale.mobile.map.OfflineMapBounds
+import pe.eduescale.mobile.reminders.ReminderPrompt
+import pe.eduescale.mobile.reminders.ReminderViewModel
 import pe.eduescale.mobile.ui.files.FilesScreen
+import pe.eduescale.mobile.ui.files.SchoolFileImportViewModel
+import pe.eduescale.mobile.ui.files.StorageSpaceViewModel
 import pe.eduescale.mobile.ui.history.ActivityHistoryScreen
 import pe.eduescale.mobile.ui.map.MapScreen
+import pe.eduescale.mobile.ui.map.OfflineMapsViewModel
 import pe.eduescale.mobile.ui.schools.SchoolsScreen
-import pe.eduescale.mobile.ui.theme.DARK_THEME_PREFERENCE_KEY
-import pe.eduescale.mobile.ui.theme.THEME_MODE_PREFERENCE_KEY
-import pe.eduescale.mobile.ui.theme.THEME_PREFERENCES_NAME
-import pe.eduescale.mobile.ui.theme.ThemeMode
+import pe.eduescale.mobile.ui.schools.SavedSearchViewModel
+import pe.eduescale.mobile.ui.theme.ThemeViewModel
 import pe.eduescale.mobile.ui.theme.EduEscaleTheme
 
 @Composable
 fun EduEscaleApp(
     viewModel: EduEscaleViewModel,
+    activityViewModel: SchoolActivityViewModel,
+    savedSearchViewModel: SavedSearchViewModel,
+    offlineMapsViewModel: OfflineMapsViewModel,
+    schoolFileImportViewModel: SchoolFileImportViewModel,
+    storageSpaceViewModel: StorageSpaceViewModel,
+    themeViewModel: ThemeViewModel,
+    reminderViewModel: ReminderViewModel,
+    onReminderMessage: (String) -> Unit,
     onMapTouchEnabled: (Boolean) -> Unit,
     onThemeChanged: (Boolean) -> Unit,
     onMapTopOverlayBottomChanged: (Float) -> Unit,
@@ -80,28 +85,16 @@ fun EduEscaleApp(
     onRefreshActivityHistory: () -> Unit,
     onEditHistoryComment: (SchoolComment, String) -> Unit,
     onEditHistoryReminder: (SchoolReminder, String, Long) -> Unit,
-    onPickReminderDateTime: (Long, (Long) -> Unit) -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val context = LocalContext.current
-    val themePreferences = remember(context) {
-        context.getSharedPreferences(THEME_PREFERENCES_NAME, Context.MODE_PRIVATE)
-    }
+    val activityState by activityViewModel.state.collectAsStateWithLifecycle()
+    val savedSearchState by savedSearchViewModel.state.collectAsStateWithLifecycle()
+    val offlineMapsState by offlineMapsViewModel.state.collectAsStateWithLifecycle()
+    val schoolFileImportState by schoolFileImportViewModel.state.collectAsStateWithLifecycle()
+    val storageState by storageSpaceViewModel.state.collectAsStateWithLifecycle()
+    val themeMode by themeViewModel.mode.collectAsStateWithLifecycle()
+    val reminderPrompt by reminderViewModel.prompt.collectAsStateWithLifecycle()
     val systemDarkTheme = isSystemInDarkTheme()
-    var themeMode by remember(themePreferences) {
-        mutableStateOf(
-            themePreferences.getString(THEME_MODE_PREFERENCE_KEY, null)?.let(ThemeMode::fromPreference)
-                ?: if (themePreferences.contains(DARK_THEME_PREFERENCE_KEY)) {
-                    if (themePreferences.getBoolean(DARK_THEME_PREFERENCE_KEY, false)) {
-                        ThemeMode.DARK
-                    } else {
-                        ThemeMode.LIGHT
-                    }
-                } else {
-                    ThemeMode.SYSTEM
-                },
-        )
-    }
     val darkTheme = themeMode.isDark(systemDarkTheme)
     val navController = rememberNavController()
     val backStack by navController.currentBackStackEntryAsState()
@@ -125,18 +118,6 @@ fun EduEscaleApp(
     LaunchedEffect(darkTheme) {
         onThemeChanged(darkTheme)
     }
-    LaunchedEffect(themeMode) {
-        themePreferences.edit()
-            .putString(THEME_MODE_PREFERENCE_KEY, themeMode.preferenceValue)
-            .remove(DARK_THEME_PREFERENCE_KEY)
-            .apply()
-    }
-    LaunchedEffect(state.savedSearches) {
-        themePreferences.edit()
-            .putString("saved_searches", SavedSearchJson.encode(state.savedSearches))
-            .apply()
-    }
-
     EduEscaleTheme(darkTheme = darkTheme) {
         Scaffold(
             containerColor = Color.Transparent,
@@ -175,6 +156,8 @@ fun EduEscaleApp(
                 composable("map") {
                     MapScreen(
                         state = state,
+                        activityState = activityState,
+                        offlineMapsState = offlineMapsState,
                         onMapTopOverlayBottomChanged = onMapTopOverlayBottomChanged,
                         onSchoolDetailsSheetShown = onSchoolDetailsSheetShown,
                         onMapDownloadControlBoundsChanged =
@@ -193,6 +176,10 @@ fun EduEscaleApp(
                         onEditComment = onEditComment,
                         onSearchComments = onSearchComments,
                         onAddReminder = onAddReminder,
+                        reminderDatePrompt = reminderPrompt as? ReminderPrompt.PickDate,
+                        onReminderDateSelected = reminderViewModel::dateSelected,
+                        onReminderDateCancelled = reminderViewModel::cancelPending,
+                        onReminderMessage = onReminderMessage,
                         onDeleteReminder = onDeleteReminder,
                         onDownloadVisibleArea = onDownloadVisibleArea,
                         onToggleOfflineMapArea = onToggleOfflineMapArea,
@@ -203,28 +190,15 @@ fun EduEscaleApp(
                         state = state,
                         onQueryChanged = viewModel::setQuery,
                         onApplyFilters = onApplyFilters,
-                        savedSearches = state.savedSearches,
-                        savedSearchMessage = state.savedSearchMessage,
-                        savedSearchMessageIsError = state.savedSearchMessageIsError,
+                        onOpenFilters = viewModel::openFilters,
+                        onFilterDraftChanged = viewModel::updateFilterDraft,
+                        onDismissFilters = viewModel::dismissFilters,
+                        savedSearches = savedSearchState.searches,
+                        savedSearchMessage = savedSearchState.message,
+                        savedSearchMessageIsError = savedSearchState.messageIsError,
                         onApplySavedSearch = { onApplyFilters(it) },
-                        onSaveSearch = { name ->
-                            try {
-                                val search = SavedSearch.from(name, state.filters)
-                                val updated = state.savedSearches
-                                    .filterNot { it.name.equals(search.name, ignoreCase = true) } + search
-                                SavedSearchJson.encode(updated)
-                                viewModel.setSavedSearches(updated)
-                                viewModel.setSavedSearchMessage("Búsqueda guardada.")
-                            } catch (error: IllegalArgumentException) {
-                                viewModel.setSavedSearchMessage(
-                                    error.message ?: "No se pudo guardar la búsqueda.",
-                                    isError = true,
-                                )
-                            }
-                        },
-                        onDeleteSavedSearch = { search ->
-                            viewModel.setSavedSearches(state.savedSearches - search)
-                        },
+                        onSaveSearch = { name -> savedSearchViewModel.saveSearch(name, state.filters) },
+                        onDeleteSavedSearch = savedSearchViewModel::deleteSearch,
                         onImportSavedSearches = onImportSavedSearches,
                         onExportSavedSearches = onExportSavedSearches,
                         onSchoolSelected = { school ->
@@ -237,35 +211,41 @@ fun EduEscaleApp(
                     )
                 }
                 composable("files") {
+                    LaunchedEffect(offlineMapsState.offlineMapAreas.sumOf(OfflineMapAreaUi::completedBytes)) {
+                        storageSpaceViewModel.refresh()
+                    }
                     FilesScreen(
                         file = state.schoolFile,
                         fileName = state.fileName,
-                        importing = state.isImporting,
-                        error = state.importError,
+                        importing = schoolFileImportState.isImporting,
+                        error = schoolFileImportState.error,
                         onPickFile = onPickFile,
                         onExportActivityBackup = onExportActivityBackup,
                         onImportActivityBackup = onImportActivityBackup,
-                        offlineMapAreas = state.offlineMapAreas,
-                        deviceAvailableBytes = StatFs(context.filesDir.path).availableBytes,
-                        offlineMapMessage = state.offlineMapMessage,
-                        offlineMapMessageIsError = state.offlineMapMessageIsError,
+                        offlineMapAreas = offlineMapsState.offlineMapAreas,
+                        deviceAvailableBytes = storageState.availableBytes,
+                        storageError = storageState.error,
+                        offlineMapMessage = offlineMapsState.offlineMapMessage,
+                        offlineMapMessageIsError = offlineMapsState.offlineMapMessageIsError,
                         onToggleOfflineMapArea = onToggleOfflineMapArea,
                         onDeleteOfflineMapArea = onDeleteOfflineMapArea,
                     )
                 }
                 composable("history") {
                     ActivityHistoryScreen(
-                        state = state,
+                        activityState = activityState,
+                        onQueryChanged = activityViewModel::setHistoryQuery,
+                        onFilterChanged = activityViewModel::setHistoryFilter,
                         onRefresh = onRefreshActivityHistory,
                         onEditComment = onEditHistoryComment,
                         onEditReminder = onEditHistoryReminder,
-                        onPickReminderDateTime = onPickReminderDateTime,
+                        onReminderMessage = onReminderMessage,
                     )
                 }
                 composable("settings") {
                     SettingsScreen(
                         themeMode = themeMode,
-                        onThemeModeChanged = { themeMode = it },
+                        onThemeModeChanged = themeViewModel::setMode,
                     )
                 }
             }

@@ -4,8 +4,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import pe.eduescale.mobile.data.SchoolReminder
-import pe.eduescale.mobile.data.reactivatedWith
+import pe.eduescale.mobile.activity.SchoolReminder
+import pe.eduescale.mobile.activity.reactivatedWith
 import pe.eduescale.mobile.ui.history.isReminderPending
 
 class ReminderHistoryTest {

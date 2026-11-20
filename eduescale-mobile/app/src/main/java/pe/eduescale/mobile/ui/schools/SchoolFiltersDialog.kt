@@ -40,8 +40,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import pe.eduescale.mobile.data.SchoolFilters
-import pe.eduescale.mobile.data.SchoolRecord
-import pe.eduescale.mobile.data.schoolLevelOptions
+import pe.eduescale.mobile.ui.SchoolFilterOptions
 
 @Composable
 internal fun FilterButton(count: Int, enabled: Boolean, onClick: () -> Unit) {
@@ -82,70 +81,48 @@ internal fun ActiveFilterChips(filters: SchoolFilters, modifier: Modifier = Modi
 
 @Composable
 internal fun SchoolFiltersDialog(
-    schools: List<SchoolRecord>,
     filters: SchoolFilters,
+    options: SchoolFilterOptions,
+    onChange: (SchoolFilters) -> Unit,
     onDismiss: () -> Unit,
     onApply: (SchoolFilters) -> Unit,
 ) {
-    var department by remember(filters) { mutableStateOf(filters.departamento) }
-    var province by remember(filters) { mutableStateOf(filters.provincia) }
-    var district by remember(filters) { mutableStateOf(filters.distrito) }
-    var management by remember(filters) { mutableStateOf(filters.gestiones) }
-    var levels by remember(filters) { mutableStateOf(filters.niveles) }
-    val departments = schools.mapNotNull(SchoolRecord::departamento).distinct().sorted()
-    val provinces = schools.asSequence()
-        .filter { department == null || it.departamento == department }
-        .mapNotNull(SchoolRecord::provincia)
-        .distinct()
-        .sorted()
-        .toList()
-    val districts = schools.asSequence()
-        .filter { department == null || it.departamento == department }
-        .filter { province == null || it.provincia == province }
-        .mapNotNull(SchoolRecord::distrito)
-        .distinct()
-        .sorted()
-        .toList()
-    val allManagement = schools.mapNotNull(SchoolRecord::gestion).distinct().sorted()
-    val allLevels = schoolLevelOptions(schools)
-
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Filtros avanzados") },
         text = {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 item {
-                    FilterDropdown("Departamento", department, departments) {
-                        department = it
-                        province = null
-                        district = null
+                    FilterDropdown("Departamento", filters.departamento, options.departments) {
+                        onChange(filters.copy(departamento = it, provincia = null, distrito = null))
                     }
-                    FilterDropdown("Provincia", province, provinces) {
-                        province = it
-                        district = null
+                    FilterDropdown("Provincia", filters.provincia, options.provinces) {
+                        onChange(filters.copy(provincia = it, distrito = null))
                     }
-                    FilterDropdown("Distrito", district, districts) { district = it }
+                    FilterDropdown("Distrito", filters.distrito, options.districts) {
+                        onChange(filters.copy(distrito = it))
+                    }
                 }
                 item {
                     Text("Gestión", style = MaterialTheme.typography.titleSmall)
-                    allManagement.forEach { option ->
+                    options.management.forEach { option ->
                         FilterCheckbox(
                             label = managementLabel(option),
-                            checked = option in management,
+                            checked = option in filters.gestiones,
                             onCheckedChange = {
-                                management = if (it) management + option else management - option
+                                onChange(filters.copy(gestiones = if (it) filters.gestiones + option else filters.gestiones - option))
                             },
                         )
                     }
                 }
                 item {
                     Text("Nivel educativo", style = MaterialTheme.typography.titleSmall)
-                    allLevels.forEach { option ->
+                    options.levels.forEach { option ->
                         FilterCheckbox(
                             label = schoolLevelLabel(option),
-                            checked = option in levels,
+                            checked = option in filters.niveles,
                             onCheckedChange = {
-                                levels = if (it) levels + option else levels - option
+                                onChange(filters.copy(niveles = if (it) filters.niveles + option else filters.niveles - option))
                             },
                         )
                     }
@@ -155,15 +132,7 @@ internal fun SchoolFiltersDialog(
         confirmButton = {
             TextButton(
                 onClick = {
-                    onApply(
-                        SchoolFilters(
-                            departamento = department,
-                            provincia = province,
-                            distrito = district,
-                            gestiones = management,
-                            niveles = levels,
-                        ),
-                    )
+                    onApply(filters)
                 },
             ) { Text("Aplicar") }
         },

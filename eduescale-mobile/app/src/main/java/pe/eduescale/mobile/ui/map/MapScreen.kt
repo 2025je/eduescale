@@ -53,9 +53,12 @@ import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 import pe.eduescale.mobile.data.OfflineTileEstimator
 import pe.eduescale.mobile.data.SchoolRecord
+import pe.eduescale.mobile.data.activityKey
+import pe.eduescale.mobile.activity.SchoolActivityUiState
 import pe.eduescale.mobile.ui.EduEscaleUiState
 import pe.eduescale.mobile.ui.OfflineMapAreaUi
-import pe.eduescale.mobile.ui.OfflineMapBounds
+import pe.eduescale.mobile.map.OfflineMapBounds
+import pe.eduescale.mobile.reminders.ReminderPrompt
 import pe.eduescale.mobile.ui.components.BrandHeader
 import pe.eduescale.mobile.ui.components.LegendRow
 import pe.eduescale.mobile.ui.files.formatMapBytes
@@ -67,6 +70,8 @@ import pe.eduescale.mobile.ui.theme.EduOrange
 @Composable
 internal fun MapScreen(
     state: EduEscaleUiState,
+    activityState: SchoolActivityUiState,
+    offlineMapsState: OfflineMapsUiState,
     onMapTopOverlayBottomChanged: (Float) -> Unit,
     onSchoolDetailsSheetShown: (SchoolRecord, Float) -> Unit,
     onMapDownloadControlBoundsChanged: (Float, Float, Float, Float) -> Unit,
@@ -80,6 +85,10 @@ internal fun MapScreen(
     onEditComment: (SchoolRecord, String, String) -> Unit,
     onSearchComments: (SchoolRecord, String) -> Unit,
     onAddReminder: (SchoolRecord, String) -> Unit,
+    reminderDatePrompt: ReminderPrompt.PickDate?,
+    onReminderDateSelected: (SchoolRecord, String, Long) -> Unit,
+    onReminderDateCancelled: () -> Unit,
+    onReminderMessage: (String) -> Unit,
     onDeleteReminder: (SchoolRecord, String) -> Unit,
     onDownloadVisibleArea: (OfflineMapBounds, Int, Int) -> Unit,
     onToggleOfflineMapArea: (Long, Boolean) -> Unit,
@@ -180,8 +189,8 @@ internal fun MapScreen(
                 },
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            val activeDownload = state.offlineMapAreas.firstOrNull(OfflineMapAreaUi::isDownloading)
-            if (state.isCreatingOfflineMapArea) {
+            val activeDownload = offlineMapsState.offlineMapAreas.firstOrNull(OfflineMapAreaUi::isDownloading)
+            if (offlineMapsState.isCreatingOfflineMapArea) {
                 Card(shape = RoundedCornerShape(14.dp)) {
                     Column(
                         modifier = Modifier.padding(12.dp),
@@ -226,10 +235,10 @@ internal fun MapScreen(
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (!state.isCreatingOfflineMapArea && activeDownload == null) {
+                if (!offlineMapsState.isCreatingOfflineMapArea && activeDownload == null) {
                 IconButton(
                     onClick = { showOfflineMapDialog = true },
-                    enabled = state.visibleMapBounds != null,
+                    enabled = offlineMapsState.visibleMapBounds != null,
                 ) {
                     Icon(
                         Icons.Default.FileDownload,
@@ -244,12 +253,12 @@ internal fun MapScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            state.offlineMapMessage?.let { message ->
+            offlineMapsState.offlineMapMessage?.let { message ->
                 Text(
                     message,
                     modifier = Modifier.padding(start = 4.dp, end = 8.dp),
                     style = MaterialTheme.typography.labelSmall,
-                    color = if (state.offlineMapMessageIsError) {
+                    color = if (offlineMapsState.offlineMapMessageIsError) {
                         MaterialTheme.colorScheme.error
                     } else {
                         MaterialTheme.colorScheme.onSurfaceVariant
@@ -284,7 +293,7 @@ internal fun MapScreen(
     }
 
     if (showOfflineMapDialog) {
-        state.visibleMapBounds?.let { bounds ->
+        offlineMapsState.visibleMapBounds?.let { bounds ->
             OfflineMapDownloadDialog(
                 bounds = bounds,
                 onDismiss = { showOfflineMapDialog = false },
@@ -303,9 +312,21 @@ internal fun MapScreen(
         onDismiss = onClearSelection,
         onDirections = onDirections,
         onShare = onShare,
-        comments = state.schoolComments,
-        reminders = state.schoolReminders,
-        commentSearchQuery = state.commentSearchQuery,
+        comments = if (activityState.selectedSchoolKey == state.selectedSchool?.activityKey()) {
+            activityState.schoolComments
+        } else {
+            emptyList()
+        },
+        reminders = if (activityState.selectedSchoolKey == state.selectedSchool?.activityKey()) {
+            activityState.schoolReminders
+        } else {
+            emptyList()
+        },
+        commentSearchQuery = if (activityState.selectedSchoolKey == state.selectedSchool?.activityKey()) {
+            activityState.commentSearchQuery
+        } else {
+            ""
+        },
         onAddComment = { text ->
             state.selectedSchool?.let { school -> onAddComment(school, text) }
         },
@@ -323,6 +344,10 @@ internal fun MapScreen(
         onAddReminder = { message ->
             state.selectedSchool?.let { school -> onAddReminder(school, message) }
         },
+        reminderDatePrompt = reminderDatePrompt,
+        onReminderDateSelected = onReminderDateSelected,
+        onReminderDateCancelled = onReminderDateCancelled,
+        onReminderMessage = onReminderMessage,
         onDeleteReminder = { reminderId ->
             state.selectedSchool?.let { school -> onDeleteReminder(school, reminderId) }
         },

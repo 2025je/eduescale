@@ -1,6 +1,7 @@
 package pe.eduescale.mobile.data
 
 import android.content.Context
+import android.database.sqlite.SQLiteException
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Entity
@@ -27,6 +28,14 @@ import java.security.MessageDigest
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
+import pe.eduescale.mobile.activity.SchoolActivityStore
+import pe.eduescale.mobile.activity.ReminderStore
+import pe.eduescale.mobile.activity.ActivityBackupStore
+import pe.eduescale.mobile.activity.ActivityStorageException
+import pe.eduescale.mobile.activity.SchoolActivityBackup
+import pe.eduescale.mobile.activity.SchoolComment
+import pe.eduescale.mobile.activity.SchoolReminder
+import pe.eduescale.mobile.activity.reactivatedWith
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -36,7 +45,7 @@ import kotlinx.coroutines.withContext
     tableName = "school_comments",
     indices = [Index(value = ["school_key", "created_at_millis"])],
 )
-data class SchoolComment(
+internal data class SchoolCommentEntity(
     @PrimaryKey val id: String,
     @androidx.room.ColumnInfo(name = "school_key") val schoolKey: String,
     val text: String,
@@ -48,52 +57,30 @@ data class SchoolComment(
     tableName = "school_reminders",
     indices = [Index(value = ["school_key", "scheduled_at_millis"])],
 )
-data class SchoolReminder(
+internal data class SchoolReminderEntity(
     @PrimaryKey val id: String,
     @androidx.room.ColumnInfo(name = "school_key") val schoolKey: String,
     @androidx.room.ColumnInfo(name = "school_name") val schoolName: String,
     val message: String,
     @androidx.room.ColumnInfo(name = "scheduled_at_millis") val scheduledAtMillis: Long,
     @androidx.room.ColumnInfo(name = "status", defaultValue = "'PENDING'")
-    val status: String? = STATUS_PENDING,
-) {
-    companion object {
-        const val STATUS_PENDING = "PENDING"
-        const val STATUS_TRIGGERED = "TRIGGERED"
-        const val STATUS_CANCELLED = "CANCELLED"
-        const val STATUS_EXPIRED = "EXPIRED"
-        val VALID_STATUSES = setOf(
-            STATUS_PENDING,
-            STATUS_TRIGGERED,
-            STATUS_CANCELLED,
-            STATUS_EXPIRED,
-        )
-    }
-}
-
-internal fun SchoolReminder.reactivatedWith(
-    message: String,
-    scheduledAtMillis: Long,
-): SchoolReminder = copy(
-    message = message,
-    scheduledAtMillis = scheduledAtMillis,
-    status = SchoolReminder.STATUS_PENDING,
+    val status: String? = SchoolReminder.STATUS_PENDING,
 )
 
-data class SchoolActivityBackup(
-    val format: String = BACKUP_FORMAT,
-    val version: Int = BACKUP_VERSION,
-    val comments: List<SchoolComment> = emptyList(),
-    val reminders: List<SchoolReminder> = emptyList(),
-) {
-    companion object {
-        const val BACKUP_FORMAT = "eduescale-activity"
-        const val BACKUP_VERSION = 1
-    }
-}
+internal fun SchoolCommentEntity.toModel() =
+    SchoolComment(id, schoolKey, text, createdAtMillis, updatedAtMillis)
+
+internal fun SchoolComment.toEntity() =
+    SchoolCommentEntity(id, schoolKey, text, createdAtMillis, updatedAtMillis)
+
+internal fun SchoolReminderEntity.toModel() =
+    SchoolReminder(id, schoolKey, schoolName, message, scheduledAtMillis, status)
+
+internal fun SchoolReminder.toEntity() =
+    SchoolReminderEntity(id, schoolKey, schoolName, message, scheduledAtMillis, status)
 
 @Dao
-interface SchoolActivityDao {
+internal interface SchoolActivityDao {
     @Query(
         """
         SELECT * FROM school_comments
@@ -102,16 +89,16 @@ interface SchoolActivityDao {
         ORDER BY created_at_millis DESC
         """,
     )
-    suspend fun commentsForSchool(schoolKey: String, query: String): List<SchoolComment>
+    suspend fun commentsForSchool(schoolKey: String, query: String): List<SchoolCommentEntity>
 
     @Query("SELECT * FROM school_comments ORDER BY created_at_millis DESC")
-    suspend fun allComments(): List<SchoolComment>
+    suspend fun allComments(): List<SchoolCommentEntity>
 
     @Insert(onConflict = OnConflictStrategy.ABORT)
-    suspend fun insertComment(comment: SchoolComment)
+    suspend fun insertComment(comment: SchoolCommentEntity)
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
-    suspend fun importComments(comments: List<SchoolComment>)
+    suspend fun importComments(comments: List<SchoolCommentEntity>)
 
     @Query(
         "DELETE FROM school_comments WHERE school_key = :schoolKey AND id = :commentId",
@@ -139,13 +126,13 @@ interface SchoolActivityDao {
         ORDER BY scheduled_at_millis DESC
         """,
     )
-    suspend fun remindersForSchool(schoolKey: String): List<SchoolReminder>
+    suspend fun remindersForSchool(schoolKey: String): List<SchoolReminderEntity>
 
     @Query("SELECT * FROM school_reminders ORDER BY scheduled_at_millis DESC")
-    suspend fun allReminders(): List<SchoolReminder>
+    suspend fun allReminders(): List<SchoolReminderEntity>
 
     @Query("SELECT * FROM school_reminders WHERE id = :reminderId LIMIT 1")
-    suspend fun reminderById(reminderId: String): SchoolReminder?
+    suspend fun reminderById(reminderId: String): SchoolReminderEntity?
 
     @Query(
         """
@@ -157,7 +144,7 @@ interface SchoolActivityDao {
     suspend fun pendingReminders(
         pendingStatus: String,
         nowMillis: Long,
-    ): List<SchoolReminder>
+    ): List<SchoolReminderEntity>
 
     @Query(
         """
@@ -186,24 +173,24 @@ interface SchoolActivityDao {
     )
 
     @Insert(onConflict = OnConflictStrategy.ABORT)
-    suspend fun insertReminder(reminder: SchoolReminder)
+    suspend fun insertReminder(reminder: SchoolReminderEntity)
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
-    suspend fun importReminders(reminders: List<SchoolReminder>)
+    suspend fun importReminders(reminders: List<SchoolReminderEntity>)
 
     @Update
-    suspend fun updateReminder(reminder: SchoolReminder): Int
+    suspend fun updateReminder(reminder: SchoolReminderEntity): Int
 
     @Query("DELETE FROM school_reminders WHERE id = :reminderId")
     suspend fun deleteReminder(reminderId: String)
 }
 
 @Database(
-    entities = [SchoolComment::class, SchoolReminder::class],
+    entities = [SchoolCommentEntity::class, SchoolReminderEntity::class],
     version = 3,
     exportSchema = false,
 )
-abstract class SchoolActivityDatabase : RoomDatabase() {
+internal abstract class SchoolActivityDatabase : RoomDatabase() {
     abstract fun schoolActivityDao(): SchoolActivityDao
 
     companion object {
@@ -242,7 +229,7 @@ abstract class SchoolActivityDatabase : RoomDatabase() {
 @Singleton
 class SchoolActivityRepository @Inject constructor(
     @ApplicationContext context: Context,
-) {
+) : SchoolActivityStore, ReminderStore, ActivityBackupStore {
     private val applicationContext = context.applicationContext
     private val database = SchoolActivityDatabase.getInstance(applicationContext)
     private val dao = database.schoolActivityDao()
@@ -252,39 +239,39 @@ class SchoolActivityRepository @Inject constructor(
     )
     private val migrationMutex = Mutex()
 
-    suspend fun commentsFor(
+    override suspend fun commentsFor(
         schoolKey: String,
-        query: String = "",
-    ): List<SchoolComment> {
+        query: String,
+    ): List<SchoolComment> = storageOperation {
         migrateLegacyData()
-        return dao.commentsForSchool(schoolKey, query.trim())
+        dao.commentsForSchool(schoolKey, query.trim()).map(SchoolCommentEntity::toModel)
     }
 
-    suspend fun addComment(schoolKey: String, text: String): List<SchoolComment> {
+    override suspend fun addComment(schoolKey: String, text: String): List<SchoolComment> = storageOperation {
         val normalizedText = text.trim()
         require(normalizedText.isNotEmpty()) { "Escribe un comentario antes de guardarlo." }
         migrateLegacyData()
         dao.insertComment(
-            SchoolComment(
+            SchoolCommentEntity(
                 id = UUID.randomUUID().toString(),
                 schoolKey = schoolKey,
                 text = normalizedText,
                 createdAtMillis = System.currentTimeMillis(),
             ),
         )
-        return dao.commentsForSchool(schoolKey, "")
+        dao.commentsForSchool(schoolKey, "").map(SchoolCommentEntity::toModel)
     }
 
-    suspend fun deleteComment(schoolKey: String, commentId: String) {
+    override suspend fun deleteComment(schoolKey: String, commentId: String) = storageOperation {
         migrateLegacyData()
         dao.deleteComment(schoolKey, commentId)
     }
 
-    suspend fun updateComment(
+    override suspend fun updateComment(
         schoolKey: String,
         commentId: String,
         text: String,
-    ) {
+    ) = storageOperation {
         val normalizedText = text.trim()
         require(normalizedText.isNotEmpty()) { "El comentario no puede quedar vacío." }
         migrateLegacyData()
@@ -296,30 +283,30 @@ class SchoolActivityRepository @Inject constructor(
         )
     }
 
-    suspend fun remindersFor(schoolKey: String): List<SchoolReminder> {
+    override suspend fun remindersFor(schoolKey: String): List<SchoolReminder> = storageOperation {
         migrateLegacyData()
-        return dao.remindersForSchool(schoolKey)
+        dao.remindersForSchool(schoolKey).map(SchoolReminderEntity::toModel)
     }
 
-    suspend fun allComments(): List<SchoolComment> {
+    override suspend fun allComments(): List<SchoolComment> = storageOperation {
         migrateLegacyData()
-        return dao.allComments()
+        dao.allComments().map(SchoolCommentEntity::toModel)
     }
 
-    suspend fun allReminders(): List<SchoolReminder> {
+    override suspend fun allReminders(): List<SchoolReminder> = storageOperation {
         migrateLegacyData()
-        return dao.allReminders()
+        dao.allReminders().map(SchoolReminderEntity::toModel)
     }
 
-    suspend fun pendingReminders(): List<SchoolReminder> {
+    override suspend fun pendingReminders(): List<SchoolReminder> = storageOperation {
         expirePastReminders()
-        return dao.pendingReminders(
+        dao.pendingReminders(
             pendingStatus = SchoolReminder.STATUS_PENDING,
             nowMillis = System.currentTimeMillis(),
-        )
+        ).map(SchoolReminderEntity::toModel)
     }
 
-    suspend fun expirePastReminders(nowMillis: Long = System.currentTimeMillis()) {
+    override suspend fun expirePastReminders(nowMillis: Long) = storageOperation {
         migrateLegacyData()
         dao.expirePastReminders(
             pendingStatus = SchoolReminder.STATUS_PENDING,
@@ -328,7 +315,7 @@ class SchoolActivityRepository @Inject constructor(
         )
     }
 
-    suspend fun markReminderTriggered(reminderId: String) {
+    suspend fun markReminderTriggered(reminderId: String) = storageOperation {
         migrateLegacyData()
         dao.updatePendingReminderStatus(
             reminderId = reminderId,
@@ -337,7 +324,7 @@ class SchoolActivityRepository @Inject constructor(
         )
     }
 
-    suspend fun cancelReminder(reminderId: String) {
+    override suspend fun cancelReminder(reminderId: String) = storageOperation {
         migrateLegacyData()
         dao.updatePendingReminderStatus(
             reminderId = reminderId,
@@ -346,12 +333,12 @@ class SchoolActivityRepository @Inject constructor(
         )
     }
 
-    suspend fun addReminder(
+    override suspend fun addReminder(
         schoolKey: String,
         schoolName: String,
         message: String,
         scheduledAtMillis: Long,
-    ): SchoolReminder {
+    ): SchoolReminder = storageOperation {
         val normalizedMessage = message.trim()
         require(normalizedMessage.isNotEmpty()) { "Escribe qué debes recordar." }
         require(scheduledAtMillis > System.currentTimeMillis()) {
@@ -365,51 +352,51 @@ class SchoolActivityRepository @Inject constructor(
             message = normalizedMessage,
             scheduledAtMillis = scheduledAtMillis,
         )
-        dao.insertReminder(reminder)
-        return reminder
+        dao.insertReminder(reminder.toEntity())
+        reminder
     }
 
-    suspend fun updateReminder(
+    override suspend fun updateReminder(
         reminderId: String,
         message: String,
         scheduledAtMillis: Long,
-    ): SchoolReminder {
+    ): SchoolReminder = storageOperation {
         val normalizedMessage = message.trim()
         require(normalizedMessage.isNotEmpty()) { "Escribe qué debes recordar." }
         require(scheduledAtMillis > System.currentTimeMillis()) {
             "La hora del recordatorio debe ser futura."
         }
         migrateLegacyData()
-        val existing = dao.reminderById(reminderId)
+        val existing = dao.reminderById(reminderId)?.toModel()
             ?: throw IllegalArgumentException("No se encontró la alarma que quieres editar.")
         val updated = existing.reactivatedWith(normalizedMessage, scheduledAtMillis)
-        check(dao.updateReminder(updated) == 1) {
+        check(dao.updateReminder(updated.toEntity()) == 1) {
             "No se pudo actualizar la alarma guardada."
         }
-        return updated
+        updated
     }
 
-    suspend fun restoreReminder(reminder: SchoolReminder) {
+    override suspend fun restoreReminder(reminder: SchoolReminder) = storageOperation {
         migrateLegacyData()
-        check(dao.updateReminder(reminder) == 1) {
+        check(dao.updateReminder(reminder.toEntity()) == 1) {
             "No se pudo restaurar la alarma anterior."
         }
     }
 
-    suspend fun deleteReminder(reminderId: String) {
+    override suspend fun deleteReminder(reminderId: String) = storageOperation {
         migrateLegacyData()
         dao.deleteReminder(reminderId)
     }
 
-    suspend fun exportBackup(): SchoolActivityBackup {
+    override suspend fun exportBackup(): SchoolActivityBackup = storageOperation {
         migrateLegacyData()
-        return SchoolActivityBackup(
-            comments = dao.allComments(),
-            reminders = dao.allReminders(),
+        SchoolActivityBackup(
+            comments = dao.allComments().map(SchoolCommentEntity::toModel),
+            reminders = dao.allReminders().map(SchoolReminderEntity::toModel),
         )
     }
 
-    suspend fun importBackup(backup: SchoolActivityBackup) {
+    override suspend fun importBackup(backup: SchoolActivityBackup) = storageOperation {
         require(backup.format == SchoolActivityBackup.BACKUP_FORMAT) {
             "El archivo no es una copia de seguridad de EduEscale."
         }
@@ -436,10 +423,10 @@ class SchoolActivityRepository @Inject constructor(
         migrateLegacyData()
         database.withTransaction {
             if (backup.comments.isNotEmpty()) {
-                dao.importComments(backup.comments)
+                dao.importComments(backup.comments.map(SchoolComment::toEntity))
             }
             if (normalizedReminders.isNotEmpty()) {
-                dao.importReminders(normalizedReminders)
+                dao.importReminders(normalizedReminders.map(SchoolReminder::toEntity))
             }
         }
     }
@@ -454,10 +441,10 @@ class SchoolActivityRepository @Inject constructor(
             val legacyReminders = legacyData.reminders.map(::normalizeReminderStatus)
             database.withTransaction {
                 if (legacyData.comments.isNotEmpty()) {
-                    dao.importComments(legacyData.comments)
+                    dao.importComments(legacyData.comments.map(SchoolComment::toEntity))
                 }
                 if (legacyReminders.isNotEmpty()) {
-                    dao.importReminders(legacyReminders)
+                    dao.importReminders(legacyReminders.map(SchoolReminder::toEntity))
                 }
             }
             val saved = withContext(Dispatchers.IO) {
@@ -497,6 +484,13 @@ class SchoolActivityRepository @Inject constructor(
             ?: SchoolReminder.STATUS_PENDING
         return if (reminder.status == status) reminder else reminder.copy(status = status)
     }
+
+    private suspend fun <T> storageOperation(action: suspend () -> T): T =
+        try {
+            action()
+        } catch (error: SQLiteException) {
+            throw ActivityStorageException(error)
+        }
 
     private data class LegacySchoolActivityData(
         val comments: List<SchoolComment> = emptyList(),

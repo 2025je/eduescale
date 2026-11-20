@@ -3,7 +3,6 @@ package pe.eduescale.mobile
 import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Color
-import android.net.Uri
 import android.os.Bundle
 import android.view.MotionEvent
 import android.view.ViewGroup
@@ -25,99 +24,65 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import dagger.hilt.android.AndroidEntryPoint
-import javax.inject.Inject
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import org.maplibre.android.maps.MapView
-import org.maplibre.android.offline.OfflineManager
-import pe.eduescale.mobile.activity.SchoolActivityController
-import pe.eduescale.mobile.data.ActivityBackupController
-import pe.eduescale.mobile.data.SchoolActivityRepository
-import pe.eduescale.mobile.data.SchoolFile
-import pe.eduescale.mobile.data.SchoolFileStorage
-import pe.eduescale.mobile.data.SchoolImportController
+import pe.eduescale.mobile.activity.SchoolActivityViewModel
+import pe.eduescale.mobile.activity.ActivityBackupViewModel
 import pe.eduescale.mobile.data.SchoolRecord
-import pe.eduescale.mobile.data.SavedSearchJson
-import pe.eduescale.mobile.ui.theme.THEME_PREFERENCES_NAME
+import pe.eduescale.mobile.ui.schools.SavedSearchViewModel
 import pe.eduescale.mobile.location.LocationController
+import pe.eduescale.mobile.location.MapLibreLocationDisplay
 import pe.eduescale.mobile.map.MapCameraStore
-import pe.eduescale.mobile.map.OfflineMapController
 import pe.eduescale.mobile.map.SchoolMapController
 import pe.eduescale.mobile.ui.map.TouchRoutingFrameLayout
+import pe.eduescale.mobile.ui.map.SchoolMapCoordinator
+import pe.eduescale.mobile.ui.map.OfflineMapsViewModel
 import pe.eduescale.mobile.navigation.SchoolNavigator
 import pe.eduescale.mobile.reminders.ReminderController
+import pe.eduescale.mobile.reminders.ReminderViewModel
 import pe.eduescale.mobile.ui.EduEscaleApp
+import pe.eduescale.mobile.ui.AppEventCoordinator
 import pe.eduescale.mobile.ui.EduEscaleViewModel
+import pe.eduescale.mobile.ui.files.SchoolFileImportViewModel
+import pe.eduescale.mobile.ui.files.StorageSpaceViewModel
+import pe.eduescale.mobile.ui.theme.ThemeViewModel
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     private val viewModel: EduEscaleViewModel by viewModels()
+    private val activityViewModel: SchoolActivityViewModel by viewModels()
+    private val reminderViewModel: ReminderViewModel by viewModels()
+    private val activityBackupViewModel: ActivityBackupViewModel by viewModels()
+    private val savedSearchViewModel: SavedSearchViewModel by viewModels()
+    private val offlineMapsViewModel: OfflineMapsViewModel by viewModels()
+    private val schoolFileImportViewModel: SchoolFileImportViewModel by viewModels()
+    private val storageSpaceViewModel: StorageSpaceViewModel by viewModels()
+    private val themeViewModel: ThemeViewModel by viewModels()
     private lateinit var mapView: MapView
     private val schoolNavigator by lazy { SchoolNavigator(this) }
     private lateinit var mapController: SchoolMapController
-    @Inject lateinit var schoolFileStorage: SchoolFileStorage
-    @Inject lateinit var schoolActivityRepository: SchoolActivityRepository
-    @Inject lateinit var offlineManager: OfflineManager
+    private lateinit var mapCoordinator: SchoolMapCoordinator
+    private lateinit var appEventCoordinator: AppEventCoordinator
+    private var passwordDialog: AlertDialog? = null
 
-    private val schoolImport by lazy {
-        SchoolImportController(
-            contentResolver = contentResolver,
-            storage = schoolFileStorage,
-            preferences = getSharedPreferences(
-                SchoolImportController.FILE_PREFERENCES,
-                MODE_PRIVATE,
-            ),
-            isActive = { !isFinishing && !isDestroyed },
-            onLoaded = { file, fileName, fromUser ->
-                if (fromUser) {
-                    mapController.hasPendingUserFileImport = true
-                    mapController.shouldFocusOnNextMapDataUpdate = true
-                }
-                viewModel.setSchoolFile(file, fileName)
-            },
-            onImporting = { viewModel.setImporting(true) },
-            onPasswordRequired = { uri ->
-                viewModel.setImporting(false)
-                requestEduEscalePassword(uri)
-            },
-            onError = viewModel::setImportError,
-        )
-    }
     private val mapCameraStore by lazy { MapCameraStore(this) }
     private val reminderController by lazy {
         ReminderController(
             activity = this,
-            viewModel = viewModel,
-            repositoryProvider = { schoolActivityRepository },
-            activityProvider = { activityController },
-            showReminderMessage = ::showReminderMessage,
-        )
-    }
-    private val activityController by lazy {
-        SchoolActivityController(
-            scope = lifecycleScope,
-            repository = schoolActivityRepository,
-            viewModel = viewModel,
+            viewModel = reminderViewModel,
             showMessage = ::showReminderMessage,
-        )
-    }
-    private val activityBackup by lazy {
-        ActivityBackupController(
-            scope = lifecycleScope,
-            contentResolver = contentResolver,
-            repository = schoolActivityRepository,
-            showMessage = ::showReminderMessage,
-            onRestored = {
-                reminderController.restorePendingReminders(showPermissionMessage = true)
-                val state = viewModel.state.value
-                state.selectedSchool?.let { activityController.refreshSchoolActivity(it, state.commentSearchQuery) }
-            },
+            refresh = { schoolKey -> mapCoordinator.refreshActivity(schoolKey) },
         )
     }
     private val locationController by lazy {
-        LocationController(this, viewModel, { mapController.map }, { mapController.style })
-    }
-    private val offlineMapController by lazy {
-        OfflineMapController(this, viewModel, offlineManager) { mapController.style != null }
+        LocationController(
+            activity = this,
+            display = MapLibreLocationDisplay(this, { mapController.map }, { mapController.style }),
+            onLocationServicesChanged = viewModel::setLocationServicesEnabled,
+            onLocationChanged = viewModel::setUserLocation,
+        )
     }
     private lateinit var externalFileBackCallback: OnBackPressedCallback
 
@@ -125,59 +90,32 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.OpenDocument(),
     ) { uri ->
         if (uri != null) {
-            schoolImport.import(uri)
+            schoolFileImportViewModel.importFile(uri.toString())
         }
     }
 
     private val createActivityBackup = registerForActivityResult(
         ActivityResultContracts.CreateDocument("application/json"),
     ) { uri ->
-        uri?.let(activityBackup::export)
+        uri?.let { activityBackupViewModel.export(it.toString()) }
     }
 
     private val openActivityBackup = registerForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { uri ->
-        uri?.let(activityBackup::import)
+        uri?.let { activityBackupViewModel.import(it.toString()) }
     }
 
     private val openSavedSearches = registerForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { uri ->
-        if (uri != null) {
-            try {
-                val json = contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)
-                    ?.use { it.readText() }
-                    ?: throw IllegalArgumentException("No se pudo leer el archivo seleccionado.")
-                val imported = SavedSearchJson.decode(json)
-                viewModel.setSavedSearches(imported)
-                viewModel.setSavedSearchMessage("Se importaron ${imported.size} búsquedas.")
-            } catch (error: Exception) {
-                viewModel.setSavedSearchMessage(
-                    error.message ?: "No se pudo importar el archivo de búsquedas.",
-                    isError = true,
-                )
-            }
-        }
+        uri?.let { savedSearchViewModel.importFile(it.toString()) }
     }
 
     private val createSavedSearches = registerForActivityResult(
         ActivityResultContracts.CreateDocument("application/json"),
     ) { uri ->
-        if (uri != null) {
-            try {
-                val json = SavedSearchJson.encode(viewModel.state.value.savedSearches)
-                contentResolver.openOutputStream(uri)?.bufferedWriter(Charsets.UTF_8)
-                    ?.use { it.write(json) }
-                    ?: throw IllegalArgumentException("No se pudo escribir el archivo seleccionado.")
-                viewModel.setSavedSearchMessage("Búsquedas exportadas.")
-            } catch (error: Exception) {
-                viewModel.setSavedSearchMessage(
-                    error.message ?: "No se pudo exportar el archivo de búsquedas.",
-                    isError = true,
-                )
-            }
-        }
+        uri?.let { savedSearchViewModel.exportFile(it.toString()) }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -185,18 +123,6 @@ class MainActivity : ComponentActivity() {
         // Activity result launchers must be registered before STARTED, and need the ViewModel store.
         reminderController
         locationController
-        val savedSearchPreferences = getSharedPreferences(THEME_PREFERENCES_NAME, MODE_PRIVATE)
-        val savedSearchJson = savedSearchPreferences.getString("saved_searches", null)
-        val savedSearches = if (savedSearchJson == null) {
-            emptyList()
-        } else {
-            try {
-                SavedSearchJson.decode(savedSearchJson)
-            } catch (_: IllegalArgumentException) {
-                emptyList()
-            }
-        }
-        viewModel.setSavedSearches(savedSearches)
         externalFileBackCallback = object : OnBackPressedCallback(false) {
             override fun handleOnBackPressed() {
                 if (!moveTaskToBack(true)) {
@@ -215,11 +141,24 @@ class MainActivity : ComponentActivity() {
         mapController = SchoolMapController(
             context = this,
             mapView = mapView,
-            viewModel = viewModel,
             mapCameraStore = mapCameraStore,
-            offlineMapController = { offlineMapController },
-            locationController = { locationController },
+            onStyleReady = {
+                offlineMapsViewModel.setStyleReady(true)
+                offlineMapsViewModel.refreshOfflineMapAreas()
+                locationController.refreshLocationServices()
+            },
+            selectedSchool = { viewModel.state.value.selectedSchool },
+            onVisibleMapBoundsChanged = offlineMapsViewModel::setVisibleMapBounds,
             onSchoolTapped = ::showSchoolDetails,
+        )
+        mapCoordinator = SchoolMapCoordinator(viewModel, activityViewModel, mapController)
+        appEventCoordinator = AppEventCoordinator(
+            restoreReminders = { showMessage ->
+                reminderViewModel.restorePendingReminders(showMessage)
+            },
+            refreshActivity = { mapCoordinator.refreshActivity() },
+            fileLoaded = mapCoordinator::fileLoaded,
+            showMessage = ::showReminderMessage,
         )
         mapView.onCreate(savedInstanceState)
 
@@ -236,6 +175,14 @@ class MainActivity : ComponentActivity() {
                 setContent {
                     EduEscaleApp(
                         viewModel = viewModel,
+                        activityViewModel = activityViewModel,
+                        savedSearchViewModel = savedSearchViewModel,
+                        offlineMapsViewModel = offlineMapsViewModel,
+                        schoolFileImportViewModel = schoolFileImportViewModel,
+                        storageSpaceViewModel = storageSpaceViewModel,
+                        themeViewModel = themeViewModel,
+                        reminderViewModel = reminderViewModel,
+                        onReminderMessage = ::showReminderMessage,
                         onMapTouchEnabled = { enabled -> root.mapTouchEnabled = enabled },
                         onThemeChanged = { darkTheme ->
                             WindowCompat.getInsetsController(window, window.decorView).apply {
@@ -265,35 +212,28 @@ class MainActivity : ComponentActivity() {
                         },
                         onLocate = locationController::showMyLocation,
                         onApplyFilters = viewModel::setFilters,
-                        onSchoolSelected = { school ->
-                            showSchoolDetails(school)
-                            mapController.focusSelectedSchoolFromList(school)
-                        },
+                        onSchoolSelected = { school -> mapCoordinator.selectSchool(school, focusMap = true) },
                         onDirections = schoolNavigator::showNavigationOptions,
                         onShare = schoolNavigator::shareSchoolLocation,
-                        onAddComment = activityController::addComment,
-                        onDeleteComment = activityController::deleteComment,
-                        onEditComment = activityController::editComment,
-                        onSearchComments = activityController::searchComments,
-                        onAddReminder = reminderController::createSchoolReminder,
-                        onDeleteReminder = reminderController::deleteSchoolReminder,
+                        onAddComment = activityViewModel::addComment,
+                        onDeleteComment = activityViewModel::deleteComment,
+                        onEditComment = activityViewModel::editComment,
+                        onSearchComments = activityViewModel::searchComments,
+                        onAddReminder = reminderViewModel::createSchoolReminder,
+                        onDeleteReminder = reminderViewModel::deleteSchoolReminder,
                         onExportActivityBackup = {
                             createActivityBackup.launch("EduEscale-copia.json")
                         },
                         onImportActivityBackup = {
                             openActivityBackup.launch(arrayOf("application/json"))
                         },
-                        onDownloadVisibleArea = offlineMapController::downloadVisibleMapArea,
-                        onToggleOfflineMapArea = offlineMapController::setOfflineMapAreaDownloadState,
-                        onDeleteOfflineMapArea = offlineMapController::deleteOfflineMapArea,
-                        onRefreshActivityHistory = activityController::refreshActivityHistory,
-                        onEditHistoryComment = activityController::editHistoryComment,
-                        onEditHistoryReminder = reminderController::editHistoryReminder,
-                        onPickReminderDateTime = reminderController::pickReminderDateTime,
-                        onClearSelection = {
-                            mapController.clearSelectionState()
-                            viewModel.selectSchool(null)
-                        },
+                        onDownloadVisibleArea = offlineMapsViewModel::downloadVisibleMapArea,
+                        onToggleOfflineMapArea = offlineMapsViewModel::setOfflineMapAreaDownloadState,
+                        onDeleteOfflineMapArea = offlineMapsViewModel::deleteOfflineMapArea,
+                        onRefreshActivityHistory = activityViewModel::refreshActivityHistory,
+                        onEditHistoryComment = activityViewModel::editHistoryComment,
+                        onEditHistoryReminder = reminderViewModel::editHistoryReminder,
+                        onClearSelection = mapCoordinator::clearSelection,
                     )
                 }
             },
@@ -311,30 +251,54 @@ class MainActivity : ComponentActivity() {
         setContentView(root)
         mapView.getMapAsync(mapController::configureMap)
 
-        var observedFile: SchoolFile? = null
-        var observedVisibleSchools: List<SchoolRecord>? = null
-        var observedSelectedSchoolId: Int? = null
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                viewModel.state.collect { state ->
-                    mapController.onSchoolFileLoaded(state.schoolFile, state.visibleSchools)
-                    val selectedSchoolId = state.selectedSchool?.id
-                    if (
-                        observedFile !== state.schoolFile ||
-                        observedVisibleSchools != state.visibleSchools ||
-                        observedSelectedSchoolId != selectedSchoolId
-                    ) {
-                        observedFile = state.schoolFile
-                        observedVisibleSchools = state.visibleSchools
-                        observedSelectedSchoolId = selectedSchoolId
-                        mapController.updateMapData()
-                    }
-                }
+                viewModel.state.collect(mapCoordinator::synchronize)
             }
         }
-        schoolImport.restore()
-        handleIncomingIntent(intent)
-        reminderController.restorePendingReminders()
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                activityViewModel.messages.collect(::showReminderMessage)
+            }
+        }
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                reminderViewModel.events.collect(reminderController::handle)
+            }
+        }
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                reminderViewModel.prompt.collect(reminderController::showPrompt)
+            }
+        }
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                offlineMapsViewModel.errors.collect(::showReminderMessage)
+            }
+        }
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                activityBackupViewModel.events.collect(appEventCoordinator::onBackupEvent)
+            }
+        }
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                schoolFileImportViewModel.events.collect(appEventCoordinator::onFileImportEvent)
+            }
+        }
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                schoolFileImportViewModel.state.map { it.passwordRequiredUri }
+                    .distinctUntilChanged()
+                    .collect { uri -> if (uri != null) requestEduEscalePassword(uri) }
+            }
+        }
+        schoolFileImportViewModel.restore()
+        if (savedInstanceState == null) {
+            handleIncomingIntent(intent)
+        } else {
+            externalFileBackCallback.isEnabled = intent.action == Intent.ACTION_VIEW && intent.data != null
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -348,36 +312,40 @@ class MainActivity : ComponentActivity() {
             incomingIntent.action == Intent.ACTION_VIEW
         }
         externalFileBackCallback.isEnabled = uri != null
-        uri?.let(schoolImport::import)
+        uri?.let { schoolFileImportViewModel.importFile(it.toString()) }
         return uri != null
     }
 
     private fun showSchoolDetails(school: SchoolRecord) {
-        viewModel.selectSchool(school)
-        activityController.refreshSchoolActivity(school, "")
+        mapCoordinator.selectSchool(school)
     }
 
-    private fun requestEduEscalePassword(uri: Uri) {
+    private fun requestEduEscalePassword(uri: String) {
+        if (passwordDialog?.isShowing == true) return
         val passwordInput = EditText(this).apply {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
             setSingleLine(true)
             hint = "Contraseña"
         }
-        AlertDialog.Builder(this)
+        val dialog = AlertDialog.Builder(this)
             .setTitle("Archivo protegido")
             .setMessage("Escribe la contraseña para importar este archivo.")
             .setView(passwordInput)
-            .setNegativeButton("Cancelar") { _, _ -> viewModel.setImporting(false) }
+            .setNegativeButton("Cancelar") { _, _ -> schoolFileImportViewModel.clearPasswordRequest() }
             .setPositiveButton("Importar") { _, _ ->
+                schoolFileImportViewModel.clearPasswordRequest()
                 val password = passwordInput.text.toString()
                 if (password.isEmpty()) {
                     Toast.makeText(this, "Ingresa la contraseña.", Toast.LENGTH_LONG).show()
                 } else {
-                    schoolImport.import(uri, password)
+                    schoolFileImportViewModel.importFile(uri, password)
                 }
             }
-            .setOnCancelListener { viewModel.setImporting(false) }
-            .show()
+            .setOnCancelListener { schoolFileImportViewModel.clearPasswordRequest() }
+            .create()
+        passwordDialog = dialog
+        dialog.setOnDismissListener { passwordDialog = null }
+        dialog.show()
     }
 
     private fun showReminderMessage(message: String) {
@@ -394,10 +362,7 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         mapView.onResume()
         locationController.refreshLocationServices()
-        reminderController.restorePendingReminders()
-        activityController.refreshActivityHistory()
-        val state = viewModel.state.value
-        state.selectedSchool?.let { activityController.refreshSchoolActivity(it, state.commentSearchQuery) }
+        appEventCoordinator.onResume()
     }
 
     override fun onPause() {
@@ -424,8 +389,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        schoolImport.shutdown()
-        offlineMapController.release()
+        offlineMapsViewModel.setStyleReady(false)
         mapView.onDestroy()
         super.onDestroy()
     }

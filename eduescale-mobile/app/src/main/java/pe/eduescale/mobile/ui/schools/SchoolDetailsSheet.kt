@@ -63,12 +63,14 @@ import androidx.compose.ui.layout.positionOnScreen
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
-import pe.eduescale.mobile.data.SchoolComment
+import pe.eduescale.mobile.activity.SchoolComment
 import pe.eduescale.mobile.data.SchoolCoordinates
 import pe.eduescale.mobile.data.SchoolRecord
-import pe.eduescale.mobile.data.SchoolReminder
+import pe.eduescale.mobile.activity.SchoolReminder
 import pe.eduescale.mobile.data.SchoolScheduleRow
 import pe.eduescale.mobile.data.distanceInMeters
+import pe.eduescale.mobile.reminders.ReminderDateTimePicker
+import pe.eduescale.mobile.reminders.ReminderPrompt
 import pe.eduescale.mobile.ui.history.formatActivityDate
 import pe.eduescale.mobile.ui.history.isReminderPending
 import pe.eduescale.mobile.ui.history.reminderStatusLabel
@@ -90,6 +92,10 @@ internal fun SchoolDetailsSheet(
     onEditComment: (String, String) -> Unit,
     onSearchComments: (String) -> Unit,
     onAddReminder: (String) -> Unit,
+    reminderDatePrompt: ReminderPrompt.PickDate?,
+    onReminderDateSelected: (SchoolRecord, String, Long) -> Unit,
+    onReminderDateCancelled: () -> Unit,
+    onReminderMessage: (String) -> Unit,
     onDeleteReminder: (String) -> Unit,
 ) {
     if (school == null) return
@@ -98,10 +104,10 @@ internal fun SchoolDetailsSheet(
     var commentText by rememberSaveable(school.id) { mutableStateOf("") }
     var commentQuery by rememberSaveable(school.id) { mutableStateOf(commentSearchQuery) }
     var reminderText by rememberSaveable(school.id) { mutableStateOf("") }
-    var commentBeingEdited by remember(school.id) { mutableStateOf<SchoolComment?>(null) }
+    var commentBeingEditedId by rememberSaveable(school.id) { mutableStateOf<String?>(null) }
     var commentEditText by rememberSaveable(school.id) { mutableStateOf("") }
-    var commentPendingDeletion by remember(school.id) { mutableStateOf<SchoolComment?>(null) }
-    var reminderPendingDeletion by remember(school.id) { mutableStateOf<SchoolReminder?>(null) }
+    var commentPendingDeletionId by rememberSaveable(school.id) { mutableStateOf<String?>(null) }
+    var reminderPendingDeletionId by rememberSaveable(school.id) { mutableStateOf<String?>(null) }
     var sheetTopOnScreen by remember(school.id) { mutableStateOf<Float?>(null) }
     LaunchedEffect(school.id) {
         sheetState.show()
@@ -305,13 +311,13 @@ internal fun SchoolDetailsSheet(
                         }
                         IconButton(
                             onClick = {
-                                commentBeingEdited = comment
+                                commentBeingEditedId = comment.id
                                 commentEditText = comment.text
                             },
                         ) {
                             Icon(Icons.Default.Edit, contentDescription = "Editar comentario")
                         }
-                        IconButton(onClick = { commentPendingDeletion = comment }) {
+                        IconButton(onClick = { commentPendingDeletionId = comment.id }) {
                             Icon(Icons.Default.Delete, contentDescription = "Eliminar comentario")
                         }
                     }
@@ -366,7 +372,7 @@ internal fun SchoolDetailsSheet(
                             )
                         }
                         if (isReminderPending(reminder)) {
-                            IconButton(onClick = { reminderPendingDeletion = reminder }) {
+                            IconButton(onClick = { reminderPendingDeletionId = reminder.id }) {
                                 Icon(
                                     Icons.Default.Delete,
                                     contentDescription = "Cancelar recordatorio",
@@ -377,9 +383,9 @@ internal fun SchoolDetailsSheet(
                 }
             }
 
-            commentBeingEdited?.let { comment ->
+            commentBeingEditedId?.let { commentId ->
                 AlertDialog(
-                    onDismissRequest = { commentBeingEdited = null },
+                    onDismissRequest = { commentBeingEditedId = null },
                     title = { Text("Editar comentario") },
                     text = {
                         OutlinedTextField(
@@ -394,47 +400,47 @@ internal fun SchoolDetailsSheet(
                         TextButton(
                             enabled = commentEditText.isNotBlank(),
                             onClick = {
-                                onEditComment(comment.id, commentEditText)
-                                commentBeingEdited = null
+                                onEditComment(commentId, commentEditText)
+                                commentBeingEditedId = null
                             },
                         ) {
                             Text("Guardar")
                         }
                     },
                     dismissButton = {
-                        TextButton(onClick = { commentBeingEdited = null }) {
+                        TextButton(onClick = { commentBeingEditedId = null }) {
                             Text("Cancelar")
                         }
                     },
                 )
             }
 
-            commentPendingDeletion?.let { comment ->
+            commentPendingDeletionId?.let { commentId ->
                 AlertDialog(
-                    onDismissRequest = { commentPendingDeletion = null },
+                    onDismissRequest = { commentPendingDeletionId = null },
                     title = { Text("Eliminar comentario") },
                     text = { Text("Esta acción no se puede deshacer. ¿Quieres eliminar este comentario?") },
                     confirmButton = {
                         TextButton(
                             onClick = {
-                                onDeleteComment(comment.id)
-                                commentPendingDeletion = null
+                                onDeleteComment(commentId)
+                                commentPendingDeletionId = null
                             },
                         ) {
                             Text("Eliminar")
                         }
                     },
                     dismissButton = {
-                        TextButton(onClick = { commentPendingDeletion = null }) {
+                        TextButton(onClick = { commentPendingDeletionId = null }) {
                             Text("Cancelar")
                         }
                     },
                 )
             }
 
-            reminderPendingDeletion?.let { reminder ->
+            reminders.firstOrNull { it.id == reminderPendingDeletionId }?.let { reminder ->
                 AlertDialog(
-                    onDismissRequest = { reminderPendingDeletion = null },
+                    onDismissRequest = { reminderPendingDeletionId = null },
                     title = { Text("Cancelar recordatorio") },
                     text = {
                         Text(
@@ -446,17 +452,25 @@ internal fun SchoolDetailsSheet(
                         TextButton(
                             onClick = {
                                 onDeleteReminder(reminder.id)
-                                reminderPendingDeletion = null
+                                reminderPendingDeletionId = null
                             },
                         ) {
                             Text("Cancelar y conservar")
                         }
                     },
                     dismissButton = {
-                        TextButton(onClick = { reminderPendingDeletion = null }) {
+                        TextButton(onClick = { reminderPendingDeletionId = null }) {
                             Text("Volver")
                         }
                     },
+                )
+            }
+            reminderDatePrompt?.takeIf { it.school.id == school.id }?.let { prompt ->
+                ReminderDateTimePicker(
+                    initialScheduledAtMillis = System.currentTimeMillis(),
+                    showMessage = onReminderMessage,
+                    onSelected = { onReminderDateSelected(prompt.school, prompt.message, it) },
+                    onCancelled = onReminderDateCancelled,
                 )
             }
         }
@@ -590,9 +604,9 @@ internal fun DetailRow(label: String, value: String?) {
 internal fun StatisticLine(label: String, value: String) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(label, modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(value, fontWeight = FontWeight.SemiBold)
     }
 }
