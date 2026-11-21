@@ -9,6 +9,7 @@ import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
 import pe.eduescale.mobile.data.SchoolRecord
+import pe.eduescale.mobile.routing.RoadRoute
 
 internal class SchoolMapCamera(
     private val context: Context,
@@ -19,6 +20,10 @@ internal class SchoolMapCamera(
     var bottomSystemInsetPx = 0
     private var selectedSchoolCameraFocusInProgress = false
     private var pendingAlignment: PendingAlignment? = null
+    private var routeVisible = false
+    private var pendingRoute: RoadRoute? = null
+    private var lastSheetTopOnScreen: Float? = null
+    private var lastMapTopOverlayBottomPx = 0f
 
     private data class PendingAlignment(
         val school: SchoolRecord,
@@ -31,6 +36,8 @@ internal class SchoolMapCamera(
     fun clearSelection() {
         selectedSchoolCameraFocusInProgress = false
         pendingAlignment = null
+        pendingRoute = null
+        lastSheetTopOnScreen = null
     }
 
     fun onCameraIdle() {
@@ -59,13 +66,62 @@ internal class SchoolMapCamera(
         )
     }
 
-    fun alignSelectedSchool(school: SchoolRecord, sheetTopOnScreen: Float, mapTopOverlayBottomPx: Float) {
+    fun alignSelectedSchool(
+        school: SchoolRecord,
+        sheetTopOnScreen: Float,
+        mapTopOverlayBottomPx: Float,
+        route: RoadRoute?,
+    ) {
+        val firstAlignment = lastSheetTopOnScreen == null
+        lastSheetTopOnScreen = sheetTopOnScreen
+        lastMapTopOverlayBottomPx = mapTopOverlayBottomPx
+        if (routeVisible) {
+            (pendingRoute ?: route?.takeIf { firstAlignment && it.destination == school.coordinates })
+                ?.let(::focusRoute)
+            return
+        }
         pendingAlignment = PendingAlignment(school, sheetTopOnScreen, mapTopOverlayBottomPx)
         alignPending()
     }
 
+    fun setRouteVisible(visible: Boolean) {
+        routeVisible = visible
+        if (visible) pendingAlignment = null
+        else pendingRoute = null
+    }
+
+    fun focusRoute(route: RoadRoute) {
+        pendingRoute = route
+        if (lastSheetTopOnScreen == null && selectedSchool() != null) return
+        val map = currentMap() ?: return
+        if (mapView.width == 0 || mapView.height == 0) return
+        pendingRoute = null
+        val coordinates = listOf(route.origin, route.destination) + route.points
+        val latitudes = coordinates.map { it.latitude }
+        val longitudes = coordinates.map { it.longitude }
+        if (latitudes.max() - latitudes.min() < MIN_COORDINATE_SPAN &&
+            longitudes.max() - longitudes.min() < MIN_COORDINATE_SPAN
+        ) {
+            map.animateCamera(CameraUpdateFactory.newLatLngZoom(
+                LatLng(route.destination.latitude, route.destination.longitude),
+                SELECTED_SCHOOL_ZOOM,
+            ))
+            return
+        }
+        val bounds = LatLngBounds.Builder()
+        coordinates.forEach { bounds.include(LatLng(it.latitude, it.longitude)) }
+        val mapLocation = IntArray(2)
+        mapView.getLocationOnScreen(mapLocation)
+        val top = (lastMapTopOverlayBottomPx.toInt() + dp(16)).coerceAtMost(mapView.height / 3)
+        val maxBottom = (mapView.height - top - dp(MIN_VISIBLE_MAP_REGION_DP)).coerceAtLeast(0)
+        val bottom = lastSheetTopOnScreen?.let {
+            (mapView.height - (it - mapLocation[1]).toInt() + dp(32)).coerceIn(0, maxBottom)
+        } ?: minOf(dp(48), maxBottom)
+        map.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds.build(), dp(36), top, dp(36), bottom))
+    }
+
     private fun alignPending() {
-        if (selectedSchoolCameraFocusInProgress) return
+        if (selectedSchoolCameraFocusInProgress || routeVisible) return
         val pending = pendingAlignment ?: return
         val map = currentMap() ?: return
         val coordinates = pending.school.coordinates

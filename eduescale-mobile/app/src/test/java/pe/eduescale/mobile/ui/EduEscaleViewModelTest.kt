@@ -77,6 +77,40 @@ class EduEscaleViewModelTest {
     }
 
     @Test
+    fun disablingLocationClearsTheOriginUsedForRoutes() {
+        val viewModel = EduEscaleViewModel()
+        viewModel.setLocationServicesEnabled(true)
+        viewModel.setUserLocation(-12.0, -77.0)
+        viewModel.setLocationServicesEnabled(false)
+        assertNull(viewModel.state.value.userLocation)
+        viewModel.setLocationServicesEnabled(true)
+        assertNull(viewModel.state.value.userLocation)
+    }
+
+    @Test
+    fun closingDetailsAndFilteringKeepRouteDestinationUntilAnotherSchoolIsSelected() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val viewModel = EduEscaleViewModel(StandardTestDispatcher(testScheduler))
+            val first = school(1, "Primero")
+            val second = school(2, "Segundo")
+            viewModel.setSchoolFile(SchoolFile(2, 0, listOf(first, second)), "test")
+            viewModel.selectSchool(first)
+            viewModel.selectSchool(null)
+            assertNull(viewModel.state.value.selectedSchool)
+            assertEquals(first, viewModel.state.value.routeSchool)
+
+            viewModel.setQuery("Segundo")
+            advanceUntilIdle()
+            assertEquals(first, viewModel.state.value.routeSchool)
+            viewModel.selectSchool(second)
+            assertEquals(second, viewModel.state.value.routeSchool)
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
     fun filterDraftIsSeparateFromAppliedFiltersAndProvidesDependentOptions() {
         val viewModel = EduEscaleViewModel()
         val lima = school(1, "Lima").copy(provincia = "Lima", distrito = "Miraflores")

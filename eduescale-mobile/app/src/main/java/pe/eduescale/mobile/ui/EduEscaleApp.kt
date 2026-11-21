@@ -79,6 +79,9 @@ fun EduEscaleApp(
     onSearchComments: (SchoolRecord, String) -> Unit,
     onAddReminder: (SchoolRecord, String) -> Unit,
     onDeleteReminder: (SchoolRecord, String) -> Unit,
+    onMarkAsVisited: (String, String) -> Unit,
+    onScheduleVisit: (String, String, Long) -> Unit,
+    onReportPermissionDenied: (String, String, String) -> Unit,
     onExportActivityBackup: () -> Unit,
     onImportActivityBackup: () -> Unit,
     onDownloadVisibleArea: (OfflineMapBounds, Int, Int) -> Unit,
@@ -99,6 +102,9 @@ fun EduEscaleApp(
     val roadState by roadRoutingViewModel.state.collectAsStateWithLifecycle()
     LaunchedEffect(state.visibleSchools, state.userLocation) {
         roadRoutingViewModel.updateInputs(state.visibleSchools, state.userLocation)
+    }
+    LaunchedEffect(state.routeSchool, state.userLocation) {
+        roadRoutingViewModel.updateSelectedRoute(state.routeSchool, state.userLocation)
     }
     val systemDarkTheme = isSystemInDarkTheme()
     val darkTheme = themeMode.isDark(systemDarkTheme)
@@ -190,6 +196,9 @@ fun EduEscaleApp(
                         onDeleteReminder = onDeleteReminder,
                         onDownloadVisibleArea = onDownloadVisibleArea,
                         onToggleOfflineMapArea = onToggleOfflineMapArea,
+                        onMarkAsVisited = onMarkAsVisited,
+                        onScheduleVisit = onScheduleVisit,
+                        onReportPermissionDenied = onReportPermissionDenied,
                     )
                 }
                 composable("schools") {
@@ -219,12 +228,16 @@ fun EduEscaleApp(
                     )
                 }
                 composable("files") {
-                    LaunchedEffect(offlineMapsState.offlineMapAreas.sumOf(OfflineMapAreaUi::completedBytes)) {
+                    LaunchedEffect(
+                        offlineMapsState.offlineMapAreas.sumOf(OfflineMapAreaUi::completedBytes),
+                        roadState.storedBytes,
+                    ) {
                         storageSpaceViewModel.refresh()
                     }
                     FilesScreen(
                         roadState = roadState,
                         onDownloadRoadData = roadRoutingViewModel::download,
+                        onDeleteRoadData = roadRoutingViewModel::delete,
                         file = state.schoolFile,
                         fileName = state.fileName,
                         importing = schoolFileImportState.isImporting,

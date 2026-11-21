@@ -50,6 +50,7 @@ data class EduEscaleUiState(
     val userLocation: SchoolCoordinates? = null,
     val locationServicesEnabled: Boolean? = null,
     val selectedSchool: SchoolRecord? = null,
+    val routeSchool: SchoolRecord? = null,
 )
 
 class EduEscaleViewModel(
@@ -123,13 +124,16 @@ class EduEscaleViewModel(
     }
 
     fun setLocationServicesEnabled(enabled: Boolean) {
-        mutableState.update { it.copy(locationServicesEnabled = enabled) }
+        mutableState.update {
+            it.copy(locationServicesEnabled = enabled, userLocation = if (enabled) it.userLocation else null)
+        }
     }
 
     fun selectSchool(school: SchoolRecord?) {
         mutableState.update {
             it.copy(
                 selectedSchool = school,
+                routeSchool = school ?: it.routeSchool,
             )
         }
     }

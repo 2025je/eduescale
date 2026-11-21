@@ -29,10 +29,18 @@ La interfaz usa la familia `sans-serif` de Android, basada en Roboto.
 - Ordena **Colegios** por la distancia de la ruta en automóvil calculada por
   Valhalla; identifica los colegios sin coordenadas o sin ruta y permite abrir
   sus detalles. El cálculo puede tardar para listas grandes.
+- Al seleccionar un colegio con ubicación disponible, dibuja en el mapa la ruta
+  local en automóvil y muestra distancia y tiempo estimado. Los tramos punteados
+  conectan las coordenadas con la carretera en línea recta: son aproximaciones,
+  no caminos comprobados ni parte de la distancia o tiempo de la ruta. Se usa
+  la ubicación obtenida al seleccionarlo; no es navegación en tiempo real. La
+  ruta permanece al cerrar la ficha hasta seleccionar otro colegio.
 - En **Archivos**, descarga por separado la red vial de Perú (aproximadamente
   425 MiB) para calcular rutas sin conexión. No es el mismo archivo que los
   mapas visuales: se necesita ubicación y espacio libre para la descarga; al
-  actualizarla se conserva la versión anterior hasta verificar la nueva.
+  actualizarla se conserva la versión anterior hasta verificar la nueva. El
+  avance aparece en **Archivos** y **Colegios**, con porcentaje cuando se
+  conoce el tamaño total.
 - En **Archivos**, distingue los registros originales del archivo, los locales
   agrupados con ubicación y los registros sin coordenadas utilizables.
 - Filtra los resultados por departamento, provincia, distrito, gestión y nivel
@@ -100,6 +108,8 @@ Las rutas usan datos de [OpenStreetMap](https://www.openstreetmap.org/copyright)
 La cobertura y los resultados dependen de esos datos; pueden faltar carreteras,
 conexiones o restricciones, especialmente cerca de las fronteras. La distancia
 corresponde a la ruta calculada, no necesariamente a la ruta más corta.
+En **Archivos** puedes consultar el espacio ocupado y eliminar las carreteras
+sin conexión previa confirmación; también puedes volver a descargarlas.
 
 Las búsquedas guardadas solo contienen sus filtros, nunca datos de colegios ni
 secretos. Su documento portátil usa el formato `eduescale.saved-searches`,

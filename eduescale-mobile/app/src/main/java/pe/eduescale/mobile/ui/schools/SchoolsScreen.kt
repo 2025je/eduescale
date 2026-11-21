@@ -44,6 +44,7 @@ import pe.eduescale.mobile.ui.EduEscaleUiState
 import pe.eduescale.mobile.routing.RoadRoutingState
 import pe.eduescale.mobile.ui.components.BrandHeader
 import pe.eduescale.mobile.ui.components.EmptyState
+import pe.eduescale.mobile.ui.files.RoadDownloadProgress
 
 @Composable
 internal fun SchoolsScreen(
@@ -127,9 +128,11 @@ internal fun SchoolsScreen(
                     append(
                         if (state.userLocation == null) {
                             " · activa la ubicación en Mapa"
+                        } else if (!roadState.available) {
+                            " · ordenadas por línea recta (no por carretera)"
                         } else if (roadState.calculating || !matchingRoadInputs) {
                             " · calculando rutas"
-                        } else if (roadState.available && roadState.error == null) {
+                        } else if (roadState.error == null) {
                             " · ordenadas por carretera"
                         } else {
                             " · rutas no disponibles"
@@ -142,8 +145,28 @@ internal fun SchoolsScreen(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         roadState.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        if (!roadState.available && state.schoolFile != null) {
-            Text("Descarga los datos de carreteras en Archivos para calcular distancias.")
+        if ((!roadState.available || roadState.downloading) && state.schoolFile != null) {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                ),
+                shape = RoundedCornerShape(16.dp),
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (roadState.downloading) {
+                        RoadDownloadProgress(roadState.downloadedBytes, roadState.totalBytes)
+                    } else {
+                        Text(
+                            "No hay rutas descargadas. Las distancias se muestran en línea recta, " +
+                                "no por carretera; descarga los datos en Archivos para obtener distancias por carretera.",
+                        )
+                    }
+                }
+            }
         }
         if (state.schoolFile == null) {
             EmptyState("Aún no hay colegios cargados", "Abre Archivos para importar un archivo .eduescale.")
@@ -168,7 +191,10 @@ internal fun SchoolsScreen(
                         distance = if (matchingRoadInputs) {
                             roadState.distances[school.id]
                         } else null,
+                        userLocationAvailable = state.userLocation != null,
+                        roadsAvailable = roadState.available,
                         calculating = roadState.calculating || !matchingRoadInputs,
+                        routingError = roadState.error != null,
                         onClick = { onSchoolSelected(school) },
                     )
                 }
@@ -211,7 +237,10 @@ internal fun SchoolsScreen(
 internal fun SchoolListCard(
     school: SchoolRecord,
     distance: Double?,
+    userLocationAvailable: Boolean,
+    roadsAvailable: Boolean,
     calculating: Boolean,
+    routingError: Boolean,
     onClick: () -> Unit,
 ) {
     Card(
@@ -247,12 +276,25 @@ internal fun SchoolListCard(
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.secondary,
                 )
+                !userLocationAvailable -> Text(
+                    "Activa la ubicación para calcular la distancia",
+                    style = MaterialTheme.typography.labelMedium,
+                )
+                !roadsAvailable && distance != null -> Text(
+                    "${formatDistanceKm(distance)} en línea recta (no por carretera)",
+                    style = MaterialTheme.typography.labelMedium,
+                )
+                !roadsAvailable -> Text(
+                    "Descarga las carreteras en Archivos",
+                    style = MaterialTheme.typography.labelMedium,
+                )
+                calculating -> Text("Calculando ruta…", style = MaterialTheme.typography.labelMedium)
+                routingError -> Text("No se pudo calcular la ruta", style = MaterialTheme.typography.labelMedium)
                 distance != null -> Text(
                     "${formatDistanceKm(distance)} por carretera",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary,
                 )
-                calculating -> Text("Calculando ruta…", style = MaterialTheme.typography.labelMedium)
                 else -> Text("Ruta no disponible", style = MaterialTheme.typography.labelMedium)
             }
             Row(
