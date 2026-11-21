@@ -1,7 +1,4 @@
 <RCC>
-  <qresource prefix="/">
-    <file alias="Icons.qml">qml/Icons.qml</file>
-  </qresource>
   <qresource prefix="/eduescale/gui">
     <file alias="qml/Main.qml">qml/Main.qml</file>
     <file alias="qml/EduEscale/Gui/Components/qmldir">qml/components/qmldir</file>

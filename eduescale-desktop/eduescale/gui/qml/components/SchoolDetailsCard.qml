@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import EduEscale.Gui.Styles 1.0 as EduStyle
-import "qrc:/Icons.qml" as Icons
 
 Frame {
     id: root
@@ -10,6 +9,14 @@ Frame {
 
     required property var window
     signal closeRequested()
+    
+    // Iconos
+    readonly property string iconSchoolManagement: "⊙"
+    readonly property string iconSchoolLevel: "▤"
+    readonly property string iconReminderTime: "⏰"
+    readonly property string iconSchoolAddress: "⊙"
+    readonly property string iconMapLocation: "⊙"
+    readonly property string iconSchoolWebsite: "⌘"
 
     anchors.top: parent.top
     anchors.right: parent.right
@@ -208,7 +215,7 @@ Frame {
                             }
 
                                 Label {
-                                text: Icons.Icons.schoolManagement + " ALUMNOS"
+                                text: root.iconSchoolManagement + " ALUMNOS"
                                 color: window.mutedTextColor
                                 font.pixelSize: window.captionFontSize
                             }
@@ -238,7 +245,7 @@ Frame {
                             }
 
                             Label {
-                                text: Icons.Icons.schoolLevel + " SECCIONES"
+                                text: root.iconSchoolLevel + " SECCIONES"
                                 color: window.mutedTextColor
                                 font.pixelSize: window.captionFontSize
                             }
@@ -268,7 +275,7 @@ Frame {
                             }
 
                             Label {
-                                text: Icons.Icons.reminderTime + " TURNOS"
+                                text: root.iconReminderTime + " TURNOS"
                                 color: window.mutedTextColor
                                 font.pixelSize: window.captionFontSize
                             }
@@ -287,7 +294,7 @@ Frame {
                     spacing: 4
 
                     Label {
-                        text: Icons.Icons.schoolAddress + " DIRECCIÓN"
+                        text: root.iconSchoolAddress + " DIRECCIÓN"
                         color: window.mutedTextColor
                         font.pixelSize: window.captionFontSize
                         font.weight: Font.DemiBold
@@ -303,7 +310,7 @@ Frame {
                     }
 
                     Label {
-                        text: Icons.Icons.mapLocation + " LOCALIDAD"
+                        text: root.iconMapLocation + " LOCALIDAD"
                         color: window.mutedTextColor
                         font.pixelSize: window.captionFontSize
                         font.weight: Font.DemiBold
@@ -331,7 +338,7 @@ Frame {
 
                     Label {
                         Layout.fillWidth: true
-                        text: Icons.Icons.schoolWebsite + " OFERTA EDUCATIVA"
+                        text: root.iconSchoolWebsite + " OFERTA EDUCATIVA"
                         color: window.textColor
                         font.weight: Font.DemiBold
                     }

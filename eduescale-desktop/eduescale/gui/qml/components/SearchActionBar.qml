@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import EduEscale.Gui.Styles 1.0 as EduStyle
-import "qrc:/Icons.qml" as Icons
 
 ColumnLayout {
     id: root
@@ -12,6 +11,16 @@ ColumnLayout {
     required property int windowWidth
     required property int searchCount
     property int workflowStep: 0
+    
+    // Iconos
+    readonly property string iconFilterDepartment: "⬜"
+    readonly property string iconActionRefresh: "↻"
+    readonly property string iconFilterSearch: "⌕"
+    readonly property string iconStateLoading: "↻"
+    readonly property string iconFileExcel: "📊"
+    readonly property string iconFilePdf: "📄"
+    readonly property string iconFileZip: "📦"
+    readonly property string iconNavHistory: "▤"
 
     signal scrapeRequested()
     signal excelExportRequested()
@@ -95,7 +104,7 @@ ColumnLayout {
                 StyledButton {
                     objectName: "selectOfflineDatabaseButton"
                     labelObjectName: "selectOfflineDatabaseButtonLabel"
-                    text: Icons.Icons.filterDepartment + " Elegir base"
+                    text: root.iconFilterDepartment + " Elegir base"
                     enabled: root.viewModel != null
                         && !root.viewModel.scrapeRunning
                         && !root.viewModel.exportRunning
@@ -105,7 +114,7 @@ ColumnLayout {
                 StyledButton {
                     objectName: "updateOfflineDatabaseButton"
                     labelObjectName: "updateOfflineDatabaseButtonLabel"
-                    text: Icons.Icons.actionRefresh + " Actualizar base"
+                    text: root.iconActionRefresh + " Actualizar base"
                     enabled: root.viewModel != null
                         && !root.viewModel.scrapeRunning
                         && !root.viewModel.exportRunning
@@ -191,14 +200,14 @@ ColumnLayout {
                     visible: root.viewModel != null
                         && root.workflowStep === 0
                         && !root.viewModel.scrapeRunning
-                    text: root.viewModel == null ? Icons.Icons.filterSearch + " Revisar búsqueda"
+                    text: root.viewModel == null ? root.iconFilterSearch + " Revisar búsqueda"
                         : root.viewModel.cancelRequested
-                        ? Icons.Icons.stateLoading + " Cancelando extracción..."
+                        ? root.iconStateLoading + " Cancelando extracción..."
                         : root.viewModel.scrapeRunning
-                        ? Icons.Icons.stateLoading + " Consultando datos..."
+                        ? root.iconStateLoading + " Consultando datos..."
                         : root.viewModel.exportRunning
-                        ? Icons.Icons.stateLoading + " Generando archivo..."
-                        : Icons.Icons.filterSearch + " Revisar búsqueda"
+                        ? root.iconStateLoading + " Generando archivo..."
+                        : root.iconFilterSearch + " Revisar búsqueda"
                     enabled: root.viewModel != null
                         && !root.viewModel.scrapeRunning
                         && !root.viewModel.exportRunning
@@ -243,7 +252,7 @@ ColumnLayout {
                     implicitHeight: EduStyle.Style.actionButtonHeight
                     font.pixelSize: EduStyle.Style.bodyFontSize
                     padding: 8
-                    text: Icons.Icons.fileExcel + " Exportar Excel"
+                    text: root.iconFileExcel + " Exportar Excel"
                     Accessible.name: "Exportar los resultados a Excel"
                     enabled: root.viewModel != null
                         && root.viewModel.exportsAvailable
@@ -264,7 +273,7 @@ ColumnLayout {
                     implicitHeight: EduStyle.Style.actionButtonHeight
                     font.pixelSize: EduStyle.Style.bodyFontSize
                     padding: 8
-                    text: Icons.Icons.filePdf + " Exportar PDF"
+                    text: root.iconFilePdf + " Exportar PDF"
                     Accessible.name: "Exportar los resultados a PDF"
                     enabled: root.viewModel != null
                         && root.viewModel.exportsAvailable
@@ -285,7 +294,7 @@ ColumnLayout {
                     implicitHeight: EduStyle.Style.actionButtonHeight
                     font.pixelSize: EduStyle.Style.bodyFontSize
                     padding: 8
-                    text: Icons.Icons.fileZip + " Exportar .eduescale"
+                    text: root.iconFileZip + " Exportar .eduescale"
                     Accessible.name: "Exportar los resultados a un archivo EduEscale"
                     enabled: root.viewModel != null
                         && root.viewModel.exportsAvailable
@@ -302,7 +311,7 @@ ColumnLayout {
                     implicitHeight: EduStyle.Style.actionButtonHeight
                     font.pixelSize: EduStyle.Style.bodyFontSize
                     padding: 8
-                    text: Icons.Icons.navHistory + " Historial"
+                    text: root.iconNavHistory + " Historial"
                     Accessible.name: "Ver historial de exportaciones"
                     onClicked: root.historyRequested()
                 }
