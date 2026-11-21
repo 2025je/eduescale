@@ -9,14 +9,6 @@ Frame {
 
     required property var window
     signal closeRequested()
-    
-    // Iconos
-    readonly property string iconSchoolManagement: "⊙"
-    readonly property string iconSchoolLevel: "▤"
-    readonly property string iconReminderTime: "⏰"
-    readonly property string iconSchoolAddress: "⊙"
-    readonly property string iconMapLocation: "⊙"
-    readonly property string iconSchoolWebsite: "⌘"
 
     anchors.top: parent.top
     anchors.right: parent.right
@@ -215,7 +207,7 @@ Frame {
                             }
 
                                 Label {
-                                text: root.iconSchoolManagement + " ALUMNOS"
+                                text: "● ALUMNOS"
                                 color: window.mutedTextColor
                                 font.pixelSize: window.captionFontSize
                             }
@@ -245,7 +237,7 @@ Frame {
                             }
 
                             Label {
-                                text: root.iconSchoolLevel + " SECCIONES"
+                                text: "▤ SECCIONES"
                                 color: window.mutedTextColor
                                 font.pixelSize: window.captionFontSize
                             }
@@ -275,7 +267,7 @@ Frame {
                             }
 
                             Label {
-                                text: root.iconReminderTime + " TURNOS"
+                                text: "⏰ TURNOS"
                                 color: window.mutedTextColor
                                 font.pixelSize: window.captionFontSize
                             }
@@ -294,7 +286,7 @@ Frame {
                     spacing: 4
 
                     Label {
-                        text: root.iconSchoolAddress + " DIRECCIÓN"
+                        text: "→ DIRECCIÓN"
                         color: window.mutedTextColor
                         font.pixelSize: window.captionFontSize
                         font.weight: Font.DemiBold
@@ -310,7 +302,7 @@ Frame {
                     }
 
                     Label {
-                        text: root.iconMapLocation + " LOCALIDAD"
+                        text: "◉ LOCALIDAD"
                         color: window.mutedTextColor
                         font.pixelSize: window.captionFontSize
                         font.weight: Font.DemiBold
@@ -338,7 +330,7 @@ Frame {
 
                     Label {
                         Layout.fillWidth: true
-                        text: root.iconSchoolWebsite + " OFERTA EDUCATIVA"
+                        text: "◎ OFERTA EDUCATIVA"
                         color: window.textColor
                         font.weight: Font.DemiBold
                     }

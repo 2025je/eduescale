@@ -28,7 +28,7 @@ RUN yes | sdkmanager --sdk_root="${ANDROID_SDK_ROOT}" --licenses
 RUN android --sdk="${ANDROID_SDK_ROOT}" sdk install platforms/android-36 build-tools/36.0.0
 
 WORKDIR /workspace
-ARG SOURCE_ROOT=.
+ARG SOURCE_ROOT=eduescale-mobile
 COPY ${SOURCE_ROOT}/. .
 COPY test-fixtures/ ./test-fixtures/
 
@@ -36,6 +36,7 @@ RUN --mount=type=cache,target=/root/.gradle \
     --mount=type=secret,id=release_keystore,target=/run/secrets/release.jks,required=false \
     --mount=type=secret,id=keystore_properties,target=/run/secrets/keystore.properties,required=false \
     chmod +x ./gradlew \
+    && rm -rf /root/.gradle/caches/journal-1 \
     && if [ -s /run/secrets/release.jks ] && [ -s /run/secrets/keystore.properties ]; then \
         export EDUESCALE_KEYSTORE_PROPERTIES=/run/secrets/keystore.properties; \
     elif [ -s /run/secrets/release.jks ] || [ -s /run/secrets/keystore.properties ]; then \
