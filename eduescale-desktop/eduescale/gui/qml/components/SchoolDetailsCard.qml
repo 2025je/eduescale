@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import EduEscale.Gui.Styles 1.0 as EduStyle
+import "qrc:/Icons.qml" as Icons
 
 Frame {
     id: root
@@ -206,8 +207,8 @@ Frame {
                                 font.weight: Font.DemiBold
                             }
 
-                            Label {
-                                text: "ALUMNOS"
+                                Label {
+                                text: Icons.Icons.schoolManagement + " ALUMNOS"
                                 color: window.mutedTextColor
                                 font.pixelSize: window.captionFontSize
                             }
@@ -237,7 +238,7 @@ Frame {
                             }
 
                             Label {
-                                text: "SECCIONES"
+                                text: Icons.Icons.schoolLevel + " SECCIONES"
                                 color: window.mutedTextColor
                                 font.pixelSize: window.captionFontSize
                             }
@@ -267,7 +268,7 @@ Frame {
                             }
 
                             Label {
-                                text: "TURNOS"
+                                text: Icons.Icons.reminderTime + " TURNOS"
                                 color: window.mutedTextColor
                                 font.pixelSize: window.captionFontSize
                             }
@@ -286,7 +287,7 @@ Frame {
                     spacing: 4
 
                     Label {
-                        text: "DIRECCIÓN"
+                        text: Icons.Icons.schoolAddress + " DIRECCIÓN"
                         color: window.mutedTextColor
                         font.pixelSize: window.captionFontSize
                         font.weight: Font.DemiBold
@@ -302,7 +303,7 @@ Frame {
                     }
 
                     Label {
-                        text: "LOCALIDAD"
+                        text: Icons.Icons.mapLocation + " LOCALIDAD"
                         color: window.mutedTextColor
                         font.pixelSize: window.captionFontSize
                         font.weight: Font.DemiBold
@@ -330,7 +331,7 @@ Frame {
 
                     Label {
                         Layout.fillWidth: true
-                        text: "OFERTA EDUCATIVA"
+                        text: Icons.Icons.schoolWebsite + " OFERTA EDUCATIVA"
                         color: window.textColor
                         font.weight: Font.DemiBold
                     }
