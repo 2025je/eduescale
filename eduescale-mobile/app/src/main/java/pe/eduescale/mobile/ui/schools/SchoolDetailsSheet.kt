@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
@@ -119,7 +120,7 @@ internal fun SchoolDetailsSheet(
     if (school == null) return
     val matchingRoute = roadState.routeSchoolId == school.id &&
         roadState.routeDestination == school.coordinates
-    val route = roadState.route.takeIf { matchingRoute }
+    val route = roadState.route.takeIf { matchingRoute && roadState.available }
     val straightLineDistance = userLocation?.let { distanceInMeters(school, it) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val scope = rememberCoroutineScope()
@@ -293,11 +294,11 @@ internal fun SchoolDetailsSheet(
                 visits = visits,
                 onMarkAsVisited = { showMarkVisitedDialog = true },
                 onScheduleVisit = { date ->
-                    onScheduleVisit(school.id, school.nombre.orEmpty(), date)
+                    onScheduleVisit(school.id.toString(), school.nombre.orEmpty(), date)
                     showVisitScheduleDialog = false
                 },
                 onReportPermissionDenied = {
-                    onReportPermissionDenied(school.id, school.nombre.orEmpty(), permissionDenialReason)
+                    onReportPermissionDenied(school.id.toString(), school.nombre.orEmpty(), permissionDenialReason)
                     permissionDenialReason = ""
                     showPermissionDenialDialog = false
                 },
@@ -305,7 +306,6 @@ internal fun SchoolDetailsSheet(
                 onShowPermissionDialog = { showPermissionDenialDialog = true },
             )
             HorizontalDivider()
-            Text(
             OutlinedTextField(
                 value = commentText,
                 onValueChange = { commentText = it },
@@ -540,7 +540,7 @@ internal fun SchoolDetailsSheet(
         ScheduleVisitDialog(
             schoolName = school.nombre.orEmpty(),
             onConfirm = { scheduledDateMillis, observations ->
-                onScheduleVisit(school.id, school.nombre.orEmpty(), scheduledDateMillis)
+                onScheduleVisit(school.id.toString(), school.nombre.orEmpty(), scheduledDateMillis)
                 visitObservations = observations
                 showVisitScheduleDialog = false
             },
@@ -552,7 +552,7 @@ internal fun SchoolDetailsSheet(
         MarkVisitedDialog(
             schoolName = school.nombre.orEmpty(),
             onConfirm = { observations ->
-                onMarkAsVisited(school.id, school.nombre.orEmpty())
+                onMarkAsVisited(school.id.toString(), school.nombre.orEmpty())
                 visitObservations = observations
                 showMarkVisitedDialog = false
             },
@@ -564,7 +564,7 @@ internal fun SchoolDetailsSheet(
         PermissionDeniedDialog(
             schoolName = school.nombre.orEmpty(),
             onConfirm = { reason, details ->
-                onReportPermissionDenied(school.id, school.nombre.orEmpty(), details)
+                onReportPermissionDenied(school.id.toString(), school.nombre.orEmpty(), details)
                 permissionDenialReason = reason
                 showPermissionDenialDialog = false
             },
@@ -883,8 +883,9 @@ private fun VisitStatusSection(
 }
 
 @Composable
+internal fun ManagementBadge(gestion: String?) {
     val colorScheme = MaterialTheme.colorScheme
-    val (label, background, foreground) = when (gestion) {
+    val badge = when (gestion) {
         "publica" -> Triple(
             "Gestión pública",
             colorScheme.primaryContainer,
@@ -906,11 +907,11 @@ private fun VisitStatusSection(
             colorScheme.onSurfaceVariant,
         )
     }
-    Surface(shape = RoundedCornerShape(50), color = background) {
+    Surface(shape = RoundedCornerShape(50), color = badge.second) {
         Text(
-            label,
+            badge.first,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-            color = foreground,
+            color = badge.third,
             style = MaterialTheme.typography.labelMedium,
         )
     }

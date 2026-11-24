@@ -49,6 +49,18 @@ android {
         versionName = "1.0"
     }
 
+    flavorDimensions += "edition"
+    productFlavors {
+        create("complete") {
+            dimension = "edition"
+        }
+        create("lite") {
+            dimension = "edition"
+            applicationIdSuffix = ".lite"
+            versionNameSuffix = "-lite"
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -113,9 +125,9 @@ dependencies {
     kapt("org.jetbrains.kotlin:kotlin-metadata-jvm:2.3.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.maplibre.gl:android-sdk-opengl:13.6.1")
-    implementation("io.github.rallista:valhalla-mobile:0.6.6")
-    implementation("io.github.rallista:valhalla-models:0.6.0")
-    implementation("io.github.rallista:valhalla-models-config:0.6.0")
+    add("completeImplementation", "io.github.rallista:valhalla-mobile:0.6.6")
+    add("completeImplementation", "io.github.rallista:valhalla-models:0.6.0")
+    add("completeImplementation", "io.github.rallista:valhalla-models-config:0.6.0")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")

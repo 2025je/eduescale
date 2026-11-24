@@ -40,6 +40,7 @@
         let schoolFeatureIds = new Set();
         let schoolMode = false;
         let schoolLayerReady = false;
+        let schoolFitReportTimer = null;
         let selectedCodes = new Set();
         let currentRequestId = 0;
         let currentParentCodes = [];
@@ -417,7 +418,7 @@
             schoolLayerReady = true;
         }
 
-        function fitSchoolFeatures() {
+        function fitAllSchoolFeatures() {
             if (!schoolFeatures.length)
                 return;
             const bounds = new maplibregl.LngLatBounds();
@@ -427,7 +428,18 @@
             const camera = map.cameraForBounds(bounds, {padding: 48});
             if (schoolFeatures.length === 1)
                 camera.zoom = Math.max(camera.zoom, 15);
+            if (schoolFitReportTimer !== null)
+                clearTimeout(schoolFitReportTimer);
             map.easeTo({...camera, duration: 250});
+            schoolFitReportTimer = setTimeout(() => {
+                schoolFitReportTimer = null;
+                if (bridge) {
+                    bridge.reportSchoolMapView(
+                        JSON.stringify(map.getBounds().toArray()),
+                        map.getZoom()
+                    );
+                }
+            }, 300);
         }
 
         window.appendSchoolLocations = function(locations) {
@@ -436,7 +448,6 @@
             const source = map.getSource("schools-live");
             if (!source)
                 return;
-            const isFirstBatch = schoolFeatures.length === 0;
             const additions = [];
             for (const location of locations) {
                 if (!location || typeof location.schoolId !== "string"
@@ -462,12 +473,18 @@
             }
             if (additions.length) {
                 source.updateData({add: additions});
-                if (isFirstBatch && schoolMode)
-                    fitSchoolFeatures();
             }
         };
 
+        window.fitSchoolFeatures = function() {
+            fitAllSchoolFeatures();
+        };
+
         window.clearSchoolLocations = function() {
+            if (schoolFitReportTimer !== null) {
+                clearTimeout(schoolFitReportTimer);
+                schoolFitReportTimer = null;
+            }
             schoolFeatures = [];
             schoolFeatureIds.clear();
             const source = map && map.getSource("schools-live");

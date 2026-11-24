@@ -221,6 +221,7 @@ search_workspace = child("searchWorkspace")
 criteria_card = child("criteriaCard")
 searches_card = child("searchesCard")
 scroll_view = child("filterScrollView")
+dashboard_shell = child("dashboardShell")
 vertical_scrollbar = child("pageVerticalScrollBar")
 search_list_view = child("searchListView")
 search_list_scrollbar = child("searchListVerticalScrollBar")
@@ -273,12 +274,7 @@ clear_all_filters_button = child("clearAllFiltersButton")
 empty_state = child("emptySearchState")
 brand_title = child("brandTitle")
 brand_logo = child("brandLogo")
-excel_button = child("downloadExcelButton")
-excel_button_label = child("downloadExcelButtonLabel")
-pdf_button = child("downloadPdfButton")
-pdf_button_label = child("downloadPdfButtonLabel")
-eduescale_button = child("downloadEduEscaleButton")
-eduescale_button_label = child("downloadEduEscaleButtonLabel")
+dashboard_header = child("dashboardHeader")
 excel_dialog = child("excelSaveDialog")
 pdf_dialog = child("pdfSaveDialog")
 eduescale_dialog = child("eduEscaleSaveDialog")
@@ -295,6 +291,8 @@ backup_log = log_directory / "eduescale.log.1"
 active_log.write_text("primer mensaje\n", encoding="utf-8")
 backup_log.write_text("mensaje anterior\n", encoding="utf-8")
 logs_button = child("openLogsButton")
+history_button = child("exportHistoryButton")
+theme_selector = child("themeModeSelector")
 logs_dialog = child("logViewerDialog")
 log_selector = child("logFileSelector")
 log_content = child("logViewerContent")
@@ -453,6 +451,17 @@ def assert_logs_accessible(button):
     assert not logs_dialog.property("visible")
 
 
+def assert_persistent_header(page):
+    for item in (brand_logo, logs_button, history_button, theme_selector):
+        assert item.property("visible"), item.objectName()
+    header_bottom = dashboard_header.mapToItem(
+        window.contentItem(),
+        QPointF(0, dashboard_header.property("height")),
+    ).y()
+    page_top = page.mapToItem(window.contentItem(), QPointF(0, 0)).y()
+    assert page_top >= header_bottom
+
+
 history_button.click()
 application.processEvents()
 assert history_dialog.property("visible")
@@ -548,9 +557,6 @@ assert map_advance_button_label.property("color").name() == "#4d5852"
 assert map_clear_button_label.property("color").name() == "#4d5852"
 assert add_filter_button_label.property("color").name() == "#4d5852"
 assert scrape_button_label.property("color").name() == "#4d5852"
-assert excel_button_label.property("color").name() == "#4d5852"
-assert pdf_button_label.property("color").name() == "#4d5852"
-assert eduescale_button_label.property("color").name() == "#4d5852"
 assert department_combo.property("enabled")
 assert department_combo.property("count") == 3
 
@@ -635,15 +641,9 @@ assert brand_title.property("font").family() in (
 logo_source = brand_logo.property("source")
 assert QImageReader(":" + logo_source.path()).canRead()
 assert download_button.property("text").startswith("Revisar ")
-assert excel_button.property("text") == "Exportar Excel"
-assert pdf_button.property("text") == "Exportar PDF"
-assert eduescale_button.property("text") == "Exportar .eduescale"
-assert not excel_button.property("visible")
-assert not pdf_button.property("visible")
-assert not eduescale_button.property("visible")
-assert not excel_button.property("enabled")
-assert not pdf_button.property("enabled")
-assert not eduescale_button.property("enabled")
+assert window.findChild(QObject, "downloadExcelButton") is None
+assert window.findChild(QObject, "downloadPdfButton") is None
+assert window.findChild(QObject, "downloadEduEscaleButton") is None
 assert not progress_indicator.property("visible")
 assert not status_label.property("visible")
 assert not school_wizard_review_page.property("visible")
@@ -674,15 +674,6 @@ for width, height in ((560, 600), (1280, 720), (1366, 768), (1600, 900), (1920, 
         search_workspace.property("columns"),
     )
     assert action_buttons.property("columns") == expected_action_columns
-    if width >= 1200 and excel_button.property("visible"):
-        action_row_positions = {
-            round(button.property("y"))
-            for button in (excel_button, pdf_button, eduescale_button, history_button)
-        }
-        assert len(action_row_positions) == 1, (
-            width,
-            action_row_positions,
-        )
     page_has_overflow = (
         scroll_view.property("contentHeight")
         > scroll_view.property("availableHeight") + 1
@@ -716,17 +707,21 @@ for width, height in ((560, 600), (1280, 720), (1366, 768), (1600, 900), (1920, 
     assert not status_label.property("visible")
     assert filter_grid.property("width") > 0
     assert help_text.property("width") <= filter_grid.property("width") + 1
+    criteria_top = criteria_card.mapToItem(search_workspace, QPointF(0, 0))
+    searches_top = searches_card.mapToItem(search_workspace, QPointF(0, 0))
+    criteria_bottom = criteria_card.mapToItem(
+        search_workspace,
+        QPointF(0, criteria_card.property("height")),
+    )
+    criteria_right = criteria_card.mapToItem(
+        search_workspace,
+        QPointF(criteria_card.property("width"), 0),
+    ).x()
     if expected_workspace_columns == 2:
-        assert abs(criteria_card.property("y") - searches_card.property("y")) <= 1
-        assert (
-            criteria_card.property("x") + criteria_card.property("width")
-            <= searches_card.property("x") + 1
-        )
+        assert abs(criteria_top.y() - searches_top.y()) <= 1
+        assert criteria_right <= searches_top.x() + 1
     else:
-        assert (
-            criteria_card.property("y") + criteria_card.property("height")
-            <= searches_card.property("y") + 1
-        )
+        assert criteria_bottom.y() <= searches_top.y() + 1
     assert empty_state.property("visible")
     window_content = window.contentItem()
     scroll_top = scroll_view.mapToItem(window_content, QPointF(0, 0)).y()
@@ -743,18 +738,34 @@ for width, height in ((560, 600), (1280, 720), (1366, 768), (1600, 900), (1920, 
         window_content,
         QPointF(0, source_bar.property("height")),
     ).y()
-    action_surface_top = action_surface.mapToItem(
-        window_content,
-        QPointF(0, 0),
+    action_bar_top = action_bar.mapToItem(window_content, QPointF(0, 0)).y()
+    review_button_bottom = download_button.mapToItem(
+        action_surface,
+        QPointF(0, download_button.property("height")),
     ).y()
     action_bottom = action_bar.mapToItem(
         window_content,
         QPointF(0, action_bar.property("height")),
     ).y()
+    dashboard_bottom = dashboard_shell.mapToItem(
+        window_content,
+        QPointF(0, dashboard_shell.property("height")),
+    ).y()
     assert scroll_top >= header_bottom
-    assert scroll_bottom <= source_top + 1
-    assert source_top - scroll_bottom <= 10
-    assert abs(source_bottom - action_surface_top) <= 1
+    assert source_top >= scroll_bottom
+    assert source_bottom <= action_bar_top + 1
+    assert source_bar.property("width") <= searches_card.property("width") + 1
+    assert action_surface.property("height") - review_button_bottom >= 22, (
+        action_surface.property("height"),
+        review_button_bottom,
+    )
+    assert abs(action_bottom - dashboard_bottom) <= 1
+    if height >= 720:
+        assert district_map.property("height") >= 300, (
+            width,
+            height,
+            district_map.property("height"),
+        )
     assert action_bottom <= window.height() + 1, (
         width,
         height,
@@ -768,9 +779,7 @@ for width, height in ((560, 600), (1280, 720), (1366, 768), (1600, 900), (1920, 
         window.property("workflowStep"),
     )
     assert download_button.property("visible")
-    for button in (excel_button, pdf_button, eduescale_button):
-        assert not button.property("visible")
-    for button in (download_button, history_button):
+    for button in (download_button,):
         assert button.property("visible")
         assert button.property("height") >= 40
         assert button.property("height") <= 44, (
@@ -784,9 +793,13 @@ for width, height in ((560, 600), (1280, 720), (1366, 768), (1600, 900), (1920, 
             action_buttons.property("height") + 1
         )
     assert download_button.property("width") > 0
-    assert history_button.property("y") >= (
-        download_button.property("y") + download_button.property("height") - 1
-    )
+    assert history_button.property("visible")
+    history_left = history_button.mapToItem(dashboard_header, QPointF(0, 0)).x()
+    logs_right = logs_button.mapToItem(
+        dashboard_header,
+        QPointF(logs_button.property("width"), 0),
+    ).x()
+    assert history_left >= logs_right - 1
     assert district_map.property("x") >= 0
     assert district_map.property("width") > 0
     assert (
@@ -881,7 +894,8 @@ application.processEvents()
 confirmation_dialog = child("exportConfirmationDialog")
 assert not confirmation_dialog.property("visible")
 assert school_wizard_review_page.property("visible")
-assert_logs_accessible(child("reviewLogsButton"))
+assert_persistent_header(school_wizard_review_page)
+assert_logs_accessible(logs_button)
 review_summary = child("searchReviewSummary")
 assert "primaria" in review_summary.property("text")
 original_summary = review_summary.property("text")
@@ -912,10 +926,8 @@ for width, theme, thumb_color in (
     ).x()
     assert abs(bar_right - review_scroll.width()) <= 1, bar_right
     review_title = child("reviewTitle")
-    review_logs_button = child("reviewLogsButton")
-    assert review_title.mapToItem(
-        school_wizard_review_page, QPointF(review_title.width(), 0)
-    ).x() <= review_logs_button.mapToItem(school_wizard_review_page, QPointF(0, 0)).x()
+    assert_persistent_header(school_wizard_review_page)
+    assert review_title.property("width") > 0
     back_button = child("backToSearchButton")
     start_button = child("startSearchButton")
     assert review_frame.mapToItem(
@@ -963,7 +975,8 @@ assert [item.district_code for item in scrape_runner.started_requests[0][1]] == 
 cancel_button = child("cancelScrapeButton")
 assert not cancel_button.property("visible")
 assert school_wizard_page.property("visible")
-assert_logs_accessible(child("wizardLogsButton"))
+assert_persistent_header(school_wizard_page)
+assert_logs_accessible(logs_button)
 assert school_wizard_cancel_button.property("visible")
 assert not download_button.property("visible")
 for width in (560, 1280):
@@ -973,11 +986,9 @@ for width in (560, 1280):
     assert school_wizard_page.property("visible")
     assert live_schools_map.property("width") > 0
     assert live_schools_map.property("height") >= 180
+    assert_persistent_header(school_wizard_page)
     wizard_title = child("schoolWizardTitle")
-    wizard_logs = child("wizardLogsButton")
-    assert wizard_title.mapToItem(
-        school_wizard_page, QPointF(wizard_title.width(), 0)
-    ).x() <= wizard_logs.mapToItem(school_wizard_page, QPointF(0, 0)).x()
+    assert wizard_title.property("width") > 0
     for button in (school_wizard_cancel_button,):
         assert button.property("visible")
         assert button.mapToItem(
@@ -1045,8 +1056,8 @@ application.processEvents()
 large_school_batch = [
     {
         "schoolId": "batch-" + str(index),
-        "longitud": -77.2,
-        "latitud": -12.1,
+        "longitud": -81.3 if index == 0 else -68.7 if index == 1 else -77.2,
+        "latitud": -18.3 if index == 0 else -0.05 if index == 1 else -12.1,
     }
     for index in range(1201)
 ]
@@ -1064,13 +1075,46 @@ assert sum(school_batch_sizes) == len(large_school_batch), (
     live_schools_map.property("mapReady"),
 )
 assert all(0 < size <= 500 for size in school_batch_sizes), school_batch_sizes
-live_schools_map.clearSchoolLocations()
 
 database_path = Path(sys.argv[2]).parent / "schools.sqlite3"
 scrape_runner.completed.emit(str(database_path), 1, 1, 1)
 application.processEvents()
+fit_deadline = time.monotonic() + 10
+while (
+    not live_schools_map.property("schoolMapBoundsJson")
+    and time.monotonic() < fit_deadline
+):
+    application.processEvents()
+    time.sleep(0.025)
+assert live_schools_map.property("schoolMapBoundsJson"), (
+    live_schools_map.property("schoolPointCount"),
+    live_schools_map.property("schoolFitPending"),
+    qml_value(live_schools_map, "pendingSchoolBatches"),
+    live_schools_map.property("mapReady"),
+    live_schools_map.property("schoolMode"),
+    live_schools_map.property("loadingError"),
+    window.property("schoolWizardState"),
+)
+school_map_bounds = json.loads(
+    live_schools_map.property("schoolMapBoundsJson")
+)
+assert school_map_bounds[0][0] <= min(
+    location["longitud"] for location in large_school_batch
+)
+assert school_map_bounds[0][1] <= min(
+    location["latitud"] for location in large_school_batch
+)
+assert school_map_bounds[1][0] >= max(
+    location["longitud"] for location in large_school_batch
+)
+assert school_map_bounds[1][1] >= max(
+    location["latitud"] for location in large_school_batch
+)
+live_schools_map.clearSchoolLocations()
+application.processEvents()
 assert school_wizard_page.property("visible")
-assert_logs_accessible(child("wizardLogsButton"))
+assert_persistent_header(school_wizard_page)
+assert_logs_accessible(logs_button)
 assert not school_wizard_progress.property("visible")
 assert school_wizard_excel_button.property("visible")
 assert school_wizard_pdf_button.property("visible")
@@ -1094,6 +1138,10 @@ assert Path(pdf_dialog.property("currentFile").toLocalFile()) == (
 child("schoolWizardCloseButton").click()
 application.processEvents()
 assert not school_wizard_page.property("visible")
+assert view_model.property("exportsAvailable")
+assert window.findChild(QObject, "downloadExcelButton") is None
+assert window.findChild(QObject, "downloadPdfButton") is None
+assert window.findChild(QObject, "downloadEduEscaleButton") is None
 
 assert export_runner.started_requests == []
 chosen_excel_path = default_export_path.parent / "colegios-personalizado.xlsx"
@@ -1172,10 +1220,15 @@ page_flickable.setProperty(
 )
 application.processEvents()
 assert abs(action_bar.mapToItem(window_content, QPointF(0, 0)).y() - action_bar_y) <= 1
-assert eduescale_button.property("visible")
+assert view_model.property("exportsAvailable")
 
 theme_selector = child("themeModeSelector")
 light_canvas = window.property("canvasColor")
+assert theme_selector.property("iconNames").toVariant() == [
+    "brightness_auto",
+    "light_mode",
+    "dark_mode",
+]
 assert theme_selector.property("currentText") == "Sistema"
 assert QMetaObject.invokeMethod(theme_selector, "activated", Q_ARG(int, 2))
 application.processEvents()
@@ -1194,6 +1247,26 @@ assert view_model.themeMode == "light"
 data_source_combo = child("dataSourceCombo")
 offline_database_controls = child("offlineDatabaseControls")
 assert data_source_combo.property("currentText") == "ESCALE en línea"
+window.resize(1280, 720)
+application.processEvents()
+many_searches = []
+for index in range(24):
+    many_searches.append(
+        {
+            "name": "Búsqueda de prueba " + str(index + 1),
+            "regionCode": "test-" + str(index + 1),
+            "provinceCode": "",
+            "districtCode": "",
+            "regionLabel": "Región de prueba " + str(index + 1),
+            "provinceLabel": "",
+            "districtLabel": "",
+            "management": "publica",
+            "level": "primaria",
+        }
+    )
+view_model.savedSearchesLoaded.emit(many_searches)
+application.processEvents()
+assert search_list_scrollbar.property("visible")
 view_model.setDataSource("offline")
 application.processEvents()
 assert view_model.dataSource == "offline"
@@ -1203,6 +1276,30 @@ assert data_source_combo.property("displayText") == "Base offline", (
     data_source_combo.property("displayText"),
 )
 assert offline_database_controls.property("visible")
+assert child("selectOfflineDatabaseButton").property("visible")
+assert child("updateOfflineDatabaseButton").property("visible")
+offline_controls_top = offline_database_controls.mapToItem(
+    source_bar,
+    QPointF(0, 0),
+).y()
+offline_controls_bottom = offline_database_controls.mapToItem(
+    source_bar,
+    QPointF(0, offline_database_controls.property("height")),
+).y()
+assert offline_controls_top >= 0
+assert offline_controls_bottom <= source_bar.property("height") + 1
+source_top = source_bar.mapToItem(window_content, QPointF(0, 0)).y()
+source_bottom = source_bar.mapToItem(
+    window_content,
+    QPointF(0, source_bar.property("height")),
+).y()
+offline_action_top = action_bar.mapToItem(window_content, QPointF(0, 0)).y()
+assert source_top >= scroll_view.mapToItem(
+    window_content,
+    QPointF(0, scroll_view.property("height")),
+).y()
+assert source_bottom <= offline_action_top + 1
+assert source_bottom <= window.height() + 1
 assert not child("scrapeButton").property("enabled")
 assert clear_all_filters_button.property("enabled")
 clear_all_filters_button.click()

@@ -182,6 +182,28 @@ def configure_application_font(application: QGuiApplication) -> bool:
     return True
 
 
+def configure_material_symbols_font() -> bool:
+    symbols_path = resource_path("fonts/MaterialSymbolsOutlined.ttf")
+    font_id = QFontDatabase.addApplicationFont(symbols_path)
+    if font_id < 0:
+        LOGGER.error(
+            "Could not load Material Symbols font from %s",
+            symbols_path,
+        )
+        return False
+
+    font_families = QFontDatabase.applicationFontFamilies(font_id)
+    if "Material Symbols Outlined" not in font_families:
+        LOGGER.error(
+            "Material Symbols font file registered unexpected families: %s",
+            font_families,
+        )
+        return False
+
+    LOGGER.info("Using Material Symbols font from %s", symbols_path)
+    return True
+
+
 def configure_application_icon(application: QGuiApplication) -> bool:
     icon_path = resource_path("assets/edutrack-logo.png")
     icon = QIcon(icon_path)
@@ -268,6 +290,8 @@ def main(
         QQuickStyle.setStyle("Universal")
         application = QGuiApplication(sys.argv)
         if not configure_application_font(application):
+            return 1
+        if not configure_material_symbols_font():
             return 1
         if not configure_application_icon(application):
             return 1

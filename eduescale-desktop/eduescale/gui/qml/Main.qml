@@ -64,6 +64,8 @@ ApplicationWindow {
     property var selectedSchoolDetails: ({})
     property string schoolWizardErrorTitle: ""
     property string schoolWizardErrorDetails: ""
+    readonly property real dashboardHeaderBottom:
+        dashboardHeader.y + dashboardHeader.height
 
     Universal.theme: viewModel.themeMode === "system"
         ? Universal.System
@@ -355,15 +357,19 @@ ApplicationWindow {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
-        height: implicitHeight
+        anchors.bottom: parent.bottom
         spacing: 0
 
         DashboardHeader {
             id: dashboardHeader
             Layout.fillWidth: true
-            Layout.margins: 10
+            Layout.leftMargin: 10
+            Layout.rightMargin: 10
+            Layout.topMargin: 4
+            Layout.bottomMargin: 4
             viewModel: window.viewModel
             onLogsRequested: logViewerDialog.open()
+            onHistoryRequested: exportHistoryDialog.open()
         }
 
         Frame {
@@ -372,7 +378,7 @@ ApplicationWindow {
             Layout.fillWidth: true
             Layout.leftMargin: 12
             Layout.rightMargin: 12
-            Layout.bottomMargin: 8
+            Layout.bottomMargin: 0
             visible: window.workflowStep === 0
             padding: 10
             background: Rectangle {
@@ -394,7 +400,7 @@ ApplicationWindow {
         id: filterScrollView
         objectName: "filterScrollView"
         Layout.fillWidth: true
-        Layout.fillHeight: false
+        Layout.fillHeight: true
         Layout.leftMargin: 12
         Layout.rightMargin: 12
         Layout.bottomMargin: 8
@@ -405,13 +411,14 @@ ApplicationWindow {
                 window.contentItem.height - dashboardHeader.height
                 - wizardStepHeader.height
                 - wizardStepHeader.Layout.bottomMargin - 20
+                    - (sourceBar.visible ? sourceBar.implicitHeight : 0)
                     - searchActionBar.implicitHeight - 8
             )
         )
         padding: 8
         clip: true
         contentWidth: availableWidth
-        contentHeight: pageContent.implicitHeight
+        contentHeight: pageContent.height
         ScrollBar.vertical: StyledScrollBar {
             objectName: "pageVerticalScrollBar"
             anchors.right: parent.right
@@ -425,12 +432,14 @@ ApplicationWindow {
         ColumnLayout {
             id: pageContent
             width: filterScrollView.availableWidth
+            height: Math.max(implicitHeight, filterScrollView.availableHeight)
             spacing: 10
 
             GridLayout {
                 id: searchWorkspace
                 objectName: "searchWorkspace"
                 Layout.fillWidth: true
+                Layout.fillHeight: true
                 columns: window.width < 1100 ? 1 : 2
                 columnSpacing: 12
                 rowSpacing: 12
@@ -439,7 +448,7 @@ ApplicationWindow {
                 id: criteriaCard
                 objectName: "criteriaCard"
                 Layout.fillWidth: true
-                Layout.alignment: Qt.AlignTop
+                Layout.fillHeight: true
                 Layout.preferredWidth: searchWorkspace.columns === 2
                     ? filterScrollView.availableWidth * 0.66
                     : filterScrollView.availableWidth
@@ -466,6 +475,7 @@ ApplicationWindow {
                         id: filterGrid
                         objectName: "filterGrid"
                         Layout.fillWidth: true
+                        Layout.fillHeight: true
                         columns: window.width < 720 ? 1 : 2
                         columnSpacing: 12
                         rowSpacing: 6
@@ -476,6 +486,7 @@ ApplicationWindow {
                             Layout.column: 0
                             Layout.row: 0
                             Layout.fillWidth: true
+                            Layout.fillHeight: true
                             spacing: 8
 
                             TabBar {
@@ -516,6 +527,7 @@ ApplicationWindow {
                                 id: locationPages
                                 objectName: "locationPages"
                                 Layout.fillWidth: true
+                                Layout.fillHeight: true
                                 Layout.minimumHeight: 300
                                 Layout.preferredHeight: 310
                                 currentIndex: locationTabs.currentIndex
@@ -523,6 +535,7 @@ ApplicationWindow {
                                 ColumnLayout {
                                     id: mapSelectionPage
                                     objectName: "mapSelectionPage"
+                                    Layout.fillHeight: true
                                     spacing: 8
 
                                     RowLayout {
@@ -574,9 +587,8 @@ ApplicationWindow {
                                         objectName: "districtMap"
                                         Layout.fillWidth: true
                                         Layout.fillHeight: true
-                                        Layout.minimumHeight: 260
+                                        Layout.minimumHeight: 250
                                         Layout.preferredHeight: 300
-                                        Layout.alignment: Qt.AlignTop
                                         enabled: !viewModel.scrapeRunning
                                         mapLevel: window.mapLevel
                                         parentCodes: window.mapLevel === "province"
@@ -819,25 +831,163 @@ ApplicationWindow {
                             }
                         }
                     }
+
                 }
             }
 
-            SavedSearchesPanel {
-                id: searchesCard
+            ColumnLayout {
+                id: searchSidebar
+                objectName: "searchSidebar"
                 Layout.fillWidth: true
                 Layout.alignment: Qt.AlignTop
                 Layout.preferredWidth: searchWorkspace.columns === 2
                     ? filterScrollView.availableWidth * 0.34
                     : filterScrollView.availableWidth
-                viewModel: window.viewModel
-                searchModel: filterSetsModel
-                windowHeight: window.height
-                scrapeRunning: window.viewModel
-                    ? window.viewModel.scrapeRunning : false
-                filterNotice: window.filterNotice
+                spacing: 8
+
+                SavedSearchesPanel {
+                    id: searchesCard
+                    Layout.fillWidth: true
+                    viewModel: window.viewModel
+                    searchModel: filterSetsModel
+                    windowHeight: window.height
+                    scrapeRunning: window.viewModel
+                        ? window.viewModel.scrapeRunning : false
+                    filterNotice: window.filterNotice
+                }
+
             }
         }
 
+        }
+    }
+
+    Rectangle {
+        id: sourceBar
+        objectName: "sourceBar"
+        Layout.preferredWidth: searchSidebar.width
+        Layout.maximumWidth: searchSidebar.width
+        Layout.alignment: Qt.AlignRight
+        Layout.rightMargin: 12
+        visible: window.workflowStep === 0
+        implicitHeight: sourceContent.implicitHeight + 8
+        color: window.canvasColor
+        border.color: window.borderColor
+
+        ColumnLayout {
+            id: sourceContent
+            anchors.fill: parent
+            anchors.margins: 4
+            spacing: 6
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                MaterialSymbol {
+                    symbolName: "link"
+                    symbolSize: 16
+                    symbolColor: window.primaryColor
+                }
+
+                Label {
+                    id: sourceLabel
+                    objectName: "sourceLabel"
+                    Layout.fillWidth: true
+                    verticalAlignment: Text.AlignVCenter
+                    wrapMode: Text.WordWrap
+                    text: '<a href="https://escale.minedu.gob.pe/padron-de-iiee">Fuente: Padrón de IIEE de ESCALE</a>'
+                    textFormat: Text.RichText
+                    onLinkActivated: link => Qt.openUrlExternally(link)
+                    palette.link: window.primaryColor
+                }
+
+                StyledComboBox {
+                    id: dataSourceCombo
+                    objectName: "dataSourceCombo"
+                    Layout.preferredWidth: Math.min(
+                        window.width < 720 ? 150 : 190,
+                        Math.max(130, sourceContent.width * 0.4)
+                    )
+                    Layout.minimumWidth: 130
+                    height: 28
+                    model: ["ESCALE en línea", "Base offline"]
+                    currentIndex: window.viewModel.dataSource === "offline"
+                        ? 1 : 0
+                    enabled: !window.viewModel.scrapeRunning
+                        && !window.viewModel.exportRunning
+                    Accessible.name: "Fuente de datos"
+                    onActivated: index =>
+                        window.viewModel.setDataSource(
+                            index === 1 ? "offline" : "online"
+                        )
+                }
+            }
+
+            ColumnLayout {
+                id: offlineDatabaseControls
+                objectName: "offlineDatabaseControls"
+                Layout.fillWidth: true
+                spacing: 4
+                visible: window.viewModel.dataSource === "offline"
+                    && window.workflowStep === 0
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    StyledButton {
+                        objectName: "selectOfflineDatabaseButton"
+                        labelObjectName: "selectOfflineDatabaseButtonLabel"
+                        iconName: "database"
+                        text: "Elegir base"
+                        enabled: !window.viewModel.scrapeRunning
+                            && !window.viewModel.exportRunning
+                        onClicked: offlineDatabaseOpenDialog.open()
+                    }
+
+                    StyledButton {
+                        objectName: "updateOfflineDatabaseButton"
+                        labelObjectName: "updateOfflineDatabaseButtonLabel"
+                        iconName: "sync"
+                        text: "Actualizar base"
+                        enabled: !window.viewModel.scrapeRunning
+                            && !window.viewModel.exportRunning
+                        onClicked: {
+                            if (window.viewModel.offlineDatabaseAvailable)
+                                window.viewModel.updateOfflineDatabase(
+                                    window.viewModel.offlineDatabaseUrl
+                                )
+                            else
+                                offlineDatabaseSaveDialog.open()
+                        }
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 6
+
+                    MaterialSymbol {
+                        symbolName: "database"
+                        symbolSize: window.smallFontSize + 2
+                        symbolColor: window.mutedTextColor
+                        Layout.alignment: Qt.AlignTop
+                    }
+
+                    Label {
+                        objectName: "offlineDatabaseStatsLabel"
+                        Layout.fillWidth: true
+                        text: window.viewModel.offlineDatabaseName
+                            + " · " + window.viewModel.offlineDatabaseStats
+                        color: window.mutedTextColor
+                        font.pixelSize: window.smallFontSize
+                        wrapMode: Text.WordWrap
+                        maximumLineCount: 2
+                        elide: Text.ElideRight
+                    }
+                }
+            }
         }
     }
 
@@ -852,17 +1002,6 @@ ApplicationWindow {
         onScrapeRequested: window.requestConfirmation(
             "scrape", window.viewModel.defaultOutputUrl
         )
-        onExcelExportRequested: excelSaveDialog.open()
-        onPdfExportRequested: pdfSaveDialog.open()
-        onEduEscaleExportRequested: eduEscaleSaveDialog.open()
-        onHistoryRequested: exportHistoryDialog.open()
-        onOfflineDatabaseSelectionRequested: offlineDatabaseOpenDialog.open()
-        onOfflineDatabaseUpdateRequested: {
-            if (viewModel.offlineDatabaseAvailable)
-                viewModel.updateOfflineDatabase(viewModel.offlineDatabaseUrl)
-            else
-                offlineDatabaseSaveDialog.open()
-        }
     }
     }
 
@@ -1184,12 +1323,15 @@ ApplicationWindow {
     SchoolSearchReviewPage {
         id: schoolWizardReviewPage
         window: window
-        onLogsRequested: logViewerDialog.open()
     }
     Item {
         id: schoolWizardPage
         objectName: "schoolWizardPage"
-        anchors.fill: parent
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.top: parent.top
+        anchors.topMargin: window.dashboardHeaderBottom + 8
         z: 10
         visible: window.workflowStep >= 2
 
@@ -1219,10 +1361,6 @@ ApplicationWindow {
                     elide: Text.ElideRight
                 }
 
-                LogsButton {
-                    objectName: "wizardLogsButton"
-                    onClicked: logViewerDialog.open()
-                }
             }
 
             Label {
@@ -1430,11 +1568,13 @@ ApplicationWindow {
         function onSchoolSearchCompleted() {
             window.schoolWizardState = "completed"
             window.workflowStep = 3
+            Qt.callLater(liveSchoolsMap.fitSchoolLocations)
         }
 
         function onSchoolSearchStopped(reason) {
             window.schoolWizardState = reason
             window.workflowStep = 3
+            Qt.callLater(liveSchoolsMap.fitSchoolLocations)
         }
 
         function onErrorRaised(title, details) {

@@ -181,30 +181,43 @@ Desde PowerShell, también puedes compilar e instalar las pruebas unitarias con
 el Gradle Wrapper incluido:
 
 ```powershell
-.\gradlew.bat :app:testDebugUnitTest
-.\gradlew.bat :app:assembleDebug
+.\gradlew.bat :app:testCompleteDebugUnitTest :app:testLiteDebugUnitTest
+.\gradlew.bat :app:assembleCompleteDebug :app:assembleLiteDebug
 ```
+
+El proyecto ofrece dos variantes: **EduEscale Completa**, con Valhalla y rutas
+por carretera, conserva el identificador `pe.eduescale.mobile`; **EduEscale
+Lite** calcula distancias en línea recta y usa `pe.eduescale.mobile.lite`.
+Pueden instalarse juntas, pero mantienen datos locales independientes.
 
 ## Compilar con Docker
 
 Desde esta carpeta, ejecuta:
 
 ```powershell
-docker buildx build --target apk --output type=local,dest=dist .
+docker buildx build --file Dockerfile --target apk --output type=local,dest=dist ..
 ```
 
-Docker genera `dist/EduEscale-debug.apk` y `dist/EduEscale-debug-androidTest.apk`.
-La imagen instala JDK 21, Android SDK Platform 36 y Build Tools 36.0.0, ejecuta
-las pruebas unitarias y compila las pruebas instrumentadas. Se requiere Docker
-BuildKit y conexión a Internet durante la primera compilación.
+Docker genera los APK debug y de pruebas instrumentadas de ambas variantes:
+`EduEscale-completa-debug.apk`, `EduEscale-lite-debug.apk` y los dos archivos
+`*-debug-androidTest.apk`. La variante Lite no incluye las dependencias nativas
+de Valhalla ni la descarga de carreteras; las distancias se calculan y etiquetan
+en línea recta. La imagen instala JDK 21, Android SDK Platform 36 y Build Tools
+36.0.0, ejecuta las pruebas unitarias de ambas variantes y compila las pruebas
+instrumentadas. Se requiere Docker BuildKit y conexión a Internet durante la
+primera compilación.
 
 Para ejecutar las pruebas instrumentadas, conecta un dispositivo o inicia un
 emulador y, desde esta carpeta, ejecuta:
 
 ```powershell
-adb install -r dist\EduEscale-debug.apk
-adb install -r dist\EduEscale-debug-androidTest.apk
+adb install -r dist\EduEscale-completa-debug.apk
+adb install -r dist\EduEscale-completa-debug-androidTest.apk
 adb shell am instrument -w pe.eduescale.mobile.test/androidx.test.runner.AndroidJUnitRunner
+
+adb install -r dist\EduEscale-lite-debug.apk
+adb install -r dist\EduEscale-lite-debug-androidTest.apk
+adb shell am instrument -w pe.eduescale.mobile.lite.test/androidx.test.runner.AndroidJUnitRunner
 ```
 
 El workflow móvil de GitHub Actions usa este mismo `docker-compose.yml` para ejecutar las pruebas y
@@ -233,27 +246,30 @@ docker compose run --build --rm android
 
 Compose monta `../android-secrets/release.jks` y
 `../android-secrets/keystore.properties` como secretos BuildKit durante la
-compilación; no los copia a la imagen. Se generan el APK debug, el APK release
-firmado y el AAB firmado en `dist/`.
+compilación; no los copia a la imagen. Se generan los APK debug, los APK release
+y los AAB de ambas variantes en `dist/`. Con el keystore local disponible, los
+artefactos release se firman con esa clave.
 
 Para generar el bundle Android de release:
 
 ```powershell
-docker buildx build --target release --output type=local,dest=dist .
+docker buildx build --file Dockerfile --target release --output type=local,dest=dist ..
 ```
 
-Docker genera `dist/EduEscale-release.aab`. El bundle se compila sin firma de
-publicación; antes de subirlo a Google Play, debe firmarse con la clave de carga
-configurada para la aplicación.
+Docker genera `dist/EduEscale-completa-release-unsigned.aab` y
+`dist/EduEscale-lite-release-unsigned.aab`. Los bundles se compilan sin firma de
+publicación; antes de subirlos a Google Play, deben firmarse con la clave de
+carga configurada para cada aplicación.
 
 Para generar un APK de release:
 
 ```powershell
-docker buildx build --target release-apk --output type=local,dest=dist .
+docker buildx build --file Dockerfile --target release-apk --output type=local,dest=dist ..
 ```
 
-Docker genera `dist/EduEscale-release-unsigned.apk`. El APK no está firmado;
-antes de instalarlo o distribuirlo, debe firmarse con una clave de release.
+Docker genera `dist/EduEscale-completa-release-unsigned.apk` y
+`dist/EduEscale-lite-release-unsigned.apk`. Los APK no están firmados; antes de
+instalarlos o distribuirlos, deben firmarse con una clave de release.
 
 En la aplicación, pulsa **Abrir archivo**, selecciona el archivo `.eduescale` y
 acerca o aleja el mapa. Toca un punto para consultar sus datos. Los archivos

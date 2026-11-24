@@ -65,6 +65,32 @@ class RoadRoutingViewModelTest {
     }
 
     @Test
+    fun unsupportedRoadRoutingUsesStraightLineDistancesAndRejectsDownloads() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val routing = FakeRouting(roadRoutingSupported = false, initiallyAvailable = false) {
+                error("Road matrix must not be used by EduEscale Lite")
+            }
+            val school = school(1).copy(longitud = -76.0)
+            val model = RoadRoutingViewModel(routing)
+            model.updateInputs(listOf(school), origin)
+            advanceUntilIdle()
+
+            assertEquals(distanceInMeters(school, origin), model.state.value.distances[school.id])
+            assertEquals(false, model.state.value.supportsRoadRouting)
+            model.download()
+
+            assertEquals(
+                "Las rutas por carretera solo están disponibles en EduEscale Completa.",
+                model.state.value.error,
+            )
+            assertFalse(model.state.value.downloading)
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
     fun changingInputsDoesNotPublishACancelledResult() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try {
@@ -211,7 +237,7 @@ class RoadRoutingViewModelTest {
     }
 
     @Test
-    fun deletingRoadDataCancelsCalculationsAndPreservesTheDisplayedRoute() = runTest {
+    fun deletingRoadDataCancelsCalculationsAndClearsTheDisplayedRoute() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try {
             val pending = CompletableDeferred<List<Double?>>()
@@ -219,7 +245,7 @@ class RoadRoutingViewModelTest {
             val model = RoadRoutingViewModel(routing)
             model.updateSelectedRoute(school(1), origin)
             advanceUntilIdle()
-            val displayedRoute = model.state.value.route
+            assertEquals(100.0, model.state.value.route?.distanceMeters)
             model.updateInputs(listOf(school(1)), origin)
             runCurrent()
             model.delete()
@@ -230,7 +256,7 @@ class RoadRoutingViewModelTest {
             assertFalse(model.state.value.available)
             assertEquals(0L, model.state.value.storedBytes)
             assertEquals(mapOf(1 to 0.0), model.state.value.distances)
-            assertEquals(displayedRoute, model.state.value.route)
+            assertEquals(null, model.state.value.route)
         } finally {
             Dispatchers.resetMain()
         }
@@ -258,9 +284,11 @@ class RoadRoutingViewModelTest {
         private val routeResult: suspend (SchoolCoordinates, SchoolCoordinates) -> RoadRoute =
             { origin, destination -> RoadRoute(origin, destination, listOf(origin, destination), 100.0, 60.0) },
         private val deleteResult: suspend () -> Unit = {},
+        private val roadRoutingSupported: Boolean = true,
         initiallyAvailable: Boolean = true,
         private val result: suspend (List<SchoolCoordinates>) -> List<Double?>,
     ) : RoadRoutingPort {
+        override val supportsRoadRouting = roadRoutingSupported
         private var available = initiallyAvailable
         override fun isAvailable() = available
         override fun storedBytes() = if (available) 1024L else 0L

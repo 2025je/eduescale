@@ -145,7 +145,20 @@ internal fun SchoolsScreen(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         roadState.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        if ((!roadState.available || roadState.downloading) && state.schoolFile != null) {
+        if (!roadState.supportsRoadRouting && state.schoolFile != null) {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                ),
+                shape = RoundedCornerShape(16.dp),
+            ) {
+                Text(
+                    "EduEscale Lite calcula distancias en línea recta y no incluye rutas por carretera.",
+                    modifier = Modifier.padding(12.dp),
+                )
+            }
+        } else if ((!roadState.available || roadState.downloading) && state.schoolFile != null) {
             Card(
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
@@ -195,6 +208,7 @@ internal fun SchoolsScreen(
                         roadsAvailable = roadState.available,
                         calculating = roadState.calculating || !matchingRoadInputs,
                         routingError = roadState.error != null,
+                        supportsRoadRouting = roadState.supportsRoadRouting,
                         onClick = { onSchoolSelected(school) },
                     )
                 }
@@ -241,6 +255,7 @@ internal fun SchoolListCard(
     roadsAvailable: Boolean,
     calculating: Boolean,
     routingError: Boolean,
+    supportsRoadRouting: Boolean = true,
     onClick: () -> Unit,
 ) {
     Card(
@@ -285,7 +300,8 @@ internal fun SchoolListCard(
                     style = MaterialTheme.typography.labelMedium,
                 )
                 !roadsAvailable -> Text(
-                    "Descarga las carreteras en Archivos",
+                    if (supportsRoadRouting) "Descarga las carreteras en Archivos"
+                    else "Distancia en línea recta no disponible",
                     style = MaterialTheme.typography.labelMedium,
                 )
                 calculating -> Text("Calculando ruta…", style = MaterialTheme.typography.labelMedium)

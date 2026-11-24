@@ -43,13 +43,28 @@ RUN --mount=type=cache,target=/root/.gradle \
         echo "Se requieren tanto release.jks como keystore.properties para firmar." >&2; \
         exit 1; \
     fi \
-    && ./gradlew --no-daemon --console=plain :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:assembleRelease :app:bundleRelease
+    && ./gradlew --no-daemon --console=plain \
+        :app:testCompleteDebugUnitTest \
+        :app:testLiteDebugUnitTest \
+        :app:assembleCompleteDebug \
+        :app:assembleCompleteDebugAndroidTest \
+        :app:assembleLiteDebug \
+        :app:assembleLiteDebugAndroidTest \
+        :app:assembleCompleteRelease \
+        :app:bundleCompleteRelease \
+        :app:assembleLiteRelease \
+        :app:bundleLiteRelease
 
 FROM scratch AS apk
-COPY --from=android-build /workspace/app/build/outputs/apk/debug/app-debug.apk /EduEscale-debug.apk
+COPY --from=android-build /workspace/app/build/outputs/apk/complete/debug/app-complete-debug.apk /EduEscale-completa-debug.apk
+COPY --from=android-build /workspace/app/build/outputs/apk/androidTest/complete/debug/app-complete-debug-androidTest.apk /EduEscale-completa-debug-androidTest.apk
+COPY --from=android-build /workspace/app/build/outputs/apk/lite/debug/app-lite-debug.apk /EduEscale-lite-debug.apk
+COPY --from=android-build /workspace/app/build/outputs/apk/androidTest/lite/debug/app-lite-debug-androidTest.apk /EduEscale-lite-debug-androidTest.apk
 
 FROM scratch AS release-apk
-COPY --from=android-build /workspace/app/build/outputs/apk/release/app-release-unsigned.apk /EduEscale-release-unsigned.apk
+COPY --from=android-build /workspace/app/build/outputs/apk/complete/release/app-complete-release-unsigned.apk /EduEscale-completa-release-unsigned.apk
+COPY --from=android-build /workspace/app/build/outputs/apk/lite/release/app-lite-release-unsigned.apk /EduEscale-lite-release-unsigned.apk
 
 FROM scratch AS release
-COPY --from=android-build /workspace/app/build/outputs/bundle/release/app-release.aab /EduEscale-release.aab
+COPY --from=android-build /workspace/app/build/outputs/bundle/completeRelease/app-complete-release.aab /EduEscale-completa-release-unsigned.aab
+COPY --from=android-build /workspace/app/build/outputs/bundle/liteRelease/app-lite-release.aab /EduEscale-lite-release-unsigned.aab

@@ -205,43 +205,45 @@ internal fun FilesScreen(
                 )
             }
         }
-        HorizontalDivider()
-        Text("Carreteras sin conexión", style = MaterialTheme.typography.titleMedium)
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        ) {
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+        if (roadState.supportsRoadRouting) {
+            HorizontalDivider()
+            Text("Carreteras sin conexión", style = MaterialTheme.typography.titleMedium)
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
             ) {
-                Text(
-                    "Descarga la red de carreteras de Perú para calcular distancias sin conexión.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    "Datos de carreteras © colaboradores de OpenStreetMap (openstreetmap.org/copyright).",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                if (roadState.downloading) {
-                    RoadDownloadProgress(roadState.downloadedBytes, roadState.totalBytes)
-                }
-                if (roadState.storedBytes > 0) {
-                    StatisticLine("Almacenamiento utilizado", formatMapBytes(roadState.storedBytes))
-                }
-                roadState.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                Button(onClick = onDownloadRoadData, enabled = !roadState.downloading && !roadState.deleting) {
-                    Text(if (roadState.available) "Actualizar carreteras" else "Descargar carreteras")
-                }
-                if (roadState.storedBytes > 0) {
-                    TextButton(
-                        onClick = { pendingRoadDeletion = true },
-                        enabled = !roadState.downloading && !roadState.deleting,
-                    ) {
-                        Icon(Icons.Default.Delete, contentDescription = null)
-                        Spacer(Modifier.width(4.dp))
-                        Text(if (roadState.deleting) "Eliminando…" else "Eliminar carreteras")
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        "Descarga la red de carreteras de Perú para calcular distancias sin conexión.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        "Datos de carreteras © colaboradores de OpenStreetMap (openstreetmap.org/copyright).",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (roadState.downloading) {
+                        RoadDownloadProgress(roadState.downloadedBytes, roadState.totalBytes)
+                    }
+                    if (roadState.storedBytes > 0) {
+                        StatisticLine("Almacenamiento utilizado", formatMapBytes(roadState.storedBytes))
+                    }
+                    roadState.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    Button(onClick = onDownloadRoadData, enabled = !roadState.downloading && !roadState.deleting) {
+                        Text(if (roadState.available) "Actualizar carreteras" else "Descargar carreteras")
+                    }
+                    if (roadState.storedBytes > 0) {
+                        TextButton(
+                            onClick = { pendingRoadDeletion = true },
+                            enabled = !roadState.downloading && !roadState.deleting,
+                        ) {
+                            Icon(Icons.Default.Delete, contentDescription = null)
+                            Spacer(Modifier.width(4.dp))
+                            Text(if (roadState.deleting) "Eliminando…" else "Eliminar carreteras")
+                        }
                     }
                 }
             }

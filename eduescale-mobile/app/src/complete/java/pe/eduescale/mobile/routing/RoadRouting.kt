@@ -23,28 +23,13 @@ import org.json.JSONArray
 import org.json.JSONObject
 import pe.eduescale.mobile.data.SchoolCoordinates
 
-interface RoadRoutingPort {
-    fun isAvailable(): Boolean
-    fun storedBytes(): Long
-    suspend fun download(progress: (Long, Long) -> Unit)
-    suspend fun delete()
-    suspend fun distances(origin: SchoolCoordinates, targets: List<SchoolCoordinates>): List<Double?>
-    suspend fun route(origin: SchoolCoordinates, destination: SchoolCoordinates): RoadRoute
-}
-
-data class RoadRoute(
-    val origin: SchoolCoordinates,
-    val destination: SchoolCoordinates,
-    val points: List<SchoolCoordinates>,
-    val distanceMeters: Double,
-    val durationSeconds: Double,
-)
-
 @Singleton
 class RoadRouting @Inject constructor(
     @param:ApplicationContext private val context: Context,
     private val http: OkHttpClient,
 ) : RoadRoutingPort {
+    override val supportsRoadRouting = true
+
     private val directory = File(context.filesDir, "routing")
     private val graph = File(directory, "peru.tar")
     private val temporaryGraph = File(directory, "peru.tar.part")
@@ -115,11 +100,15 @@ class RoadRouting @Inject constructor(
         withContext(Dispatchers.IO) {
             mutex.withLock {
                 if (!isAvailable()) throw IOException("Descarga los datos de carreteras en Archivos.")
-                Valhalla(context, routingConfig()).use { engine ->
-                    targets.chunked(30).flatMap { batch ->
-                        currentCoroutineContext().ensureActive()
-                        matrixDistances(engine, origin, batch)
+                try {
+                    Valhalla(context, routingConfig()).use { engine ->
+                        targets.chunked(30).flatMap { batch ->
+                            currentCoroutineContext().ensureActive()
+                            matrixDistances(engine, origin, batch)
+                        }
                     }
+                } catch (error: ValhallaException) {
+                    throw IOException(error.message ?: "No se pudieron calcular las distancias por carretera.", error)
                 }
             }
         }
@@ -134,8 +123,12 @@ class RoadRouting @Inject constructor(
                     .put("format", "osrm")
                     .put("shape_format", "geojson")
                     .put("overview", "full")
-                Valhalla(context, routingConfig()).use { engine ->
-                    parseRoute(engine.routeRaw(request.toString()), origin, destination)
+                try {
+                    Valhalla(context, routingConfig()).use { engine ->
+                        parseRoute(engine.routeRaw(request.toString()), origin, destination)
+                    }
+                } catch (error: ValhallaException) {
+                    throw IOException(error.message ?: "No se pudo calcular la ruta en automóvil.", error)
                 }
             }
         }

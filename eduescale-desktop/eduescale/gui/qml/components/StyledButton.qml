@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Layouts
 import EduEscale.Gui.Styles 1.0 as EduStyle
 
 Button {
@@ -7,6 +8,8 @@ Button {
 
     property string variant: "secondary"
     property string labelObjectName: ""
+    property string iconName: ""
+    property real iconSize: Math.max(16, control.font.pixelSize + 2)
 
     implicitHeight: EduStyle.Style.compactButtonHeight
     font.pixelSize: EduStyle.Style.bodyFontSize
@@ -14,20 +17,34 @@ Button {
     padding: 8
     highlighted: variant === "primary"
 
-    contentItem: Text {
-        objectName: control.labelObjectName
-        text: control.text
-        font: control.font
-        color: !control.enabled
-            ? EduStyle.Style.disabledTextColor
-            : control.variant === "primary"
-            ? EduStyle.Style.surfaceColor
-            : control.variant === "danger" || control.variant === "quiet"
-            ? EduStyle.Style.dangerColor
-            : EduStyle.Style.primaryColor
-        horizontalAlignment: Text.AlignHCenter
-        verticalAlignment: Text.AlignVCenter
-        elide: Text.ElideRight
+    contentItem: RowLayout {
+        spacing: 6
+
+        MaterialSymbol {
+            symbolName: control.iconName
+            symbolSize: control.iconSize
+            symbolColor: labelText.color
+            visible: control.iconName.length > 0
+        }
+
+        Text {
+            id: labelText
+            objectName: control.labelObjectName
+            text: control.text
+            font: control.font
+            color: !control.enabled
+                ? EduStyle.Style.disabledTextColor
+                : control.variant === "primary"
+                ? EduStyle.Style.surfaceColor
+                : control.variant === "danger" || control.variant === "quiet"
+                ? EduStyle.Style.dangerColor
+                : EduStyle.Style.primaryColor
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+            elide: Text.ElideRight
+            Layout.alignment: Qt.AlignHCenter | Qt.AlignVCenter
+            Layout.fillWidth: true
+        }
     }
 
     background: Rectangle {

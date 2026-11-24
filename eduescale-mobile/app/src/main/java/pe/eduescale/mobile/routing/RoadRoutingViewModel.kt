@@ -2,7 +2,6 @@ package pe.eduescale.mobile.routing
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.valhalla.valhalla.ValhallaException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.io.IOException
 import javax.inject.Inject
@@ -19,6 +18,7 @@ import pe.eduescale.mobile.data.SchoolRecord
 import pe.eduescale.mobile.data.distanceInMeters
 
 data class RoadRoutingState(
+    val supportsRoadRouting: Boolean = true,
     val available: Boolean = false,
     val storedBytes: Long = 0,
     val downloading: Boolean = false,
@@ -44,7 +44,11 @@ class RoadRoutingViewModel @Inject constructor(
     private val routing: RoadRoutingPort,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(
-        RoadRoutingState(available = routing.isAvailable(), storedBytes = routing.storedBytes()),
+        RoadRoutingState(
+            supportsRoadRouting = routing.supportsRoadRouting,
+            available = routing.isAvailable(),
+            storedBytes = routing.storedBytes(),
+        ),
     )
     val state = mutableState.asStateFlow()
     private var calculation: Job? = null
@@ -55,6 +59,12 @@ class RoadRoutingViewModel @Inject constructor(
     private var selectedOrigin: SchoolCoordinates? = null
 
     fun download() {
+        if (!routing.supportsRoadRouting) {
+            mutableState.update {
+                it.copy(error = "Las rutas por carretera solo están disponibles en EduEscale Completa.")
+            }
+            return
+        }
         if (mutableState.value.downloading || mutableState.value.deleting) return
         mutableState.update {
             it.copy(downloading = true, downloadedBytes = 0, totalBytes = 0, error = null)
@@ -84,7 +94,9 @@ class RoadRoutingViewModel @Inject constructor(
     }
 
     fun delete() {
-        if (mutableState.value.downloading || mutableState.value.deleting || mutableState.value.storedBytes == 0L) return
+        if (!routing.supportsRoadRouting || mutableState.value.downloading ||
+            mutableState.value.deleting || mutableState.value.storedBytes == 0L
+        ) return
         calculation?.cancel()
         routeCalculation?.cancel()
         mutableState.update {
@@ -100,6 +112,9 @@ class RoadRoutingViewModel @Inject constructor(
                         storedBytes = routing.storedBytes(),
                         distances = emptyMap(),
                         orderedSchools = schools,
+                        route = null,
+                        routeCalculating = false,
+                        routeError = null,
                     )
                 }
             } catch (error: IOException) {
@@ -172,14 +187,6 @@ class RoadRoutingViewModel @Inject constructor(
                 mutableState.update {
                     it.copy(routeCalculating = false, routeError = error.message ?: "No se pudo calcular la ruta.")
                 }
-            } catch (error: ValhallaException) {
-                currentCoroutineContext().ensureActive()
-                mutableState.update {
-                    it.copy(
-                        routeCalculating = false,
-                        routeError = error.message ?: "No se pudo calcular la ruta en automóvil.",
-                    )
-                }
             } catch (error: JSONException) {
                 currentCoroutineContext().ensureActive()
                 mutableState.update {
@@ -235,9 +242,6 @@ class RoadRoutingViewModel @Inject constructor(
                     calculating = false,
                 ) }
             } catch (error: IOException) {
-                currentCoroutineContext().ensureActive()
-                mutableState.update { it.copy(calculating = false, error = error.message ?: "No se pudieron calcular las rutas.") }
-            } catch (error: ValhallaException) {
                 currentCoroutineContext().ensureActive()
                 mutableState.update { it.copy(calculating = false, error = error.message ?: "No se pudieron calcular las rutas.") }
             } catch (error: JSONException) {

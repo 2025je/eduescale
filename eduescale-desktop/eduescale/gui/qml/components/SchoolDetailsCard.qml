@@ -60,6 +60,28 @@ Frame {
         return locality + " · Centro poblado: " + populatedCenter
     }
 
+    function normalizeSpanishText(value) {
+        var text = String(value || "")
+        return text
+            .replace(/Ma�ana/g, "Mañana")
+            .replace(/ma�ana/g, "mañana")
+            .replace(/Mañ?ana/g, "Mañana")
+            .replace(/mañ?ana/g, "mañana")
+            .replace(/Ã¡/g, "á")
+            .replace(/Ã©/g, "é")
+            .replace(/Ã­/g, "í")
+            .replace(/Ã³/g, "ó")
+            .replace(/Ãº/g, "ú")
+            .replace(/Ã/g, "Á")
+            .replace(/Ã‰/g, "É")
+            .replace(/Ã/g, "Í")
+            .replace(/Ã“/g, "Ó")
+            .replace(/Ãš/g, "Ú")
+            .replace(/Ã±/g, "ñ")
+            .replace(/Ã‘/g, "Ñ")
+            .replace(/Â/g, "")
+    }
+
     background: Rectangle {
         radius: window.cardRadius
         color: window.surfaceColor
@@ -79,19 +101,33 @@ Frame {
                 Layout.fillWidth: true
                 spacing: 2
 
-                Label {
+                RowLayout {
                     Layout.fillWidth: true
-                    text: "FICHA DEL COLEGIO"
-                    color: window.primaryColor
-                    font.pixelSize: window.captionFontSize
-                    font.weight: Font.DemiBold
-                    font.letterSpacing: 0.8
+                    spacing: 4
+
+                    MaterialSymbol {
+                        symbolName: "school"
+                        symbolColor: window.primaryColor
+                        symbolSize: window.captionFontSize + 3
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: "FICHA DEL COLEGIO"
+                        color: window.primaryColor
+                        font.pixelSize: window.captionFontSize
+                        font.weight: Font.DemiBold
+                        font.letterSpacing: 0.8
+                    }
                 }
 
                 Label {
                     objectName: "schoolDetailsName"
                     Layout.fillWidth: true
-                    text: window.selectedSchoolDetails.nombre || "Colegio sin nombre"
+                    text: root.normalizeSpanishText(
+                        window.selectedSchoolDetails.nombre
+                        || "Colegio sin nombre"
+                    )
                     color: window.textColor
                     font.pixelSize: window.sectionTitleFontSize
                     font.weight: Font.DemiBold
@@ -101,6 +137,7 @@ Frame {
 
             StyledButton {
                 objectName: "closeSchoolDetailsButton"
+                iconName: "close"
                 text: "Cerrar"
                 variant: "secondary"
                 implicitHeight: window.compactButtonHeight
@@ -121,19 +158,31 @@ Frame {
                 width: schoolDetailsScroll.availableWidth
                 spacing: 12
 
-                Label {
-                    objectName: "schoolDetailsLocation"
+                RowLayout {
                     Layout.fillWidth: true
-                    text: [
-                        window.selectedSchoolDetails.distrito,
-                        window.selectedSchoolDetails.provincia,
-                        window.selectedSchoolDetails.departamento
-                    ].filter(function(value) {
-                        return Boolean(value)
-                    }).join(" · ") || "Ubicación no informada"
-                    color: window.mutedTextColor
-                    font.pixelSize: window.bodyFontSize
-                    wrapMode: Text.WordWrap
+                    spacing: 6
+
+                    MaterialSymbol {
+                        symbolName: "place"
+                        symbolColor: window.mutedTextColor
+                        symbolSize: window.bodyFontSize + 2
+                        Layout.alignment: Qt.AlignTop
+                    }
+
+                    Label {
+                        objectName: "schoolDetailsLocation"
+                        Layout.fillWidth: true
+                        text: [
+                            window.selectedSchoolDetails.distrito,
+                            window.selectedSchoolDetails.provincia,
+                            window.selectedSchoolDetails.departamento
+                        ].map(root.normalizeSpanishText).filter(function(value) {
+                            return Boolean(value)
+                        }).join(" · ") || "Ubicación no informada"
+                        color: window.mutedTextColor
+                        font.pixelSize: window.bodyFontSize
+                        wrapMode: Text.WordWrap
+                    }
                 }
 
                 RowLayout {
@@ -146,14 +195,24 @@ Frame {
                         implicitWidth: managementChipText.implicitWidth + 20
                         implicitHeight: 28
 
-                        Label {
-                            id: managementChipText
+                        RowLayout {
                             anchors.centerIn: parent
-                            text: root.schoolManagement(
-                                window.selectedSchoolDetails.gestion
-                            )
-                            color: window.primaryEmphasisColor
-                            font.pixelSize: window.smallFontSize
+                            spacing: 4
+
+                            MaterialSymbol {
+                                symbolName: "database"
+                                symbolColor: window.primaryEmphasisColor
+                                symbolSize: window.smallFontSize + 2
+                            }
+
+                            Label {
+                                id: managementChipText
+                                text: root.schoolManagement(
+                                    window.selectedSchoolDetails.gestion
+                                )
+                                color: window.primaryEmphasisColor
+                                font.pixelSize: window.smallFontSize
+                            }
                         }
                     }
 
@@ -163,19 +222,30 @@ Frame {
                         color: window.subtleSurfaceColor
                         implicitHeight: 28
 
-                        Label {
-                            id: levelChipText
+                        RowLayout {
                             anchors.fill: parent
                             anchors.leftMargin: 10
                             anchors.rightMargin: 10
-                            text: (
-                                window.selectedSchoolDetails.niveles || []
-                            ).map(root.schoolLevel).join(" · ")
-                                || "Nivel no informado"
-                            color: window.textColor
-                            font.pixelSize: window.smallFontSize
-                            verticalAlignment: Text.AlignVCenter
-                            elide: Text.ElideRight
+                            spacing: 4
+
+                            MaterialSymbol {
+                                symbolName: "school"
+                                symbolColor: window.textColor
+                                symbolSize: window.smallFontSize + 2
+                            }
+
+                            Label {
+                                id: levelChipText
+                                Layout.fillWidth: true
+                                text: (
+                                    window.selectedSchoolDetails.niveles || []
+                                ).map(root.schoolLevel).join(" · ")
+                                    || "Nivel no informado"
+                                color: window.textColor
+                                font.pixelSize: window.smallFontSize
+                                verticalAlignment: Text.AlignVCenter
+                                elide: Text.ElideRight
+                            }
                         }
                     }
                 }
@@ -206,10 +276,20 @@ Frame {
                                 font.weight: Font.DemiBold
                             }
 
+                            RowLayout {
+                                spacing: 4
+
+                                MaterialSymbol {
+                                    symbolName: "groups"
+                                    symbolColor: window.mutedTextColor
+                                    symbolSize: window.captionFontSize + 2
+                                }
+
                                 Label {
-                                text: "● ALUMNOS"
-                                color: window.mutedTextColor
-                                font.pixelSize: window.captionFontSize
+                                    text: "ALUMNOS"
+                                    color: window.mutedTextColor
+                                    font.pixelSize: window.captionFontSize
+                                }
                             }
                         }
                     }
@@ -236,10 +316,20 @@ Frame {
                                 font.weight: Font.DemiBold
                             }
 
-                            Label {
-                                text: "▤ SECCIONES"
-                                color: window.mutedTextColor
-                                font.pixelSize: window.captionFontSize
+                            RowLayout {
+                                spacing: 4
+
+                                MaterialSymbol {
+                                    symbolName: "view_list"
+                                    symbolColor: window.mutedTextColor
+                                    symbolSize: window.captionFontSize + 2
+                                }
+
+                                Label {
+                                    text: "SECCIONES"
+                                    color: window.mutedTextColor
+                                    font.pixelSize: window.captionFontSize
+                                }
                             }
                         }
                     }
@@ -259,17 +349,27 @@ Frame {
                                 Layout.fillWidth: true
                                 text: (
                                     window.selectedSchoolDetails.turnos || []
-                                ).join(" · ") || "No informado"
+                                ).map(root.normalizeSpanishText).join(" · ")
+                                    || "No informado"
                                 color: window.textColor
                                 font.pixelSize: window.bodyFontSize
                                 font.weight: Font.DemiBold
-                                elide: Text.ElideRight
                             }
 
-                            Label {
-                                text: "⏰ TURNOS"
-                                color: window.mutedTextColor
-                                font.pixelSize: window.captionFontSize
+                            RowLayout {
+                                spacing: 4
+
+                                MaterialSymbol {
+                                    symbolName: "schedule"
+                                    symbolColor: window.mutedTextColor
+                                    symbolSize: window.captionFontSize + 2
+                                }
+
+                                Label {
+                                    text: "TURNOS"
+                                    color: window.mutedTextColor
+                                    font.pixelSize: window.captionFontSize
+                                }
                             }
                         }
                     }
@@ -285,34 +385,57 @@ Frame {
                     Layout.fillWidth: true
                     spacing: 4
 
-                    Label {
-                        text: "→ DIRECCIÓN"
-                        color: window.mutedTextColor
-                        font.pixelSize: window.captionFontSize
-                        font.weight: Font.DemiBold
-                        font.letterSpacing: 0.6
+                    RowLayout {
+                        spacing: 4
+
+                        MaterialSymbol {
+                            symbolName: "location_on"
+                            symbolColor: window.mutedTextColor
+                            symbolSize: window.captionFontSize + 2
+                        }
+
+                        Label {
+                            text: "DIRECCIÓN"
+                            color: window.mutedTextColor
+                            font.pixelSize: window.captionFontSize
+                            font.weight: Font.DemiBold
+                            font.letterSpacing: 0.6
+                        }
                     }
 
                     Label {
                         objectName: "schoolDetailsAddress"
                         Layout.fillWidth: true
-                        text: window.selectedSchoolDetails.direccion || "No informada"
+                        text: root.normalizeSpanishText(
+                            window.selectedSchoolDetails.direccion
+                            || "No informada"
+                        )
                         color: window.textColor
                         wrapMode: Text.WordWrap
                     }
 
-                    Label {
-                        text: "◉ LOCALIDAD"
-                        color: window.mutedTextColor
-                        font.pixelSize: window.captionFontSize
-                        font.weight: Font.DemiBold
-                        font.letterSpacing: 0.6
+                    RowLayout {
+                        spacing: 4
+
+                        MaterialSymbol {
+                            symbolName: "place"
+                            symbolColor: window.mutedTextColor
+                            symbolSize: window.captionFontSize + 2
+                        }
+
+                        Label {
+                            text: "LOCALIDAD"
+                            color: window.mutedTextColor
+                            font.pixelSize: window.captionFontSize
+                            font.weight: Font.DemiBold
+                            font.letterSpacing: 0.6
+                        }
                     }
 
                     Label {
                         objectName: "schoolDetailsSettlement"
                         Layout.fillWidth: true
-                        text: root.schoolSettlementText()
+                        text: root.normalizeSpanishText(root.schoolSettlementText())
                         color: window.textColor
                         wrapMode: Text.WordWrap
                     }
@@ -328,23 +451,44 @@ Frame {
                     Layout.fillWidth: true
                     spacing: 6
 
-                    Label {
+                    RowLayout {
                         Layout.fillWidth: true
-                        text: "◎ OFERTA EDUCATIVA"
-                        color: window.textColor
-                        font.weight: Font.DemiBold
+                        spacing: 4
+
+                        MaterialSymbol {
+                            symbolName: "menu_book"
+                            symbolColor: window.textColor
+                            symbolSize: window.bodyFontSize + 2
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: "OFERTA EDUCATIVA"
+                            color: window.textColor
+                            font.weight: Font.DemiBold
+                        }
                     }
 
-                    Label {
-                        objectName: "schoolDetailsOfferCount"
-                        text: {
-                            var count = (
-                                window.selectedSchoolDetails.ofertaEducativa || []
-                            ).length
-                            return count + (count === 1 ? " oferta" : " ofertas")
+                    RowLayout {
+                        spacing: 4
+
+                        MaterialSymbol {
+                            symbolName: "menu_book"
+                            symbolColor: window.mutedTextColor
+                            symbolSize: window.smallFontSize + 2
                         }
-                        color: window.mutedTextColor
-                        font.pixelSize: window.smallFontSize
+
+                        Label {
+                            objectName: "schoolDetailsOfferCount"
+                            text: {
+                                var count = (
+                                    window.selectedSchoolDetails.ofertaEducativa || []
+                                ).length
+                                return count + (count === 1 ? " oferta" : " ofertas")
+                            }
+                            color: window.mutedTextColor
+                            font.pixelSize: window.smallFontSize
+                        }
                     }
                 }
 
@@ -377,36 +521,75 @@ Frame {
                                 Layout.fillWidth: true
                                 spacing: 2
 
-                                Label {
+                                RowLayout {
                                     Layout.fillWidth: true
-                                    text: root.schoolLevel(modelData.nivel)
-                                        + (modelData.turno
-                                            ? " · " + modelData.turno : "")
-                                    color: window.textColor
-                                    font.weight: Font.DemiBold
+                                    spacing: 4
+
+                                    MaterialSymbol {
+                                        symbolName: "school"
+                                        symbolColor: window.textColor
+                                        symbolSize: window.smallFontSize + 3
+                                    }
+
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: root.normalizeSpanishText(
+                                            root.schoolLevel(modelData.nivel)
+                                        )
+                                            + (modelData.turno
+                                                ? " · "
+                                                  + root.normalizeSpanishText(
+                                                      modelData.turno
+                                                  )
+                                                : "")
+                                        color: window.textColor
+                                        font.weight: Font.DemiBold
+                                    }
                                 }
 
-                                Label {
+                                RowLayout {
                                     Layout.fillWidth: true
-                                    text: root.schoolCount(modelData.alumnos)
-                                        + " alumnos · "
-                                        + root.schoolCount(modelData.secciones)
-                                        + " secciones"
-                                    color: window.mutedTextColor
-                                    font.pixelSize: window.smallFontSize
+                                    spacing: 4
+
+                                    MaterialSymbol {
+                                        symbolName: "groups"
+                                        symbolColor: window.mutedTextColor
+                                        symbolSize: window.smallFontSize + 2
+                                    }
+
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: root.schoolCount(modelData.alumnos)
+                                            + " alumnos · "
+                                            + root.schoolCount(modelData.secciones)
+                                            + " secciones"
+                                        color: window.mutedTextColor
+                                        font.pixelSize: window.smallFontSize
+                                    }
                                 }
                             }
                         }
                     }
                 }
 
-                Label {
+                RowLayout {
                     Layout.fillWidth: true
                     visible: (
                         window.selectedSchoolDetails.ofertaEducativa || []
                     ).length === 0
-                    text: "Oferta educativa no informada."
-                    color: window.mutedTextColor
+                    spacing: 4
+
+                    MaterialSymbol {
+                        symbolName: "info"
+                        symbolColor: window.mutedTextColor
+                        symbolSize: window.smallFontSize + 2
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: "Oferta educativa no informada."
+                        color: window.mutedTextColor
+                    }
                 }
             }
         }

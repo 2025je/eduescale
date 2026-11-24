@@ -10,9 +10,11 @@ import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import pe.eduescale.mobile.activity.SchoolComment
@@ -77,6 +79,30 @@ class SchoolDetailsRestorationTest {
         }
 
         compose.onNodeWithText("1.2 km en línea recta (no por carretera)").assertIsDisplayed()
+    }
+
+    @Test
+    fun liteSchoolCardDoesNotSuggestDownloadingRoads() {
+        compose.setContent {
+            MaterialTheme {
+                SchoolListCard(
+                    school = school(),
+                    distance = null,
+                    userLocationAvailable = true,
+                    roadsAvailable = false,
+                    calculating = false,
+                    routingError = false,
+                    supportsRoadRouting = false,
+                    onClick = {},
+                )
+            }
+        }
+
+        compose.onNodeWithText("Distancia en línea recta no disponible").assertIsDisplayed()
+        assertEquals(
+            0,
+            compose.onAllNodesWithText("Descarga las carreteras en Archivos").fetchSemanticsNodes().size,
+        )
     }
 
     @Test
