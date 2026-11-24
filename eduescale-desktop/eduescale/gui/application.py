@@ -251,19 +251,13 @@ def create_view_model(
             providers.Object(offline_database_update_service)
         )
     if export_history_store is not None:
-        container.export_history_store.override(
-            providers.Object(export_history_store)
-        )
+        container.export_history_store.override(providers.Object(export_history_store))
     if district_map_catalog is not None:
-        container.district_map_catalog.override(
-            providers.Object(district_map_catalog)
-        )
+        container.district_map_catalog.override(providers.Object(district_map_catalog))
     if preferences is not None:
         container.preferences.override(providers.Object(preferences))
     if saved_search_service is not None:
-        container.saved_search_service.override(
-            providers.Object(saved_search_service)
-        )
+        container.saved_search_service.override(providers.Object(saved_search_service))
     if school_search_service is not None:
         container.school_search_service.override(
             providers.Object(school_search_service)

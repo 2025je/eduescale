@@ -1,4 +1,3 @@
-
 import pytest
 
 from eduescale.gui.services.offline_database_update import OfflineDatabaseUpdateService

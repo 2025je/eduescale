@@ -1,6 +1,7 @@
 import json
 
 from eduescale.gui.adapters.resources import read_resource_bytes, resource_path
+from eduescale.gui.contracts.ports import ProvinceMapMetadata
 
 
 class DistrictMapCatalog:
@@ -55,7 +56,7 @@ class DistrictMapCatalog:
             }
             for feature in department_features
         }
-        self.map_province_metadata: dict[str, dict[str, str | int]] = {
+        self.map_province_metadata: dict[str, ProvinceMapMetadata] = {
             feature["properties"]["code"]: {
                 "name": feature["properties"]["name"],
                 "department": feature["properties"]["department"],

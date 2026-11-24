@@ -22,6 +22,4 @@ def test_effective_district_codes_follow_selected_hierarchy():
     assert "130112" not in department_districts
     assert province_districts
     assert all(code.startswith("1501") for code in province_districts)
-    assert catalog.effective_district_codes([], [], ["150101", "150101"]) == [
-        "150101"
-    ]
+    assert catalog.effective_district_codes([], [], ["150101", "150101"]) == ["150101"]

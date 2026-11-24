@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Literal, Protocol, runtime_checkable
+from typing import Literal, Protocol, TypedDict, runtime_checkable
 
 from PySide6.QtCore import SignalInstance
 
@@ -10,6 +10,13 @@ from eduescale.domain.schools import SchoolFilters
 
 ScrapePurpose = Literal["online_search", "database_update"]
 DataSource = Literal["online", "offline"]
+
+
+class ProvinceMapMetadata(TypedDict):
+    name: str
+    department: str
+    departmentCode: str
+    districtCount: int
 
 
 class OfflineDatabaseValidationPort(Protocol):
@@ -113,7 +120,7 @@ class DistrictMapCatalogPort(Protocol):
     district_codes: list[str]
     district_codes_by_province: dict[str, list[str]]
     map_department_metadata: dict[str, dict[str, str]]
-    map_province_metadata: dict[str, dict[str, str | int]]
+    map_province_metadata: dict[str, ProvinceMapMetadata]
 
     def effective_district_codes(
         self,

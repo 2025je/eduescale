@@ -59,11 +59,13 @@ def test_create_view_model_accepts_injected_services(
     finally:
         view_model.shutdown()
 
+
 def test_fake_scrape_runner_satisfies_split_runner_ports(fake_scrape_runner):
     scrape_runner = fake_scrape_runner
 
     assert isinstance(scrape_runner, ScrapeRunnerPort)
     assert isinstance(scrape_runner, OfflineDatabaseDownloadPort)
+
 
 def test_search_workflow_rejects_overlapping_operations_without_replacing_active_one(
     fake_scrape_runner,
@@ -98,6 +100,7 @@ def test_search_workflow_rejects_overlapping_operations_without_replacing_active
     assert local_database_search_runner.started_requests == []
     assert local_database_search_runner.cancel_requests == 0
     workflow.shutdown()
+
 
 def test_restores_export_folder_and_window_size(
     fake_location_service,
@@ -164,6 +167,7 @@ def test_restores_export_folder_and_window_size(
         assert application is not None
     finally:
         view_model.shutdown()
+
 
 def test_restores_legacy_theme_and_persists_theme_mode(
     fake_location_service,

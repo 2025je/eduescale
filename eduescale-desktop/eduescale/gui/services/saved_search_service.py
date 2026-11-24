@@ -79,8 +79,7 @@ class PortableSavedSearchService:
             LOGGER.error("Could not open saved-search file %s.", output_path)
             raise SavedSearchError(
                 "No se pudo guardar",
-                f"No se pudo crear el archivo de búsquedas: "
-                f"{save_file.errorString()}",
+                f"No se pudo crear el archivo de búsquedas: {save_file.errorString()}",
             )
         if save_file.write(payload) != len(payload) or not save_file.commit():
             error_message = save_file.errorString()
@@ -277,8 +276,8 @@ class PortableSavedSearchService:
                     f"El ubigeo departamental {codes['department_code']} no "
                     f"corresponde a la provincia {codes['province_code']}."
                 )
-            codes["department_code"] = (
-                codes["department_code"] or str(province["departmentCode"])
+            codes["department_code"] = codes["department_code"] or str(
+                province["departmentCode"]
             )
         if codes["department_code"] and (
             codes["department_code"]
@@ -315,7 +314,7 @@ class PortableSavedSearchService:
                 codes["province_code"] = properties["provinceCode"]
                 codes["department_code"] = properties["departmentCode"]
             elif requested["province"]:
-                candidates = [
+                province_candidates = [
                     (code, properties)
                     for code, properties in (
                         self._district_map_catalog.map_province_metadata.items()
@@ -323,36 +322,35 @@ class PortableSavedSearchService:
                     if matches(str(properties["name"]), requested["province"])
                     and matches(str(properties["department"]), requested["department"])
                 ]
-                if len(candidates) != 1:
+                if len(province_candidates) != 1:
                     raise ValueError(
                         f"No se pudo resolver de forma única la provincia "
                         f"«{requested['province']}»."
                     )
-                province_code, properties = candidates[0]
+                province_code, province_properties = province_candidates[0]
                 codes["province_code"] = province_code
-                codes["department_code"] = str(properties["departmentCode"])
+                codes["department_code"] = str(province_properties["departmentCode"])
             elif requested["department"]:
-                candidates = [
+                department_candidates = [
                     code
                     for code, properties in (
                         self._district_map_catalog.map_department_metadata.items()
                     )
                     if matches(properties["name"], requested["department"])
                 ]
-                if len(candidates) != 1:
+                if len(department_candidates) != 1:
                     raise ValueError(
                         f"No se pudo resolver de forma única el departamento "
                         f"«{requested['department']}»."
                     )
-                codes["department_code"] = candidates[0]
+                codes["department_code"] = department_candidates[0]
 
         department = self._district_map_catalog.map_department_metadata.get(
             codes["department_code"] or "",
             {},
         )
         province = self._district_map_catalog.map_province_metadata.get(
-            codes["province_code"] or "",
-            {},
+            codes["province_code"] or ""
         )
         district = self._district_map_catalog.district_metadata.get(
             codes["district_code"] or "",
@@ -360,7 +358,7 @@ class PortableSavedSearchService:
         )
         resolved = {
             "department": department.get("name", requested["department"]),
-            "province": province.get("name", requested["province"]),
+            "province": province["name"] if province else requested["province"],
             "district": district.get("district", requested["district"]),
         }
         for key, value in requested.items():

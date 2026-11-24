@@ -217,7 +217,10 @@ def test_indexed_search_accepts_accented_and_legacy_location_keys(tmp_path):
     engine = offline_database.create_database_engine(source_path)
     offline_database.metadata.create_all(engine)
     records = []
-    for name, old_key in (("Colegio sin tilde", "ancash"), ("Colegio con tilde", "áncash")):
+    for name, old_key in (
+        ("Colegio sin tilde", "ancash"),
+        ("Colegio con tilde", "áncash"),
+    ):
         keys = offline_database.record_search_keys(
             "ÁNCASH",
             "HUARAZ",

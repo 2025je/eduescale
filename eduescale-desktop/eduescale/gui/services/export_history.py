@@ -51,7 +51,7 @@ class QSettingsExportHistoryStore:
             LOGGER.error("Saved export history is not a list.")
             return [], "not_a_list"
 
-        entries = []
+        entries: list[ExportHistoryEntry] = []
         keys = {"timestamp", "format", "file", "status", "filters"}
         for entry in history[:MAX_EXPORT_HISTORY_ENTRIES]:
             if (
@@ -61,7 +61,15 @@ class QSettingsExportHistoryStore:
             ):
                 LOGGER.error("Ignoring malformed saved export history entry.")
                 return [], "invalid_entry"
-            entries.append(entry)
+            entries.append(
+                {
+                    "timestamp": entry["timestamp"],
+                    "format": entry["format"],
+                    "file": entry["file"],
+                    "status": entry["status"],
+                    "filters": entry["filters"],
+                }
+            )
         return entries, None
 
     def save(self, entries: list[ExportHistoryEntry]) -> bool:

@@ -414,9 +414,7 @@ def build_map_data(geopackage: Path) -> dict[str, object]:
     features.extend(derived)
     for feature in features:
         properties = feature["properties"]
-        properties["department"] = canonical_department_name(
-            properties["department"]
-        )
+        properties["department"] = canonical_department_name(properties["department"])
     features.sort(
         key=lambda feature: (
             feature["properties"]["boundary_quality"] == "official",

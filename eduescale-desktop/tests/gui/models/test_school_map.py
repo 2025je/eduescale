@@ -66,8 +66,6 @@ def test_groups_school_records_and_waits_for_valid_coordinates():
 def test_invalid_coordinates_do_not_create_map_locations():
     accumulator = SchoolMapAccumulator()
 
-    schools = accumulator.add_batch(
-        [_record(longitud=-77.2, latitud=91)]
-    )
+    schools = accumulator.add_batch([_record(longitud=-77.2, latitud=91)])
 
     assert schools == []

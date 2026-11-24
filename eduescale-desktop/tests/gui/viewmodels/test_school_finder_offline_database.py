@@ -33,14 +33,13 @@ def test_default_offline_database_uses_application_data_directory(
     finally:
         view_model.shutdown()
 
+
 def test_offline_source_filters_the_selected_local_database(
     view_model_components,
     tmp_path,
 ):
     view_model, scrape_runner, _errors = view_model_components
-    local_runner = (
-        view_model._school_search_workflow._local_database_search_runner
-    )
+    local_runner = view_model._school_search_workflow._local_database_search_runner
     database_path = tmp_path / "offline.sqlite3"
     with closing(sqlite3.connect(database_path)) as database:
         database.execute(
@@ -94,6 +93,7 @@ def test_offline_source_filters_the_selected_local_database(
     )
     assert view_model.progressMessage == "Base offline · 2 de 5 registros · 1 coinciden"
 
+
 def test_updates_offline_database_and_records_download_statistics(
     view_model_components,
     tmp_path,
@@ -135,6 +135,7 @@ def test_updates_offline_database_and_records_download_statistics(
     assert "1 colegio" in view_model.offlineDatabaseStats
     assert "2 resultados" in view_model.offlineDatabaseStats
 
+
 def test_cancelled_offline_database_update_preserves_existing_file(
     view_model_components,
     tmp_path,
@@ -151,6 +152,7 @@ def test_cancelled_offline_database_update_preserves_existing_file(
     assert database_path.read_bytes() == b"existing database"
     assert view_model._database_update_target is None
     assert "base anterior se conservó" in view_model.statusText
+
 
 def test_invalid_offline_update_does_not_replace_existing_database(
     view_model_components,
@@ -178,6 +180,7 @@ def test_invalid_offline_update_does_not_replace_existing_database(
     assert not view_model.scrapeRunning
     assert view_model._database_update_target is None
     assert "No se pudo actualizar la base offline" in view_model.statusText
+
 
 def test_offline_search_keeps_database_update_statistics(
     view_model_components, tmp_path

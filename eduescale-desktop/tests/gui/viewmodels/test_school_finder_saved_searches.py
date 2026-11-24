@@ -65,6 +65,7 @@ def test_imports_and_exports_portable_saved_searches(view_model_components, tmp_
     ]
     assert errors == []
 
+
 def test_rejects_invalid_portable_saved_search_file(view_model_components, tmp_path):
     view_model, _scrape_runner, errors = view_model_components
     path = tmp_path / "invalid.json"
@@ -83,13 +84,12 @@ def test_rejects_invalid_portable_saved_search_file(view_model_components, tmp_p
     assert errors
     assert errors[-1][0] == "No se pudieron importar las búsquedas"
 
+
 def test_rejects_ambiguous_saved_search_location(view_model_components):
     view_model, _scrape_runner, _errors = view_model_components
     locations_by_name = {}
     for location in view_model._district_metadata.values():
-        name = view_model._saved_search_service.normalized_label(
-            location["district"]
-        )
+        name = view_model._saved_search_service.normalized_label(location["district"])
         locations_by_name.setdefault(name, []).append(location["district"])
     ambiguous_names = [
         names[0] for names in locations_by_name.values() if len(names) > 1
@@ -100,6 +100,7 @@ def test_rejects_ambiguous_saved_search_location(view_model_components):
         view_model._saved_search_service.normalize_searches(
             [PortableSavedSearch(name="Ubicación ambigua", district=ambiguous_names[0])]
         )
+
 
 def test_rejects_inconsistent_saved_search_location_codes(view_model_components):
     view_model, _scrape_runner, _errors = view_model_components

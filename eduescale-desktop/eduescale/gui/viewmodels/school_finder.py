@@ -200,12 +200,8 @@ class SchoolFinderViewModel(QObject):
         self._location_service.failed.connect(self._locations_failed)
         self._school_search_workflow.started.connect(self._scrape_started)
         self._school_search_workflow.progressChanged.connect(self._scrape_progress)
-        self._school_search_workflow.schoolsReceived.connect(
-            self._receive_school_batch
-        )
-        self._school_search_workflow.searchCompleted.connect(
-            self._search_completed
-        )
+        self._school_search_workflow.schoolsReceived.connect(self._receive_school_batch)
+        self._school_search_workflow.searchCompleted.connect(self._search_completed)
         self._school_search_workflow.databaseUpdateCompleted.connect(
             self._database_update_completed
         )
@@ -832,9 +828,7 @@ class SchoolFinderViewModel(QObject):
 
         self._last_search_summary = request.summary
         self._output_path = request.output_path
-        if not self._preferences.save_last_export_directory(
-            self._output_path.parent
-        ):
+        if not self._preferences.save_last_export_directory(self._output_path.parent):
             LOGGER.error("No se pudo guardar la carpeta de exportación.")
         self._cancel_requested = False
         self._school_search_active = True

@@ -42,6 +42,8 @@ EXCEL_FIELDS = (
     "alumnos",
     "secciones",
 )
+
+
 class _DistrictSheetState(TypedDict):
     worksheet: Worksheet
     current_level: str | None
