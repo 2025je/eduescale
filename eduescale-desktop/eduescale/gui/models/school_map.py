@@ -34,7 +34,7 @@ def _number(value: object) -> int | float | None:
     return value if math.isfinite(value) else None
 
 
-def _sum(current: int | float | None, value: object) -> int | float | None:
+def _sum(current: float | None, value: object) -> int | float | None:
     number = _number(value)
     if number is None:
         return current
