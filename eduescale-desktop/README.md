@@ -349,8 +349,8 @@ Nox:
 uv run --group nox nox -s build
 ```
 
-La carpeta `dist` contendrá `eduescale-gui.exe`, la carpeta
-`eduescale-scraper` con el worker y sus dependencias, y
+La carpeta `dist` contendrá las carpetas `eduescale-gui` y `eduescale-scraper`
+con los ejecutables y sus dependencias, y
 `installer\EduEscale-Setup-<versión>.exe`. El instalador coloca ambos componentes
 juntos en `Program Files`, crea accesos directos en el menú Inicio y permite
 crear uno en el escritorio. La interfaz usa `QProcess` para iniciar el worker
@@ -363,8 +363,8 @@ como configuración de empaquetado. GitHub Actions ejecuta las pruebas, Ruff, my
 Windows y una comprobación del comando `list` del scraper, los recursos QML de Material,
 los certificados, MapLibre y Qt WebEngine incluidos en la GUI en cada push y pull request.
 También se puede ejecutar manualmente desde GitHub Actions; ese flujo permite
-descargar la interfaz, la carpeta del worker y el instalador como artefacto
-durante siete días.
+descargar la carpeta portable de la interfaz (con el worker dentro) y el
+instalador como artefacto durante siete días.
 
 Para comprobar lint, formato y tipos con Ruff y mypy:
 

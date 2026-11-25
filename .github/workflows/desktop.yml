@@ -39,27 +39,24 @@ jobs:
         shell: pwsh
         working-directory: eduescale-desktop
         run: |
-          $viewer = ".\.nox\build\Scripts\pyi-archive_viewer.exe"
-          $guiContents = (& $viewer -l ".\dist\eduescale-gui.exe") -join "`n"
-          if ($LASTEXITCODE -ne 0) { throw "Could not inspect the GUI executable." }
-          if ($guiContents -notmatch "QtQuick.*Controls.*Material.*qmldir") {
-            throw "Qt Quick Controls Material resources are missing from the GUI."
-          }
-          if ($guiContents -notmatch "certifi.*cacert\.pem") {
-            throw "The GUI certificate bundle is missing."
-          }
-          if ($guiContents -notmatch "Qt6WebEngineCore\.dll" -or
-              $guiContents -notmatch "QtWebEngineProcess\.exe") {
-            throw "Qt WebEngine components are missing from the GUI."
-          }
-          if ($guiContents -notmatch "resources\.rcc") {
-            throw "The EduEscale Qt resource bundle is missing from the GUI."
+          $guiFiles = @(
+            ".\dist\eduescale-gui\eduescale-gui.exe",
+            ".\dist\eduescale-gui\_internal\PySide6\qml\QtQuick\Controls\Material\qmldir",
+            ".\dist\eduescale-gui\_internal\certifi\cacert.pem",
+            ".\dist\eduescale-gui\_internal\PySide6\Qt6WebEngineCore.dll",
+            ".\dist\eduescale-gui\_internal\PySide6\QtWebEngineProcess.exe",
+            ".\dist\eduescale-gui\_internal\eduescale\gui\resources.rcc"
+          )
+          foreach ($file in $guiFiles) {
+            if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
+              throw "Missing packaged GUI file: $file"
+            }
           }
           $resourceCheck = @'
           from pathlib import Path
           from PySide6.QtCore import QFile, QResource
 
-          resource_path = Path("eduescale/gui/resources.rcc")
+          resource_path = Path("dist/eduescale-gui/_internal/eduescale/gui/resources.rcc")
           if not QResource.registerResource(str(resource_path.resolve())):
               raise SystemExit(f"Could not load {resource_path}")
           resources = (
@@ -68,7 +65,7 @@ jobs:
               ":/eduescale/gui/assets/maplibre/map.html",
               ":/eduescale/gui/assets/districts_map.json",
               ":/eduescale/gui/assets/districts_map_hierarchy.json",
-              ":/eduescale/gui/qml/DistrictMap.qml",
+              ":/eduescale/gui/qml/EduEscale/Gui/Maps/DistrictMap.qml",
               ":/eduescale/gui/qml/Main.qml",
           )
           missing = [resource for resource in resources if not QFile(resource).exists()]
@@ -79,19 +76,27 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             throw "Resources are missing from the EduEscale Qt bundle."
           }
+          $viewer = ".\.nox\build\Scripts\pyi-archive_viewer.exe"
           $scraperContents = (& $viewer -l ".\dist\eduescale-scraper\eduescale-scraper.exe") -join "`n"
           if ($LASTEXITCODE -ne 0) { throw "Could not inspect the scraper executable." }
           $scraperCertificate = Get-ChildItem ".\dist\eduescale-scraper" -Filter "cacert.pem" -Recurse
           if ($null -eq $scraperCertificate) {
             throw "The scraper certificate bundle is missing."
           }
+      - name: Prepare portable Windows application
+        if: github.event_name == 'workflow_dispatch'
+        shell: pwsh
+        working-directory: eduescale-desktop
+        run: |
+          Copy-Item ".\dist\eduescale-scraper" ".\dist\eduescale-gui\eduescale-scraper" -Recurse
+          & ".\dist\eduescale-gui\eduescale-scraper\eduescale-scraper.exe" list
+          if ($LASTEXITCODE -ne 0) { throw "The portable scraper could not start." }
       - name: Upload Windows application and installer
         if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
           name: eduescale-windows-${{ github.sha }}
           path: |
-            eduescale-desktop/dist/eduescale-gui.exe
-            eduescale-desktop/dist/eduescale-scraper/
+            eduescale-desktop/dist/eduescale-gui/
             eduescale-desktop/dist/installer/
           retention-days: 7
