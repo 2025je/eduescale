@@ -1,6 +1,6 @@
 import logging
 
-from PySide6.QtCore import QObject, Qt, QThread, QTimer, Signal, Slot
+from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot
 
 from eduescale.application.errors import LocationFetchError
 from eduescale.application.ports import LocationGateway
@@ -8,7 +8,7 @@ from eduescale.application.ports import LocationGateway
 LOGGER = logging.getLogger(__name__)
 
 
-class _LocationWorker(QObject):
+class _LocationWorker(QThread):
     loaded = Signal(str, str, object)
     failed = Signal(str, str, str)
 
@@ -17,13 +17,13 @@ class _LocationWorker(QObject):
         provider: LocationGateway,
         kind: str,
         parent_code: str,
+        parent: QObject | None = None,
     ):
-        super().__init__()
+        super().__init__(parent)
         self._provider = provider
         self._kind = kind
         self._parent_code = parent_code
 
-    @Slot()
     def run(self):
         try:
             locations = self._provider.fetch(self._kind, self._parent_code)
@@ -36,8 +36,6 @@ class _LocationWorker(QObject):
             self.failed.emit(self._kind, self._parent_code, str(error))
         else:
             self.loaded.emit(self._kind, self._parent_code, locations)
-        finally:
-            QTimer.singleShot(0, QThread.currentThread().quit)
 
 
 class LocationService(QObject):
@@ -51,7 +49,7 @@ class LocationService(QObject):
     ):
         super().__init__(parent)
         self._provider = provider
-        self._threads: dict[QThread, _LocationWorker] = {}
+        self._threads: set[_LocationWorker] = set()
         self._cache: dict[tuple[str, str], tuple[tuple[str, str], ...]] = {}
         self._in_flight: set[tuple[str, str]] = set()
 
@@ -65,10 +63,7 @@ class LocationService(QObject):
             return
 
         self._in_flight.add(key)
-        thread = QThread(self)
-        worker = _LocationWorker(self._provider, kind, parent_code)
-        worker.moveToThread(thread)
-        thread.started.connect(worker.run)
+        worker = _LocationWorker(self._provider, kind, parent_code, self)
         worker.loaded.connect(
             self._locations_loaded,
             Qt.ConnectionType.QueuedConnection,
@@ -77,11 +72,10 @@ class LocationService(QObject):
             self._locations_failed,
             Qt.ConnectionType.QueuedConnection,
         )
-        thread.finished.connect(worker.deleteLater)
-        thread.finished.connect(self._thread_finished)
-        thread.finished.connect(thread.deleteLater)
-        self._threads[thread] = worker
-        thread.start()
+        worker.finished.connect(self._thread_finished)
+        worker.finished.connect(worker.deleteLater)
+        self._threads.add(worker)
+        worker.start()
 
     @Slot(str, str, object)
     def _locations_loaded(self, kind, parent_code, locations):
@@ -111,10 +105,9 @@ class LocationService(QObject):
     @Slot()
     def _thread_finished(self):
         thread = self.sender()
-        if isinstance(thread, QThread):
-            self._threads.pop(thread, None)
+        if isinstance(thread, _LocationWorker):
+            self._threads.discard(thread)
 
     def shutdown(self):
         for thread in list(self._threads):
-            thread.quit()
             thread.wait()

@@ -1,3 +1,5 @@
+import gc
+from functools import partial
 from threading import Event
 
 import pytest
@@ -104,6 +106,23 @@ def test_failed_location_request_can_be_retried(application):
         assert provider.calls == 2
     finally:
         service.shutdown()
+
+
+def test_repeated_location_requests_and_shutdown(application):
+    class Provider:
+        def fetch(self, kind, parent_code):
+            return [("01", "Lima")]
+
+    for _ in range(40):
+        service = LocationService(Provider())
+        try:
+            loaded = wait_for_signal(service.loaded, partial(service.load, "regions"))
+            assert loaded == [("regions", "", [("01", "Lima")])]
+        finally:
+            service.shutdown()
+        del service
+        application.processEvents()
+        gc.collect()
 
 
 def test_escale_provider_translates_transport_errors(mocker):
