@@ -339,9 +339,10 @@ uv run --group nox nox
 Nox crea el entorno de pruebas con `uv`, instala el grupo `test` desde el
 `uv.lock` y ejecuta `pytest`. La suite incluye una prueba QML que verifica la
 navegación jerárquica del mapa y el diseño en 1280 × 720, 1366 × 768, 1600 × 900
-y 1920 × 1080. Los dobles y parches de prueba usan la fixture `mocker` de
-`pytest-mock`. El grupo `test` también incluye Hypothesis para pruebas basadas
-en propiedades y `pytest-cov` para medir la cobertura:
+y 1920 × 1080. Ejecuta [qml_smoke.py](tests/gui/qml/qml_smoke.py) en un
+subproceso para aislar Qt WebEngine. Los dobles y parches de prueba usan la
+fixture `mocker` de `pytest-mock`. El grupo `test` también incluye Hypothesis
+para pruebas basadas en propiedades y `pytest-cov` para medir la cobertura:
 
 ```powershell
 uv run --locked --group test pytest --cov=eduescale --cov-report=term-missing
