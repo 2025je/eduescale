@@ -1,3 +1,4 @@
+import os
 import sqlite3
 from contextlib import closing
 from pathlib import Path
@@ -10,7 +11,7 @@ from eduescale.gui.services.progress import ProgressMetrics
 
 
 def test_default_offline_database_uses_application_data_directory(
-    monkeypatch,
+    mocker,
     tmp_path,
     fake_location_service,
     fake_scrape_runner,
@@ -18,7 +19,7 @@ def test_default_offline_database_uses_application_data_directory(
     fake_local_database_search_runner,
 ):
     app_data_directory = tmp_path / "AppData" / "Local"
-    monkeypatch.setenv("LOCALAPPDATA", str(app_data_directory))
+    mocker.patch.dict(os.environ, {"LOCALAPPDATA": str(app_data_directory)})
     view_model = create_view_model(
         fake_location_service,
         fake_scrape_runner,
@@ -156,7 +157,7 @@ def test_cancelled_offline_database_update_preserves_existing_file(
 
 def test_invalid_offline_update_does_not_replace_existing_database(
     view_model_components,
-    monkeypatch,
+    mocker,
     tmp_path,
 ):
     view_model, scrape_runner, _errors = view_model_components
@@ -166,7 +167,7 @@ def test_invalid_offline_update_does_not_replace_existing_database(
     def reject_metadata(*_args, **_kwargs):
         raise TypeError("metadata inválida")
 
-    monkeypatch.setattr(
+    mocker.patch.object(
         view_model._offline_database_use_cases,
         "publish_download",
         reject_metadata,

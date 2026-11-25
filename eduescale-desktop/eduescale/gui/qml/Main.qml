@@ -1204,6 +1204,15 @@ ApplicationWindow {
         contentItem: ColumnLayout {
             spacing: 10
 
+            Label {
+                objectName: "eduEscaleVersionInfo"
+                Layout.fillWidth: true
+                text: "Versión del formato: " + viewModel.eduEscaleFormatVersion
+                      + "\nVersión de EduEscale Desktop: "
+                      + viewModel.eduEscaleApplicationVersion
+                wrapMode: Text.Wrap
+            }
+
             StyledCheckBox {
                 id: compressEduEscaleCheckBox
                 objectName: "compressEduEscaleCheckBox"

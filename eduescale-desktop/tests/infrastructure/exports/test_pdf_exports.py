@@ -1,11 +1,9 @@
-from unittest.mock import Mock
-
 from PySide6.QtCore import QRect
 
 from eduescale.infrastructure.exports.pdf import _PdfRenderer
 
 
-def test_pdf_row_order_increments_and_restarts_for_each_table():
+def test_pdf_row_order_increments_and_restarts_for_each_table(mocker):
     renderer = object.__new__(_PdfRenderer)
     renderer.page_rect = QRect(0, 0, 100, 100)
     renderer.content_bottom = 100
@@ -14,11 +12,11 @@ def test_pdf_row_order_increments_and_restarts_for_each_table():
     renderer.title_font = object()
     renderer.header_font = object()
     renderer.body_font = object()
-    renderer._row_height = Mock(return_value=10)
-    renderer._heading_height = Mock(return_value=10)
-    renderer._draw_table_headers = Mock()
-    renderer._draw_row = Mock()
-    renderer._next_page = Mock()
+    renderer._row_height = mocker.Mock(return_value=10)
+    renderer._heading_height = mocker.Mock(return_value=10)
+    renderer._draw_table_headers = mocker.Mock()
+    renderer._draw_row = mocker.Mock()
+    renderer._next_page = mocker.Mock()
 
     renderer.start_table("Loreto", "Maynas", "Iquitos", "Primaria", ["Colegio 1"])
     renderer.draw_row(["Colegio 1"])
@@ -33,7 +31,7 @@ def test_pdf_row_order_increments_and_restarts_for_each_table():
     ]
 
 
-def test_pdf_keeps_next_district_table_on_page_when_it_fits():
+def test_pdf_keeps_next_district_table_on_page_when_it_fits(mocker):
     renderer = object.__new__(_PdfRenderer)
     renderer.page_rect = QRect(0, 0, 100, 100)
     renderer.content_bottom = 100
@@ -42,10 +40,10 @@ def test_pdf_keeps_next_district_table_on_page_when_it_fits():
     renderer.title_font = object()
     renderer.header_font = object()
     renderer.body_font = object()
-    renderer._row_height = Mock(return_value=10)
-    renderer._heading_height = Mock(return_value=10)
-    renderer._draw_table_headers = Mock()
-    renderer._next_page = Mock()
+    renderer._row_height = mocker.Mock(return_value=10)
+    renderer._heading_height = mocker.Mock(return_value=10)
+    renderer._draw_table_headers = mocker.Mock()
+    renderer._next_page = mocker.Mock()
 
     renderer.start_table(
         "Loreto",
@@ -59,13 +57,13 @@ def test_pdf_keeps_next_district_table_on_page_when_it_fits():
     renderer._draw_table_headers.assert_called_once()
 
 
-def test_pdf_summary_includes_generation_time_and_dataset_counts():
+def test_pdf_summary_includes_generation_time_and_dataset_counts(mocker):
     renderer = object.__new__(_PdfRenderer)
     renderer.widths = [50, 50]
     renderer.y = 0
     renderer.summary_title_font = object()
     renderer.summary_font = object()
-    renderer._draw_row = Mock()
+    renderer._draw_row = mocker.Mock()
 
     renderer.draw_summary(
         "13/11/2026 11:38:33",

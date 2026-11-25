@@ -278,6 +278,12 @@ dashboard_header = child("dashboardHeader")
 excel_dialog = child("excelSaveDialog")
 pdf_dialog = child("pdfSaveDialog")
 eduescale_dialog = child("eduEscaleSaveDialog")
+version_info = child("eduEscaleVersionInfo")
+assert version_info.property("text") == (
+    f"Versión del formato: {view_model.property('eduEscaleFormatVersion')}\n"
+    f"Versión de EduEscale Desktop: "
+    f"{view_model.property('eduEscaleApplicationVersion')}"
+)
 download_button = child("scrapeButton")
 scrape_button_label = child("scrapeButtonLabel")
 history_button = child("exportHistoryButton")

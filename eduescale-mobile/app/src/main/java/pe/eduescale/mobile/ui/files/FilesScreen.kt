@@ -119,6 +119,11 @@ internal fun FilesScreen(
                         fontWeight = FontWeight.SemiBold,
                     )
                     HorizontalDivider(Modifier.padding(vertical = 4.dp))
+                    StatisticLine("Versión del formato", file.formatVersion.toString())
+                    StatisticLine(
+                        "Versión de EduEscale Desktop",
+                        file.applicationVersion ?: "No disponible (archivo anterior)",
+                    )
                     StatisticLine(
                         "Registros en el archivo (antes de agrupar)",
                         file.totalCount.toString(),

@@ -40,13 +40,13 @@ class _RetryTestHandler(BaseHTTPRequestHandler):
 
 
 class TestDirectRequestRetries:
-    def test_retries_temporary_http_errors_and_honors_retry_after(self, monkeypatch):
+    def test_retries_temporary_http_errors_and_honors_retry_after(self, mocker):
         _RetryTestHandler.attempts = 0
         _RetryTestHandler.user_agent = None
         server = ThreadingHTTPServer(("127.0.0.1", 0), _RetryTestHandler)
         server_thread = threading.Thread(target=server.serve_forever, daemon=True)
         server_thread.start()
-        monkeypatch.setattr(
+        mocker.patch.object(
             client,
             "API_URL",
             f"http://127.0.0.1:{server.server_port}/padron/rest",

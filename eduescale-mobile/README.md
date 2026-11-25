@@ -11,6 +11,8 @@ La interfaz usa la familia `sans-serif` de Android, basada en Roboto.
   permisos de almacenamiento.
 - Lee el JSON versionado del archivo `.eduescale` en streaming, valida los
   metadatos si están presentes y sigue admitiendo JSON anterior y ZIP.
+- Muestra la versión del formato y la versión de Desktop que generó el archivo;
+  en archivos anteriores sin metadatos indica que esta última no está disponible.
 - Importa archivos `.eduescale` protegidos con contraseña, verifica el cifrado
   autenticado y guarda la copia descifrada solo en el almacenamiento privado de
   la app para restaurar la sesión.
@@ -185,6 +187,14 @@ el Gradle Wrapper incluido:
 .\gradlew.bat :app:assembleCompleteDebug :app:assembleLiteDebug
 ```
 
+Las dependencias de prueba incluyen Turbine para `Flow` y Robolectric para
+pruebas locales. Room Testing está disponible para pruebas instrumentadas de
+la base de datos y sus migraciones; Turbine también puede usarse en ellas.
+Navigation Testing y Hilt Testing están disponibles para pruebas locales e
+instrumentadas. Las pruebas instrumentadas usan un runner con
+`HiltTestApplication`; en Robolectric se puede especificar con `@Config`.
+Consulta la [guía de pruebas de Hilt](https://developer.android.com/training/dependency-injection/hilt-testing).
+
 El proyecto ofrece dos variantes: **EduEscale Completa**, con Valhalla y rutas
 por carretera, conserva el identificador `pe.eduescale.mobile`; **EduEscale
 Lite** calcula distancias en línea recta y usa `pe.eduescale.mobile.lite`.
@@ -213,11 +223,11 @@ emulador y, desde esta carpeta, ejecuta:
 ```powershell
 adb install -r dist\EduEscale-completa-debug.apk
 adb install -r dist\EduEscale-completa-debug-androidTest.apk
-adb shell am instrument -w pe.eduescale.mobile.test/androidx.test.runner.AndroidJUnitRunner
+adb shell am instrument -w pe.eduescale.mobile.test/pe.eduescale.mobile.HiltTestRunner
 
 adb install -r dist\EduEscale-lite-debug.apk
 adb install -r dist\EduEscale-lite-debug-androidTest.apk
-adb shell am instrument -w pe.eduescale.mobile.lite.test/androidx.test.runner.AndroidJUnitRunner
+adb shell am instrument -w pe.eduescale.mobile.lite.test/pe.eduescale.mobile.HiltTestRunner
 ```
 
 El workflow móvil de GitHub Actions usa este mismo `docker-compose.yml` para ejecutar las pruebas y

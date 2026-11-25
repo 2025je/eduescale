@@ -4,9 +4,12 @@ import sqlite3
 import zipfile
 from contextlib import closing
 from datetime import datetime, timezone
-from importlib.metadata import version as package_version
 from pathlib import Path
 
+from eduescale.application.export_policy import (
+    EDUESCALE_FORMAT_VERSION,
+    eduescale_application_version,
+)
 from eduescale.infrastructure.exports.encryption import encrypt_file
 from eduescale.infrastructure.exports.files import create_temporary_export_path
 
@@ -58,14 +61,17 @@ def export_eduescale(
             with temporary_json_path.open(
                 "w", encoding="utf-8", newline="\n"
             ) as output_file:
-                output_file.write('{"formato":"eduescale","version":1,"metadatos":')
+                output_file.write(
+                    f'{{"formato":"eduescale","version":{EDUESCALE_FORMAT_VERSION},'
+                    '"metadatos":'
+                )
                 json.dump(
                     {
                         "generado_en": generated_at,
                         "cantidad_colegios": record_count,
                         "crs": "EPSG:4326",
                         "aplicacion": "EduEscale Desktop",
-                        "version_aplicacion": package_version("eduescale"),
+                        "version_aplicacion": eduescale_application_version(),
                     },
                     output_file,
                     ensure_ascii=False,

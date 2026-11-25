@@ -224,6 +224,8 @@ Los tres tipos siguen usando la extensión `.eduescale`: JSON plano, ZIP con
 admite ZIP antiguos y continúa leyendo JSON v1 sin metadatos. Puedes enviar el
 archivo como documento por WhatsApp; al tocarlo, Android ofrecerá abrirlo con
 EduEscale si la app está instalada.
+Las opciones de exportación muestran la versión del formato y la versión de
+Desktop que se incluirán en el archivo.
 
 `gestion` identifica colegios públicos o privados y `nivel` clasifica el servicio como primaria, secundaria o CETPRO.
 `codigo_local` identifica el local educativo.
@@ -337,7 +339,13 @@ uv run --group nox nox
 Nox crea el entorno de pruebas con `uv`, instala el grupo `test` desde el
 `uv.lock` y ejecuta `pytest`. La suite incluye una prueba QML que verifica la
 navegación jerárquica del mapa y el diseño en 1280 × 720, 1366 × 768, 1600 × 900
-y 1920 × 1080.
+y 1920 × 1080. Los dobles y parches de prueba usan la fixture `mocker` de
+`pytest-mock`. El grupo `test` también incluye Hypothesis para pruebas basadas
+en propiedades y `pytest-cov` para medir la cobertura:
+
+```powershell
+uv run --locked --group test pytest --cov=eduescale --cov-report=term-missing
+```
 
 ## Ejecutable para Windows
 

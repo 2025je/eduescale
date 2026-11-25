@@ -15,6 +15,14 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.14"
+          enable-cache: true
+          cache-dependency-glob: "eduescale-desktop/uv.lock"
+      - name: Generate current Desktop contract fixtures
+        run: uv run --locked python scripts/generate_format_contract_fixtures.py
+        working-directory: eduescale-desktop
       - uses: docker/setup-buildx-action@v3
       - name: Prepare empty Android signing files
         run: |
@@ -45,6 +53,14 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.14"
+          enable-cache: true
+          cache-dependency-glob: "eduescale-desktop/uv.lock"
+      - name: Generate current Desktop contract fixtures
+        run: uv run --locked python scripts/generate_format_contract_fixtures.py
+        working-directory: eduescale-desktop
       - uses: docker/setup-buildx-action@v3
       - name: Recreate Android signing files from GitHub secrets
         env:

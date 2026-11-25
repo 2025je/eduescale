@@ -9,7 +9,7 @@ from eduescale.gui import application as app_module
 
 @pytest.mark.parametrize("roots, expected_exit", [([object()], 0), ([], 1)])
 def test_application_logs_startup_and_exit_or_load_failure(
-    monkeypatch, caplog, roots, expected_exit
+    mocker, caplog, roots, expected_exit
 ):
     calls = []
     app = SimpleNamespace(
@@ -25,18 +25,19 @@ def test_application_logs_startup_and_exit_or_load_failure(
         rootObjects=lambda: roots,
     )
     view_model = SimpleNamespace(shutdown=lambda: calls.append("shutdown"))
-    monkeypatch.setattr(app_module, "configure_logging", lambda: Path("eduescale.log"))
-    monkeypatch.setattr(app_module, "qInstallMessageHandler", lambda handler: None)
-    monkeypatch.setattr(
+    mocker.patch.object(app_module, "configure_logging", lambda: Path("eduescale.log"))
+    mocker.patch.object(app_module, "qInstallMessageHandler", lambda handler: None)
+    mocker.patch.object(
         app_module, "QtWebEngineQuick", SimpleNamespace(initialize=lambda: None)
     )
-    monkeypatch.setattr(
+    mocker.patch.object(
         app_module, "QQuickStyle", SimpleNamespace(setStyle=lambda _: None)
     )
-    monkeypatch.setattr(app_module, "QGuiApplication", lambda _: app)
-    monkeypatch.setattr(app_module, "configure_application_font", lambda _: True)
-    monkeypatch.setattr(app_module, "configure_application_icon", lambda _: True)
-    monkeypatch.setattr(app_module, "QQmlApplicationEngine", lambda: engine)
+    mocker.patch.object(app_module, "QGuiApplication", lambda _: app)
+    mocker.patch.object(app_module, "configure_application_font", lambda _: True)
+    mocker.patch.object(app_module, "configure_material_symbols_font", lambda: True)
+    mocker.patch.object(app_module, "configure_application_icon", lambda _: True)
+    mocker.patch.object(app_module, "QQmlApplicationEngine", lambda: engine)
 
     with caplog.at_level(logging.INFO, logger="eduescale"):
         assert app_module.main(lambda: view_model) == expected_exit
@@ -50,10 +51,10 @@ def test_application_logs_startup_and_exit_or_load_failure(
         assert calls == ["shutdown"]
 
 
-def test_initialization_exception_is_logged_and_reraised(monkeypatch, caplog):
+def test_initialization_exception_is_logged_and_reraised(mocker, caplog):
     handlers = []
     previous_handler = lambda *_: None
-    monkeypatch.setattr(app_module, "configure_logging", lambda: Path("eduescale.log"))
+    mocker.patch.object(app_module, "configure_logging", lambda: Path("eduescale.log"))
 
     def install_handler(handler):
         handlers.append(handler)
@@ -62,8 +63,8 @@ def test_initialization_exception_is_logged_and_reraised(monkeypatch, caplog):
     def initialize():
         raise RuntimeError("initialization failed")
 
-    monkeypatch.setattr(app_module, "qInstallMessageHandler", install_handler)
-    monkeypatch.setattr(
+    mocker.patch.object(app_module, "qInstallMessageHandler", install_handler)
+    mocker.patch.object(
         app_module, "QtWebEngineQuick", SimpleNamespace(initialize=initialize)
     )
     with (

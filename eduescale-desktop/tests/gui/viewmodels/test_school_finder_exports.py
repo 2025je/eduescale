@@ -44,7 +44,7 @@ def test_default_output_url_avoids_overwriting_existing_exports(
 
 def test_export_buttons_generate_and_open_the_requested_file(
     view_model_components,
-    monkeypatch,
+    mocker,
     tmp_path,
 ):
     view_model, _scrape_runner, _errors = view_model_components
@@ -53,7 +53,7 @@ def test_export_buttons_generate_and_open_the_requested_file(
     eduescale_path = android_data_path(output_path)
     pdf_path = output_path.with_suffix(".pdf")
     opened_urls = []
-    monkeypatch.setattr(
+    mocker.patch.object(
         view_model_module,
         "QDesktopServices",
         SimpleNamespace(openUrl=lambda url: opened_urls.append(url) or True),

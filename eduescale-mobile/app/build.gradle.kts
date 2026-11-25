@@ -44,7 +44,7 @@ android {
         applicationId = "pe.eduescale.mobile"
         minSdk = 26
         targetSdk = 36
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunner = "pe.eduescale.mobile.HiltTestRunner"
         versionCode = 1
         versionName = "1.0"
     }
@@ -99,7 +99,20 @@ android {
     }
 }
 
+tasks.withType<Test>().configureEach {
+    for (directory in listOf(
+        rootProject.file("test-fixtures"),
+        rootProject.file("../test-fixtures"),
+    )) {
+        inputs.files(fileTree(directory) {
+            include("desktop-contract-*.base64", "desktop-encrypted-school-data.base64", "eduescale-v1-cases.json")
+        })
+    }
+}
+
 dependencies {
+    val hiltVersion = "2.57.2"
+    val navigationVersion = "2.9.5"
     val roomVersion = "2.7.2"
 
     implementation("androidx.activity:activity-ktx:1.10.1")
@@ -114,14 +127,14 @@ dependencies {
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
-    implementation("androidx.navigation:navigation-compose:2.9.5")
+    implementation("androidx.navigation:navigation-compose:$navigationVersion")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("com.google.code.gson:gson:2.13.2")
     implementation("androidx.room:room-runtime:$roomVersion")
     implementation("androidx.room:room-ktx:$roomVersion")
     kapt("androidx.room:room-compiler:$roomVersion")
-    implementation("com.google.dagger:hilt-android:2.57.2")
-    kapt("com.google.dagger:hilt-android-compiler:2.57.2")
+    implementation("com.google.dagger:hilt-android:$hiltVersion")
+    kapt("com.google.dagger:hilt-android-compiler:$hiltVersion")
     kapt("org.jetbrains.kotlin:kotlin-metadata-jvm:2.3.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.maplibre.gl:android-sdk-opengl:13.6.1")
@@ -130,10 +143,21 @@ dependencies {
     add("completeImplementation", "io.github.rallista:valhalla-models-config:0.6.0")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("androidx.navigation:navigation-testing:$navigationVersion")
+    testImplementation("app.cash.turbine:turbine:1.2.1")
+    testImplementation("com.google.dagger:hilt-android-testing:$hiltVersion")
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
+    testImplementation("org.robolectric:robolectric:4.16")
+    kaptTest("com.google.dagger:hilt-android-compiler:$hiltVersion")
+    androidTestImplementation("androidx.navigation:navigation-testing:$navigationVersion")
+    androidTestImplementation("androidx.room:room-testing:$roomVersion")
+    androidTestImplementation("app.cash.turbine:turbine:1.2.1")
+    androidTestImplementation("com.google.dagger:hilt-android-testing:$hiltVersion")
+    kaptAndroidTest("com.google.dagger:hilt-android-compiler:$hiltVersion")
     androidTestImplementation(platform("androidx.compose:compose-bom:2025.10.00"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

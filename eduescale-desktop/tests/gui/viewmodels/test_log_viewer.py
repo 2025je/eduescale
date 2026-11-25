@@ -38,7 +38,7 @@ def test_refreshes_selected_file_and_tracks_rotation(tmp_path):
     assert viewer.content == "after rotation\n"
 
 
-def test_read_error_is_visible_logged_once_and_recovers(tmp_path, monkeypatch, caplog):
+def test_read_error_is_visible_logged_once_and_recovers(tmp_path, mocker, caplog):
     log_path = tmp_path / "eduescale.log"
     log_path.write_text("available", encoding="utf-8")
     viewer = LogViewerViewModel(tmp_path)
@@ -49,13 +49,13 @@ def test_read_error_is_visible_logged_once_and_recovers(tmp_path, monkeypatch, c
             raise PermissionError("access denied")
         return original_open(path, *args, **kwargs)
 
-    with monkeypatch.context() as patch:
-        patch.setattr(type(log_path), "open", fail_open)
-        with caplog.at_level(logging.WARNING, logger="eduescale"):
-            viewer.refresh()
-            viewer.refresh()
-        assert "No se pudo leer el registro" in viewer.error
-        assert sum("Could not read log file" in r.message for r in caplog.records) == 1
+    patched_open = mocker.patch.object(type(log_path), "open", fail_open)
+    with caplog.at_level(logging.WARNING, logger="eduescale"):
+        viewer.refresh()
+        viewer.refresh()
+    assert "No se pudo leer el registro" in viewer.error
+    assert sum("Could not read log file" in r.message for r in caplog.records) == 1
+    mocker.stop(patched_open)
 
     viewer.refresh()
     assert viewer.content == "available"
@@ -115,7 +115,7 @@ def test_large_log_pages_preserve_utf8_and_follow_only_the_latest(tmp_path):
     assert viewer.content == "archivo nuevo\n"
 
 
-def test_large_log_reads_only_one_bounded_page(tmp_path, monkeypatch):
+def test_large_log_reads_only_one_bounded_page(tmp_path, mocker):
     log_path = tmp_path / "eduescale.log"
     log_path.write_bytes(b"x" * (5 * 1024 * 1024))
     original_open = type(log_path).open
@@ -145,7 +145,7 @@ def test_large_log_reads_only_one_bounded_page(tmp_path, monkeypatch):
         stream = original_open(path, *args, **kwargs)
         return CountingStream(stream) if path == log_path else stream
 
-    monkeypatch.setattr(type(log_path), "open", counting_open)
+    mocker.patch.object(type(log_path), "open", counting_open)
     viewer = LogViewerViewModel(tmp_path)
     viewer.refresh()
 

@@ -106,11 +106,11 @@ def test_failed_location_request_can_be_retried(application):
         service.shutdown()
 
 
-def test_escale_provider_translates_transport_errors(monkeypatch):
+def test_escale_provider_translates_transport_errors(mocker):
     def fail_request():
         raise location_provider.requests.ConnectionError("servicio no disponible")
 
-    monkeypatch.setattr(location_provider, "fetch_regions", fail_request)
+    mocker.patch.object(location_provider, "fetch_regions", fail_request)
 
     with pytest.raises(LocationFetchError, match="servicio no disponible"):
         location_provider.ESCALELocationProvider().fetch("regions", "")

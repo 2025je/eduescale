@@ -9,6 +9,8 @@ Repositorio con los proyectos de escritorio y móvil de EduEscale:
 
 La aplicación de escritorio mantiene su propio `pyproject.toml` y `uv.lock`.
 Para instalarla y ejecutarla, sigue las instrucciones de su documentación.
+El contrato compartido de los archivos `.eduescale` está en
+[formato v1](./format/README.md).
 
 ## Pre-commit
 

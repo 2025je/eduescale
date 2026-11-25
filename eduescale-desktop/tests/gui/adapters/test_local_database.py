@@ -132,7 +132,7 @@ def test_filters_local_records_by_location_management_and_level(tmp_path):
     assert names == ["Publica primaria", "Privada secundaria Lima"]
 
 
-def test_uses_indexed_sql_filters_for_new_offline_databases(monkeypatch, tmp_path):
+def test_uses_indexed_sql_filters_for_new_offline_databases(mocker, tmp_path):
     source_path = tmp_path / "indexed-escale.sqlite3"
     output_path = tmp_path / "filtered.sqlite3"
     engine = offline_database.create_database_engine(source_path)
@@ -186,7 +186,7 @@ def test_uses_indexed_sql_filters_for_new_offline_databases(monkeypatch, tmp_pat
     def reject_python_filter(*args):
         pytest.fail(f"Indexed database invoked the Python filter with {args!r}.")
 
-    monkeypatch.setattr(
+    mocker.patch(
         "eduescale.infrastructure.persistence.local_database._matches_filters",
         reject_python_filter,
     )

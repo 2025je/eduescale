@@ -11,6 +11,7 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
@@ -40,6 +41,8 @@ class SchoolDataReaderTest {
         )
 
         assertEquals(0, parsed.totalCount)
+        assertEquals(1, parsed.formatVersion)
+        assertNull(parsed.applicationVersion)
         assertEquals(emptyList<SchoolRecord>(), parsed.schools)
     }
 
@@ -60,12 +63,12 @@ class SchoolDataReaderTest {
             }
         """.trimIndent()
 
-        assertEquals(
-            1,
-            SchoolDataReader.read(
-                ByteArrayInputStream(validJson.toByteArray(StandardCharsets.UTF_8)),
-            ).totalCount,
+        val parsed = SchoolDataReader.read(
+            ByteArrayInputStream(validJson.toByteArray(StandardCharsets.UTF_8)),
         )
+        assertEquals(1, parsed.totalCount)
+        assertEquals(1, parsed.formatVersion)
+        assertEquals("0.1.0", parsed.applicationVersion)
 
         val invalidJson = validJson.replace("\"cantidad_colegios\": 1", "\"cantidad_colegios\": 2")
         assertThrows(IllegalArgumentException::class.java) {
@@ -86,6 +89,9 @@ class SchoolDataReaderTest {
                 "fixture password",
             )
             assertEquals("Fixture cruzado", parsed.schools.single().nombre)
+            assertEquals(1, parsed.formatVersion)
+            assertEquals(parsed.applicationVersion, storage.restore()?.applicationVersion)
+            assertEquals(parsed.formatVersion, storage.restore()?.formatVersion)
             assertEquals(
                 "Fixture cruzado",
                 storage.restore()?.schools?.single()?.nombre,

@@ -21,6 +21,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
+import pe.eduescale.mobile.data.SchoolFile
 import pe.eduescale.mobile.ui.OfflineMapAreaUi
 import pe.eduescale.mobile.routing.RoadRoutingState
 import pe.eduescale.mobile.ui.theme.EduEscaleTheme
@@ -29,6 +30,43 @@ import pe.eduescale.mobile.ui.theme.EduEscaleTheme
 class OfflineDeletionRestorationTest {
     @get:Rule
     val compose = createComposeRule()
+
+    @Test
+    fun fileScreenShowsFormatAndDesktopVersionsIncludingLegacyFiles() {
+        val file = mutableStateOf(
+            SchoolFile(0, 0, emptyList(), formatVersion = 1, applicationVersion = "1.2.3"),
+        )
+        compose.setContent {
+            MaterialTheme {
+                FilesScreen(
+                    roadState = RoadRoutingState(),
+                    onDownloadRoadData = {},
+                    onDeleteRoadData = {},
+                    file = file.value,
+                    fileName = "datos.eduescale",
+                    importing = false,
+                    error = null,
+                    onPickFile = {},
+                    onExportActivityBackup = {},
+                    onImportActivityBackup = {},
+                    offlineMapAreas = emptyList(),
+                    deviceAvailableBytes = 1000,
+                    storageError = null,
+                    offlineMapMessage = null,
+                    offlineMapMessageIsError = false,
+                    onToggleOfflineMapArea = { _, _ -> },
+                    onDeleteOfflineMapArea = {},
+                )
+            }
+        }
+
+        compose.onNodeWithText("Versión del formato").assertIsDisplayed()
+        compose.onNodeWithText("1").assertIsDisplayed()
+        compose.onNodeWithText("Versión de EduEscale Desktop").assertIsDisplayed()
+        compose.onNodeWithText("1.2.3").assertIsDisplayed()
+        compose.runOnIdle { file.value = file.value.copy(applicationVersion = null) }
+        compose.onNodeWithText("No disponible (archivo anterior)").assertIsDisplayed()
+    }
 
     @Test
     fun fileScreenTitlesRemainVisibleInBothThemes() {

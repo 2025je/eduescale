@@ -76,7 +76,10 @@ class SchoolFileImportViewModelTest {
     }
 
     private class FakeStore : SchoolFileImportStore {
-        val file = ImportedSchoolFile(SchoolFile(0, 0, emptyList()), "datos.eduescale")
+        val file = ImportedSchoolFile(
+            SchoolFile(0, 0, emptyList(), formatVersion = 1),
+            "datos.eduescale",
+        )
         var restoreCount = 0
         var failRestore = false
         var requirePassword = false

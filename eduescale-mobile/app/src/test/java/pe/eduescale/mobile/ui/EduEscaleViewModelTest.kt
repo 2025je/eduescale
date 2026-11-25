@@ -24,6 +24,7 @@ class EduEscaleViewModelTest {
             val file = SchoolFile(
                 totalCount = 2,
                 withoutCoordinates = 0,
+                formatVersion = 1,
                 schools = listOf(
                     school(1, "Institución Educativa San Martín"),
                     school(2, "Colegio Central"),
@@ -51,6 +52,7 @@ class EduEscaleViewModelTest {
         val file = SchoolFile(
             totalCount = 2,
             withoutCoordinates = 1,
+            formatVersion = 1,
             schools = listOf(locatedSchool),
             schoolsWithoutCoordinates = listOf(schoolWithoutCoordinates),
         )
@@ -94,7 +96,7 @@ class EduEscaleViewModelTest {
             val viewModel = EduEscaleViewModel(StandardTestDispatcher(testScheduler))
             val first = school(1, "Primero")
             val second = school(2, "Segundo")
-            viewModel.setSchoolFile(SchoolFile(2, 0, listOf(first, second)), "test")
+            viewModel.setSchoolFile(SchoolFile(2, 0, listOf(first, second), formatVersion = 1), "test")
             viewModel.selectSchool(first)
             viewModel.selectSchool(null)
             assertNull(viewModel.state.value.selectedSchool)
@@ -115,7 +117,7 @@ class EduEscaleViewModelTest {
         val viewModel = EduEscaleViewModel()
         val lima = school(1, "Lima").copy(provincia = "Lima", distrito = "Miraflores")
         val cusco = school(2, "Cusco").copy(departamento = "Cusco", provincia = "Cusco", distrito = "Wanchaq")
-        viewModel.setSchoolFile(SchoolFile(2, 0, listOf(lima, cusco)), "test")
+        viewModel.setSchoolFile(SchoolFile(2, 0, listOf(lima, cusco), formatVersion = 1), "test")
         viewModel.openFilters()
         viewModel.updateFilterDraft(SchoolFilters(departamento = "Cusco"))
 

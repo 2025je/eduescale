@@ -13,7 +13,11 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QDesktopServices, QGuiApplication
 
 from eduescale.application.errors import DataAccessError
-from eduescale.application.export_policy import android_data_path
+from eduescale.application.export_policy import (
+    EDUESCALE_FORMAT_VERSION,
+    android_data_path,
+    eduescale_application_version,
+)
 from eduescale.application.models import OfflineDatabaseLocationSummary
 from eduescale.application.ports import ExportType
 from eduescale.gui.contracts.ports import (
@@ -216,6 +220,14 @@ class SchoolFinderViewModel(QObject):
     @Property(QObject, constant=True)
     def logViewer(self) -> QObject:
         return self._log_viewer
+
+    @Property(int, constant=True)
+    def eduEscaleFormatVersion(self) -> int:
+        return EDUESCALE_FORMAT_VERSION
+
+    @Property(str, constant=True)
+    def eduEscaleApplicationVersion(self) -> str:
+        return eduescale_application_version()
 
     @Property(list, notify=regionsChanged)
     def regions(self):

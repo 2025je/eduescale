@@ -124,6 +124,7 @@ object EduEscaleEncryption {
         private val encryptedPayload: InputStream,
     ) : FilterInputStream(input) {
         private var authenticated = false
+        private var closed = false
 
         override fun read(): Int {
             val value = try {
@@ -146,6 +147,8 @@ object EduEscaleEncryption {
         }
 
         override fun close() {
+            if (closed) return
+            closed = true
             try {
                 val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
                 while (true) {

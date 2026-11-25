@@ -66,11 +66,11 @@ def test_configures_a_rotating_file_handler(tmp_path):
         logger.setLevel(previous_level)
 
 
-def test_log_rotation_preserves_json_entries(tmp_path, monkeypatch):
+def test_log_rotation_preserves_json_entries(tmp_path, mocker):
     logger = logging.getLogger("eduescale")
     previous_handlers = tuple(logger.handlers)
     previous_level = logger.level
-    monkeypatch.setattr(logging_config, "MAX_LOG_BYTES", 200)
+    mocker.patch.object(logging_config, "MAX_LOG_BYTES", 200)
 
     try:
         log_path = configure_logging(tmp_path)
