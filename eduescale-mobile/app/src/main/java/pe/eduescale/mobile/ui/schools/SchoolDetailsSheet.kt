@@ -20,6 +20,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.EventNote
+import androidx.compose.material.icons.automirrored.filled.NoteAdd
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.Close
@@ -36,8 +38,6 @@ import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.DoNotDisturb
 import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.NoteAdd
-import androidx.compose.material.icons.filled.EventNote
 import androidx.compose.material.icons.filled.EventAvailable
 import androidx.compose.material.icons.filled.HistoryEdu
 import androidx.compose.material.icons.filled.Report
@@ -639,7 +639,7 @@ private fun VisitStatusSection(
                             modifier = Modifier.fillMaxWidth(),
                         ) {
                             Icon(
-                                Icons.Default.NoteAdd,
+                                Icons.AutoMirrored.Filled.NoteAdd,
                                 contentDescription = "Observaciones",
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier
@@ -658,7 +658,7 @@ private fun VisitStatusSection(
                         modifier = Modifier.align(Alignment.End),
                     ) {
                         Icon(
-                            Icons.Default.EventNote,
+                            Icons.AutoMirrored.Filled.EventNote,
                             contentDescription = null,
                             modifier = Modifier.size(18.dp),
                         )
@@ -805,7 +805,7 @@ private fun VisitStatusSection(
                         modifier = Modifier.align(Alignment.End),
                     ) {
                         Icon(
-                            Icons.Default.EventNote,
+                            Icons.AutoMirrored.Filled.EventNote,
                             contentDescription = null,
                             modifier = Modifier.size(18.dp),
                         )
@@ -856,7 +856,7 @@ private fun VisitStatusSection(
                             modifier = Modifier.weight(1f),
                         ) {
                             Icon(
-                                Icons.Default.EventNote,
+                                Icons.AutoMirrored.Filled.EventNote,
                                 contentDescription = null,
                                 modifier = Modifier.size(18.dp),
                             )
