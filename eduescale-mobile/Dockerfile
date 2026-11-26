@@ -43,15 +43,21 @@ RUN --mount=type=cache,target=/root/.gradle \
         echo "Se requieren tanto release.jks como keystore.properties para firmar." >&2; \
         exit 1; \
     fi \
-    && ./gradlew --no-daemon --console=plain \
+    && gradle_build() { \
+        ./gradlew --no-daemon --console=plain --max-workers=2 \
+            "-Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8" "$@"; \
+    } \
+    && gradle_build \
         :app:testCompleteDebugUnitTest \
         :app:testLiteDebugUnitTest \
         :app:assembleCompleteDebug \
         :app:assembleCompleteDebugAndroidTest \
         :app:assembleLiteDebug \
         :app:assembleLiteDebugAndroidTest \
+    && gradle_build \
         :app:assembleCompleteRelease \
         :app:bundleCompleteRelease \
+    && gradle_build \
         :app:assembleLiteRelease \
         :app:bundleLiteRelease
 

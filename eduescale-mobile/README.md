@@ -214,8 +214,10 @@ Docker genera los APK debug y de pruebas instrumentadas de ambas variantes:
 de Valhalla ni la descarga de carreteras; las distancias se calculan y etiquetan
 en línea recta. La imagen instala JDK 21, Android SDK Platform 36 y Build Tools
 36.0.0, ejecuta las pruebas unitarias de ambas variantes y compila las pruebas
-instrumentadas. Se requiere Docker BuildKit y conexión a Internet durante la
-primera compilación.
+instrumentadas. Para controlar el uso de memoria, Docker ejecuta las tareas
+debug y cada release por separado, con hasta dos workers y 4 GiB de heap para
+Gradle; además se necesita memoria para Kotlin y otros procesos. Se requiere
+Docker BuildKit y conexión a Internet durante la primera compilación.
 
 Para ejecutar las pruebas instrumentadas, conecta un dispositivo o inicia un
 emulador y, desde esta carpeta, ejecuta:
