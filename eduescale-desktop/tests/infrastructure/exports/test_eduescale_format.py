@@ -82,6 +82,35 @@ def test_exports_json_with_validated_metadata(tmp_path):
     _assert_metadata(json.loads(output_path.read_text(encoding="utf-8")))
 
 
+def test_exports_new_levels_and_management_in_version_two(tmp_path):
+    database_path = tmp_path / "schools.sqlite3"
+    output_path = tmp_path / "schools.eduescale"
+    _database(database_path)
+    with sqlite3.connect(database_path) as database:
+        database.execute(
+            "UPDATE records SET payload = ?",
+            (
+                json.dumps(
+                    {
+                        "nombre": "Inicial",
+                        "nivel": "inicial",
+                        "gestion": "publica",
+                        "gestion_dependencia": "A4",
+                    }
+                ),
+            ),
+        )
+    export_eduescale(database_path, output_path)
+    document = json.loads(output_path.read_text(encoding="utf-8"))
+    schema = json.loads(
+        (SCHEMA_PATH.parent / "eduescale-v2.schema.json").read_text(encoding="utf-8")
+    )
+    Draft202012Validator.check_schema(schema)
+    Draft202012Validator(schema, format_checker=FormatChecker()).validate(document)
+    assert document["version"] == 2
+    assert document["colegios"][0]["gestion_dependencia"] == "A4"
+
+
 def test_shared_format_cases_match_schema():
     schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
     validator = Draft202012Validator(schema, format_checker=FormatChecker())
@@ -129,6 +158,15 @@ def test_generated_android_fixtures_match_contract(tmp_path):
         document = json.loads(contents)
         validator.validate(document)
         assert document["metadatos"]["cantidad_colegios"] == len(document["colegios"])
+
+    document = json.loads(
+        base64.b64decode((tmp_path / "desktop-contract-v2.base64").read_bytes())
+    )
+    schema_v2 = json.loads(
+        (SCHEMA_PATH.parent / "eduescale-v2.schema.json").read_text(encoding="utf-8")
+    )
+    Draft202012Validator(schema_v2, format_checker=FormatChecker()).validate(document)
+    assert document["colegios"][0]["gestion_dependencia"] == "A4"
 
 
 def test_exports_optional_compressed_zip(tmp_path):

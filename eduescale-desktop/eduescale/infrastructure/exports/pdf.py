@@ -112,8 +112,8 @@ class _PdfRenderer:
             widths=full_width,
         )
         levels = " | ".join(
-            f"{label}: {_format_count(level_counts.get(level, 0))}"
-            for level, label in EXCEL_LEVEL_LABELS.items()
+            f"{EXCEL_LEVEL_LABELS[level]}: {_format_count(level_counts.get(level, 0))}"
+            for level in ("primaria", "secundaria", "cetpro")
         )
         self._draw_row(
             (f"Colegios por nivel: {levels}",),
@@ -122,6 +122,17 @@ class _PdfRenderer:
             CELL_FLAGS,
             widths=full_width,
         )
+        for level, label in EXCEL_LEVEL_LABELS.items():
+            if level not in {"primaria", "secundaria", "cetpro"} and level_counts.get(
+                level, 0
+            ):
+                self._draw_row(
+                    (f"{label}: {_format_count(level_counts[level])}",),
+                    self.summary_font,
+                    QColor("#F1F5F8"),
+                    CELL_FLAGS,
+                    widths=full_width,
+                )
         self.y += 8
 
     def start_table(self, region, province, district, level, first_row):
@@ -366,10 +377,16 @@ def export_pdf(database_path: Path, output_path: Path) -> None:
                          province COLLATE NOCASE,
                          district COLLATE NOCASE,
                          CASE json_extract(payload, '$.nivel')
-                             WHEN 'primaria' THEN 0
-                             WHEN 'secundaria' THEN 1
-                             WHEN 'cetpro' THEN 2
-                             ELSE 3
+                             WHEN 'inicial' THEN 0
+                             WHEN 'primaria' THEN 1
+                             WHEN 'secundaria' THEN 2
+                             WHEN 'basica_alternativa' THEN 3
+                             WHEN 'educacion_especial' THEN 4
+                             WHEN 'superior_pedagogica' THEN 5
+                             WHEN 'superior_artistica' THEN 6
+                             WHEN 'superior_tecnologica' THEN 7
+                             WHEN 'cetpro' THEN 8
+                             ELSE 9
                          END,
                          rowid
                 """

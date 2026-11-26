@@ -34,6 +34,7 @@ from eduescale.gui.services.export_history import QSettingsExportHistoryStore
 from eduescale.gui.services.export_request_service import ExportRequestService
 from eduescale.gui.services.offline_database_update import OfflineDatabaseUpdateService
 from eduescale.gui.services.preferences import QSettingsDesktopPreferences
+from eduescale.gui.services.progress import ProgressMetrics
 from eduescale.gui.services.saved_search_service import PortableSavedSearchService
 from eduescale.gui.services.school_search_service import SchoolSearchRequestService
 from eduescale.gui.services.school_search_workflow import SchoolSearchWorkflow
@@ -73,13 +74,14 @@ class FakeScrapeRunner(QObject):
     def __init__(self):
         super().__init__()
         self.started_requests = []
+        self.cancel_calls = 0
 
     def start(self, output_path, filter_sets, *, purpose):
         self.started_requests.append((output_path, filter_sets, purpose))
         self.started.emit()
 
     def cancel(self):
-        pass
+        self.cancel_calls += 1
 
     def complete_database_download(self):
         return None
@@ -866,9 +868,16 @@ for width, height in ((560, 600), (1280, 720), (1366, 768), (1600, 900), (1920, 
             map_level_label,
             map_advance_button,
             child("publicManagement"),
+            child("publicConventionManagement"),
             child("privateManagement"),
+            child("initialLevel"),
             child("primaryLevel"),
             child("secondaryLevel"),
+            child("alternativeLevel"),
+            child("specialLevel"),
+            child("pedagogicalLevel"),
+            child("artisticLevel"),
+            child("technologicalLevel"),
             child("cetproLevel"),
             child("addFilterSetButton"),
             clear_all_filters_button,
@@ -903,7 +912,13 @@ wait_for_map_count(district_map, expected_district_count)
 select_map_codes(district_webview, district_map, ("150101", "130112"))
 assert qml_value(district_map, "selectedCodes") == ["150101", "130112"]
 child("publicManagement").setProperty("checked", True)
-assert window.findChild(QObject, "initialLevel") is None
+assert child("initialLevel")
+assert child("publicConventionManagement")
+assert child("alternativeLevel")
+assert child("specialLevel")
+assert child("pedagogicalLevel")
+assert child("artisticLevel")
+assert child("technologicalLevel")
 child("primaryLevel").setProperty("checked", True)
 child("cetproLevel").setProperty("checked", True)
 assert add_filter_button_label.property("color").name() == "#ffffff"
@@ -1309,6 +1324,36 @@ assert data_source_combo.property("displayText") == "Base offline", (
 assert offline_database_controls.property("visible")
 assert child("selectOfflineDatabaseButton").property("visible")
 assert child("updateOfflineDatabaseButton").property("visible")
+update_path = Path(sys.argv[2]).parent / "update-test.sqlite3"
+assert view_model.updateOfflineDatabase(QUrl.fromLocalFile(str(update_path)).toString())
+application.processEvents()
+assert progress_indicator.property("visible")
+assert progress_indicator.property("indeterminate")
+assert status_label.property("visible")
+assert "Descargando la base" in status_label.property("text")
+assert cancel_button.property("visible")
+assert (
+    cancel_button.mapToItem(
+        window_content, QPointF(0, cancel_button.property("height"))
+    ).y()
+    <= window.height() + 1
+)
+scrape_runner.progressChanged.emit(
+    ProgressMetrics(received=30, total=100, unique=28, pages=2)
+)
+application.processEvents()
+assert not progress_indicator.property("indeterminate")
+assert progress_indicator.property("value") == 30
+assert progress_indicator.property("to") == 100
+assert "30 de 100" in status_label.property("text")
+cancel_button.click()
+application.processEvents()
+assert scrape_runner.cancel_calls == 1
+assert not cancel_button.property("enabled")
+scrape_runner.cancelled.emit()
+application.processEvents()
+assert not progress_indicator.property("visible")
+assert not cancel_button.property("visible")
 offline_controls_top = offline_database_controls.mapToItem(
     source_bar,
     QPointF(0, 0),

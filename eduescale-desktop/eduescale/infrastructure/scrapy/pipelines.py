@@ -140,7 +140,7 @@ class ExcelPipeline:
                 spool.execute(
                     insert(database_metadata),
                     [
-                        {"key": "schema_version", "value": "3"},
+                        {"key": "schema_version", "value": "4"},
                         {
                             "key": "download_duration_seconds",
                             "value": str(

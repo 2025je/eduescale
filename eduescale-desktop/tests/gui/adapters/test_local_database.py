@@ -43,6 +43,61 @@ def _create_database(path, records):
         database.commit()
 
 
+def test_legacy_database_refuses_new_level_and_management_filters(tmp_path):
+    source = tmp_path / "old.sqlite3"
+    _create_database(source, [("Lima", "Lima", "Lima", {"nivel": "primaria"})])
+    for filters in (
+        LocalSearchFilter(level=("inicial",)),
+        LocalSearchFilter(management=("publica_convenio",)),
+    ):
+        with pytest.raises(ValueError, match="Descarga una base actualizada"):
+            filter_local_database(
+                source,
+                tmp_path / "result.sqlite3",
+                [filters],
+                cancelled=lambda: False,
+                progress=lambda *_: None,
+            )
+
+
+def test_new_database_filters_management_and_level_together(tmp_path):
+    source = tmp_path / "new.sqlite3"
+    engine = offline_database.create_database_engine(source)
+    offline_database.metadata.create_all(engine)
+    with engine.begin() as connection:
+        connection.execute(
+            insert(offline_database.database_metadata),
+            [
+                {"key": "schema_version", "value": "4"},
+            ],
+        )
+        for code, level in (("A1", "primaria"), ("A4", "inicial")):
+            item = {
+                "nombre": code,
+                "gestion": "publica",
+                "nivel": level,
+                "gestion_dependencia": code,
+            }
+            connection.execute(
+                insert(offline_database.records).values(
+                    region="Lima",
+                    province="Lima",
+                    district="Lima",
+                    payload=json.dumps(item),
+                    **offline_database.record_search_keys("Lima", "Lima", "Lima", item),
+                )
+            )
+    engine.dispose()
+    _, matches = filter_local_database(
+        source,
+        tmp_path / "result.sqlite3",
+        [LocalSearchFilter(management=("publica_convenio",), level=("inicial",))],
+        cancelled=lambda: False,
+        progress=lambda *_: None,
+    )
+    assert matches == 1
+
+
 def test_filters_local_records_by_location_management_and_level(tmp_path):
     source_path = tmp_path / "escale base.sqlite3"
     output_path = tmp_path / "filtered.sqlite3"

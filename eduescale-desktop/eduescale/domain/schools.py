@@ -4,7 +4,20 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, field_validator
 
 SchoolManagement = Literal["publica", "privada"]
-SchoolLevel = Literal["primaria", "secundaria", "cetpro"]
+SchoolManagementFilter = Literal[
+    "publica", "publica_directa", "publica_convenio", "privada"
+]
+SchoolLevel = Literal[
+    "inicial",
+    "primaria",
+    "secundaria",
+    "basica_alternativa",
+    "educacion_especial",
+    "superior_pedagogica",
+    "superior_artistica",
+    "superior_tecnologica",
+    "cetpro",
+]
 
 
 class SchoolRecord(BaseModel):
@@ -23,6 +36,7 @@ class SchoolRecord(BaseModel):
     provincia: str = "Provincia no identificada"
     region: str = "Departamento no identificado"
     gestion: SchoolManagement | None = None
+    gestion_dependencia: str | None = None
     nivel: SchoolLevel
     codigo_local: str = ""
 
@@ -40,7 +54,7 @@ class SchoolFilters(BaseModel):
     region_code: str = ""
     province_code: str = ""
     district_code: str = ""
-    management: tuple[SchoolManagement, ...] = ()
+    management: tuple[SchoolManagementFilter, ...] = ()
     level: tuple[SchoolLevel, ...] = ()
 
     @field_validator("management", "level", mode="before")

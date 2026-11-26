@@ -18,6 +18,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.engine import Connection
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.sql.elements import ColumnElement
 
 from eduescale.application.errors import DataAccessError, SearchCancelled
 from eduescale.domain.location_names import canonical_department_name
@@ -88,9 +89,11 @@ def validate_local_database(database_path: Path) -> None:
                         )
                     }
                     schema_version = stored_values.get("schema_version")
-                    if schema_version in {"2", "3"} and not SEARCH_KEY_COLUMNS.issubset(
-                        columns
-                    ):
+                    if schema_version in {
+                        "2",
+                        "3",
+                        "4",
+                    } and not SEARCH_KEY_COLUMNS.issubset(columns):
                         raise ValueError(
                             "La versión de esquema de la base local no coincide "
                             "con sus columnas."
@@ -186,7 +189,19 @@ def write_local_database_metadata(
         schema_columns = {
             column["name"] for column in inspect(engine).get_columns("records")
         }
-        schema_version = "3" if SEARCH_KEY_COLUMNS.issubset(schema_columns) else "1"
+        with engine.connect() as connection:
+            existing_version = connection.execute(
+                select(database_metadata.c.value).where(
+                    database_metadata.c.key == "schema_version"
+                )
+            ).scalar_one_or_none()
+        schema_version = (
+            "4"
+            if existing_version == "4"
+            else "3"
+            if SEARCH_KEY_COLUMNS.issubset(schema_columns)
+            else "1"
+        )
         with engine.begin() as connection:
             for key, value in (
                 ("source", "ESCALE"),
@@ -223,6 +238,18 @@ def filter_local_database(
     if source_path.resolve() == output_path.resolve():
         raise ValueError("La base de origen y el resultado local deben ser distintos.")
     validate_local_database(source_path)
+    if (
+        any(
+            {"publica_directa", "publica_convenio"}.intersection(search.management)
+            or set(search.level).difference({"primaria", "secundaria"})
+            for search in filters
+        )
+        and read_local_database_metadata(source_path).get("schema_version") != "4"
+    ):
+        raise ValueError(
+            "La base local no contiene todos los tipos de gestión y nivel. "
+            "Descarga una base actualizada de ESCALE."
+        )
     source_engine = create_database_engine(source_path, read_only=True)
     output_engine = create_database_engine(output_path)
     total_records = 0
@@ -238,6 +265,28 @@ def filter_local_database(
         with source_engine.connect() as source, output_engine.begin() as output:
             if cancelled():
                 raise SearchCancelled
+            if any(
+                {"publica_directa", "publica_convenio"}.intersection(search.management)
+                for search in filters
+            ):
+                missing_management = source.execute(
+                    select(func.count())
+                    .select_from(source_records)
+                    .where(
+                        source_records.c.management_key == "publica",
+                        func.coalesce(
+                            func.json_extract(
+                                source_records.c.payload, "$.gestion_dependencia"
+                            ),
+                            "",
+                        ).not_in(("A1", "A2", "A3", "A4")),
+                    )
+                ).scalar_one()
+                if missing_management:
+                    raise ValueError(
+                        "La base local contiene colegios públicos sin tipo de gestión; "
+                        "no se puede aplicar este filtro con seguridad."
+                    )
             total_records = int(
                 source.execute(
                     select(func.count()).select_from(source_records)
@@ -423,7 +472,7 @@ def _build_filter_clause(
         )
 
     for search in filters:
-        conditions = []
+        conditions: list[ColumnElement[bool]] = []
         if search.region:
             conditions.append(
                 records_table.c.region_key.in_(variants("region_key", search.region))
@@ -441,15 +490,34 @@ def _build_filter_clause(
                 )
             )
         if search.management:
-            conditions.append(
-                records_table.c.management_key.in_(
-                    [
-                        key
-                        for value in search.management
-                        for key in variants("management_key", value)
-                    ]
+            management_conditions: list[ColumnElement[bool]] = []
+            general = [
+                value
+                for value in search.management
+                if value not in {"publica_directa", "publica_convenio"}
+            ]
+            if general:
+                management_conditions.append(
+                    records_table.c.management_key.in_(
+                        [
+                            key
+                            for value in general
+                            for key in variants("management_key", value)
+                        ]
+                    )
                 )
-            )
+            detail_codes: list[str] = []
+            if "publica_directa" in search.management:
+                detail_codes.extend(("A1", "A2", "A3"))
+            if "publica_convenio" in search.management:
+                detail_codes.append("A4")
+            if detail_codes:
+                management_conditions.append(
+                    func.json_extract(
+                        records_table.c.payload, "$.gestion_dependencia"
+                    ).in_(detail_codes)
+                )
+            conditions.append(or_(*management_conditions))
         if search.level:
             conditions.append(
                 records_table.c.level_key.in_(

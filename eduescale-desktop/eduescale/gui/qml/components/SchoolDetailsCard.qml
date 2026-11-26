@@ -37,10 +37,22 @@ Frame {
     }
 
     function schoolLevel(value) {
+        if (value === "inicial")
+            return "Inicial"
         if (value === "primaria")
             return "Primaria"
         if (value === "secundaria")
             return "Secundaria"
+        if (value === "basica_alternativa")
+            return "Básica Alternativa"
+        if (value === "educacion_especial")
+            return "Educación Especial"
+        if (value === "superior_pedagogica")
+            return "Superior Pedagógica"
+        if (value === "superior_artistica")
+            return "Superior Artística"
+        if (value === "superior_tecnologica")
+            return "Superior Tecnológica"
         if (value === "cetpro")
             return "CETPRO"
         return value || "Nivel no informado"

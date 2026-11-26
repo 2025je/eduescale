@@ -50,6 +50,30 @@ def generate_fixtures(destination: Path) -> None:
                 encoding="ascii",
             )
 
+        with closing(sqlite3.connect(database_path)) as database, database:
+            database.execute(
+                "UPDATE records SET payload = ? WHERE rowid = 1",
+                (
+                    json.dumps(
+                        {
+                            "nombre": "Colegio contrato v2",
+                            "codigo_local": "000123",
+                            "nivel": "inicial",
+                            "gestion": "publica",
+                            "gestion_dependencia": "A4",
+                            "longitud": -73.253,
+                            "latitud": -3.749,
+                        }
+                    ),
+                ),
+            )
+        output_path = temporary_path / "v2.eduescale"
+        export_eduescale(database_path, output_path)
+        (destination / "desktop-contract-v2.base64").write_text(
+            base64.b64encode(output_path.read_bytes()).decode("ascii") + "\n",
+            encoding="ascii",
+        )
+
 
 if __name__ == "__main__":
     generate_fixtures(FIXTURES)

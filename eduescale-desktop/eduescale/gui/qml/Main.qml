@@ -167,9 +167,16 @@ ApplicationWindow {
             || provinceCombo.currentValue
             || districtCombo.currentValue
             || publicManagement.checked
+            || publicConventionManagement.checked
             || privateManagement.checked
+            || initialLevel.checked
             || primaryLevel.checked
             || secondaryLevel.checked
+            || alternativeLevel.checked
+            || specialLevel.checked
+            || pedagogicalLevel.checked
+            || artisticLevel.checked
+            || technologicalLevel.checked
             || cetproLevel.checked
     }
 
@@ -177,9 +184,16 @@ ApplicationWindow {
         filterSetsModel.clear()
         clearLocationSelection()
         publicManagement.checked = false
+        publicConventionManagement.checked = false
         privateManagement.checked = false
+        initialLevel.checked = false
         primaryLevel.checked = false
         secondaryLevel.checked = false
+        alternativeLevel.checked = false
+        specialLevel.checked = false
+        pedagogicalLevel.checked = false
+        artisticLevel.checked = false
+        technologicalLevel.checked = false
         cetproLevel.checked = false
         filterNotice = ""
     }
@@ -187,7 +201,9 @@ ApplicationWindow {
     function selectedManagement() {
         var selected = []
         if (publicManagement.checked)
-            selected.push("publica")
+            selected.push("publica_directa")
+        if (publicConventionManagement.checked)
+            selected.push("publica_convenio")
         if (privateManagement.checked)
             selected.push("privada")
         return selected.join(",")
@@ -195,10 +211,22 @@ ApplicationWindow {
 
     function selectedLevels() {
         var selected = []
+        if (initialLevel.checked)
+            selected.push("inicial")
         if (primaryLevel.checked)
             selected.push("primaria")
         if (secondaryLevel.checked)
             selected.push("secundaria")
+        if (alternativeLevel.checked)
+            selected.push("basica_alternativa")
+        if (specialLevel.checked)
+            selected.push("educacion_especial")
+        if (pedagogicalLevel.checked)
+            selected.push("superior_pedagogica")
+        if (artisticLevel.checked)
+            selected.push("superior_artistica")
+        if (technologicalLevel.checked)
+            selected.push("superior_tecnologica")
         if (cetproLevel.checked)
             selected.push("cetpro")
         return selected.join(",")
@@ -487,6 +515,10 @@ ApplicationWindow {
                             Layout.row: 0
                             Layout.fillWidth: true
                             Layout.fillHeight: true
+                            Layout.maximumHeight: filterGrid.columns === 2
+                                ? Math.max(400, filterScrollView.availableHeight - 50)
+                                : 16777215
+                            Layout.alignment: Qt.AlignTop
                             spacing: 8
 
                             TabBar {
@@ -727,7 +759,14 @@ ApplicationWindow {
                                 StyledCheckBox {
                                     id: publicManagement
                                     objectName: "publicManagement"
-                                    text: "Pública"
+                                    text: "Pública de gestión directa"
+                                    enabled: !viewModel.scrapeRunning
+                                    onToggled: window.filterNotice = ""
+                                }
+                                StyledCheckBox {
+                                    id: publicConventionManagement
+                                    objectName: "publicConventionManagement"
+                                    text: "Pública de gestión privada"
                                     enabled: !viewModel.scrapeRunning
                                     onToggled: window.filterNotice = ""
                                 }
@@ -751,6 +790,13 @@ ApplicationWindow {
                                     ? 260 : 16777215
                                 spacing: 4
                                 StyledCheckBox {
+                                    id: initialLevel
+                                    objectName: "initialLevel"
+                                    text: "Inicial"
+                                    enabled: !viewModel.scrapeRunning
+                                    onToggled: window.filterNotice = ""
+                                }
+                                StyledCheckBox {
                                     id: primaryLevel
                                     objectName: "primaryLevel"
                                     text: "Primaria"
@@ -761,6 +807,41 @@ ApplicationWindow {
                                     id: secondaryLevel
                                     objectName: "secondaryLevel"
                                     text: "Secundaria"
+                                    enabled: !viewModel.scrapeRunning
+                                    onToggled: window.filterNotice = ""
+                                }
+                                StyledCheckBox {
+                                    id: alternativeLevel
+                                    objectName: "alternativeLevel"
+                                    text: "Básica Alternativa"
+                                    enabled: !viewModel.scrapeRunning
+                                    onToggled: window.filterNotice = ""
+                                }
+                                StyledCheckBox {
+                                    id: specialLevel
+                                    objectName: "specialLevel"
+                                    text: "Educación Especial"
+                                    enabled: !viewModel.scrapeRunning
+                                    onToggled: window.filterNotice = ""
+                                }
+                                StyledCheckBox {
+                                    id: pedagogicalLevel
+                                    objectName: "pedagogicalLevel"
+                                    text: "Superior Pedagógica"
+                                    enabled: !viewModel.scrapeRunning
+                                    onToggled: window.filterNotice = ""
+                                }
+                                StyledCheckBox {
+                                    id: artisticLevel
+                                    objectName: "artisticLevel"
+                                    text: "Superior Artística"
+                                    enabled: !viewModel.scrapeRunning
+                                    onToggled: window.filterNotice = ""
+                                }
+                                StyledCheckBox {
+                                    id: technologicalLevel
+                                    objectName: "technologicalLevel"
+                                    text: "Superior Tecnológica"
                                     enabled: !viewModel.scrapeRunning
                                     onToggled: window.filterNotice = ""
                                 }

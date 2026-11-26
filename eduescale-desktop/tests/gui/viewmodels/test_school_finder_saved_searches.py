@@ -73,7 +73,7 @@ def test_rejects_invalid_portable_saved_search_file(view_model_components, tmp_p
         json.dumps(
             {
                 "format": "eduescale.saved-searches",
-                "version": 2,
+                "version": 3,
                 "searches": [{"name": "Lima"}],
             }
         ),
@@ -83,6 +83,30 @@ def test_rejects_invalid_portable_saved_search_file(view_model_components, tmp_p
     assert not view_model.loadSavedSearches(QUrl.fromLocalFile(str(path)).toString())
     assert errors
     assert errors[-1][0] == "No se pudieron importar las búsquedas"
+
+
+@pytest.mark.parametrize(
+    ("version", "expected"), [(1, "primaria,secundaria,cetpro"), (2, "")]
+)
+def test_import_preserves_versioned_unrestricted_levels(
+    view_model_components, tmp_path, version, expected
+):
+    view_model, _, _ = view_model_components
+    path = tmp_path / "saved.json"
+    path.write_text(
+        json.dumps(
+            {
+                "format": "eduescale.saved-searches",
+                "version": version,
+                "searches": [{"name": "Todos", "levels": []}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    imported = []
+    view_model.savedSearchesLoaded.connect(imported.extend)
+    assert view_model.loadSavedSearches(QUrl.fromLocalFile(str(path)).toString())
+    assert imported[0]["level"] == expected
 
 
 def test_rejects_ambiguous_saved_search_location(view_model_components):

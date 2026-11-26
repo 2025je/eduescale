@@ -20,7 +20,17 @@ MAP_RECORD_FIELDS = (
     "nivel",
     "codigo_local",
 )
-LEVEL_ORDER = ("primaria", "secundaria", "cetpro")
+LEVEL_ORDER = (
+    "inicial",
+    "primaria",
+    "secundaria",
+    "basica_alternativa",
+    "educacion_especial",
+    "superior_pedagogica",
+    "superior_artistica",
+    "superior_tecnologica",
+    "cetpro",
+)
 
 
 def _text(record: dict[str, object], key: str) -> str:

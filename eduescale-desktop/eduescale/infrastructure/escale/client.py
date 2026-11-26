@@ -10,6 +10,7 @@ from eduescale.domain.schools import (
     SchoolFilters,
     SchoolLevel,
     SchoolManagement,
+    SchoolManagementFilter,
     SchoolRecord,
 )
 
@@ -30,14 +31,22 @@ HTTP_RETRY = Retry(
 )
 
 
-MANAGEMENT_CODES: dict[SchoolManagement, tuple[str, ...]] = {
+MANAGEMENT_CODES: dict[SchoolManagementFilter, tuple[str, ...]] = {
     "publica": ("A1", "A2", "A3", "A4"),
+    "publica_directa": ("A1", "A2", "A3"),
+    "publica_convenio": ("A4",),
     "privada": ("B1", "B2", "B3", "B4", "B5", "B6"),
 }
 LEVEL_CODES: dict[SchoolLevel, tuple[str, ...]] = {
+    "inicial": ("A1", "A2", "A3", "A5"),
     "primaria": ("B0",),
     "secundaria": ("F0",),
-    "cetpro": ("L0",),
+    "basica_alternativa": ("D0", "D1", "D2"),
+    "educacion_especial": ("E0", "E1", "E2"),
+    "superior_pedagogica": ("K0", "P0"),
+    "superior_artistica": ("M0",),
+    "superior_tecnologica": ("T0", "S0"),
+    "cetpro": ("L0", "L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8", "L9"),
 }
 
 
@@ -123,7 +132,11 @@ def build_search_params(
 
 
 def _selection_codes(selection, code_mapping):
-    return tuple(code for value in selection for code in code_mapping.get(value, ()))
+    return tuple(
+        dict.fromkeys(
+            code for value in selection for code in code_mapping.get(value, ())
+        )
+    )
 
 
 def _text(element: ElementTree.Element, path: str) -> str:
@@ -168,15 +181,25 @@ def _level(
     value: str,
     code: str = "",
 ) -> SchoolLevel | None:
-    normalized = _normalized_label(value)
-    if "cetpro" in normalized or "tecnico productiva" in normalized:
-        return "cetpro"
-    for level in LEVEL_CODES:
-        if level in normalized:
-            return level
     normalized_code = code.strip().upper()
     for level, codes in LEVEL_CODES.items():
         if normalized_code in codes:
+            return level
+    normalized = _normalized_label(value)
+    if "basica alternativa" in normalized:
+        return "basica_alternativa"
+    if "especial" in normalized:
+        return "educacion_especial"
+    if "pedagogica" in normalized:
+        return "superior_pedagogica"
+    if "artistica" in normalized:
+        return "superior_artistica"
+    if "tecnologica" in normalized:
+        return "superior_tecnologica"
+    if "cetpro" in normalized or "tecnico productiva" in normalized:
+        return "cetpro"
+    for level in ("inicial", "primaria", "secundaria"):
+        if level in normalized:
             return level
     return None
 
@@ -216,6 +239,7 @@ def parse_institutions_page(xml: bytes) -> tuple[int, list[dict[str, object]]]:
             region=_text(item, "distrito/provincia/region/nombreRegion")
             or "Departamento no identificado",
             gestion=_management(_text(item, "gestion")),
+            gestion_dependencia=_text(item, "gestionDependencia/idCodigo") or None,
             nivel=nivel,
             codigo_local=_text(item, "codlocal"),
         )

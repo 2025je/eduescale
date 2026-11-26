@@ -118,7 +118,7 @@ class TestBuildSearchParams:
         ]
         assert [value for key, value in params if key == "niveles"] == [
             "B0",
-            "L0",
+            *(f"L{i}" for i in range(10)),
         ]
 
     def test_all_checkbox_values_send_all_selected_codes(self):
@@ -144,7 +144,7 @@ class TestBuildSearchParams:
         assert [value for key, value in params if key == "niveles"] == [
             "B0",
             "F0",
-            "L0",
+            *(f"L{i}" for i in range(10)),
         ]
 
     def test_pydantic_normalizes_comma_separated_selections(self):
@@ -163,7 +163,40 @@ class TestBuildSearchParams:
             SchoolFilters(management=("mixta",))
 
         with pytest.raises(ValidationError):
-            SchoolFilters(level=("inicial",))
+            SchoolFilters(level=("desconocido",))
+
+    @pytest.mark.parametrize(
+        ("level", "codes"),
+        [
+            ("inicial", ["A1", "A2", "A3", "A5"]),
+            ("primaria", ["B0"]),
+            ("secundaria", ["F0"]),
+            ("basica_alternativa", ["D0", "D1", "D2"]),
+            ("educacion_especial", ["E0", "E1", "E2"]),
+            ("superior_pedagogica", ["K0", "P0"]),
+            ("superior_artistica", ["M0"]),
+            ("superior_tecnologica", ["T0", "S0"]),
+            ("cetpro", [f"L{i}" for i in range(10)]),
+        ],
+    )
+    def test_all_escale_level_codes(self, level, codes):
+        params = build_search_params(SchoolFilters(level=(level,)))
+        assert [value for key, value in params if key == "niveles"] == codes
+        for code in codes:
+            xml = f"<instituciones><items><nivelModalidad><idCodigo>{code}</idCodigo></nivelModalidad></items></instituciones>".encode()
+            assert parse_institutions(xml)[0]["nivel"] == level
+
+    @pytest.mark.parametrize(
+        ("management", "codes"),
+        [
+            ("publica_directa", ["A1", "A2", "A3"]),
+            ("publica_convenio", ["A4"]),
+            ("privada", ["B1", "B2", "B3", "B4", "B5", "B6"]),
+        ],
+    )
+    def test_management_codes(self, management, codes):
+        params = build_search_params(SchoolFilters(management=(management,)))
+        assert [value for key, value in params if key == "gestiones"] == codes
 
 
 class TestParseInstitutions:
@@ -203,6 +236,7 @@ class TestParseInstitutions:
                 "provincia": "Lima",
                 "region": "Lima",
                 "gestion": "publica",
+                "gestion_dependencia": None,
                 "nivel": "primaria",
                 "codigo_local": "000123",
             }
@@ -262,14 +296,23 @@ class TestParseInstitutions:
 
         assert record["nivel"] == "cetpro"
 
-    def test_omits_initial_level_records(self):
+    def test_reads_initial_level_records(self):
         xml = """<instituciones><items>
             <nivelModalidad>
               <idCodigo>A2</idCodigo><valor>Inicial - Jardín</valor>
             </nivelModalidad>
         </items></instituciones>""".encode()
 
-        assert parse_institutions(xml) == []
+        assert parse_institutions(xml)[0]["nivel"] == "inicial"
+
+    def test_reads_management_subtype(self):
+        xml = b"""<instituciones><items><gestion>Publica de gestion privada</gestion>
+            <gestionDependencia><idCodigo>A4</idCodigo></gestionDependencia>
+            <nivelModalidad><idCodigo>A2</idCodigo></nivelModalidad>
+        </items></instituciones>"""
+        record = parse_institutions(xml)[0]
+        assert record["gestion"] == "publica"
+        assert record["gestion_dependencia"] == "A4"
 
     @pytest.mark.parametrize("value", ["nan", "inf", "-inf"])
     def test_rejects_non_finite_coordinates(self, value):

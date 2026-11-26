@@ -11,6 +11,17 @@ from eduescale.infrastructure.scrapy.spiders.schools import (
 
 
 class TestSchoolsSpiderPage:
+    def test_keeps_records_with_distinct_management_subtypes(self):
+        spider = SchoolsSpider(output="unused.xlsx")
+        try:
+            record = dict.fromkeys(RECORD_FIELDS)
+            record.update(nombre="Colegio", gestion="publica", nivel="primaria")
+            assert spider._is_new_record({**record, "gestion_dependencia": "A1"})
+            assert spider._is_new_record({**record, "gestion_dependencia": "A4"})
+            assert not spider._is_new_record({**record, "gestion_dependencia": "A4"})
+        finally:
+            spider.closed("finished")
+
     def test_emits_unique_records_as_a_live_school_batch(self, caplog):
         caplog.set_level(logging.INFO)
         spider = SchoolsSpider(output="unused.xlsx")
@@ -193,7 +204,7 @@ class TestSchoolsSpiderPage:
         assert spider.items_received == 0
         assert spider.pages_received == 0
 
-    def test_accepts_source_records_with_unsupported_levels_in_full_download(self):
+    def test_accepts_initial_level_in_full_download(self):
         spider = SchoolsSpider(output="unused.sqlite3")
         spider.expected_total = 2
         request = scrapy.Request(
@@ -223,10 +234,10 @@ class TestSchoolsSpiderPage:
         try:
             output = list(spider.parse_page(response))
 
-            assert len(output) == 1
+            assert len(output) == 2
             assert spider.items_received == 2
             assert spider.pages_received == 1
-            assert spider.unique_items_received == 1
+            assert spider.unique_items_received == 2
         finally:
             spider.closed("finished")
 
@@ -316,6 +327,7 @@ class TestSchoolsSpiderPage:
             "provincia": "Provincia",
             "region": "Región",
             "gestion": "publica",
+            "gestion_dependencia": "A1",
             "nivel": "secundaria",
             "codigo_local": "000123",
         }

@@ -52,12 +52,20 @@ class PortableSavedSearchService:
                 "Selecciona un archivo JSON local para compartir las búsquedas.",
             )
         try:
+            portable = [
+                PortableSavedSearch.model_validate(self._portable_search(search))
+                for search in self._validated_searches(searches)
+            ]
+            has_new_filters = any(
+                set(search.management).difference({"publica", "privada"})
+                or set(search.levels).difference({"primaria", "secundaria", "cetpro"})
+                or not search.levels
+                for search in portable
+            )
             document = PortableSavedSearches.model_validate(
                 {
-                    "searches": [
-                        self._portable_search(search)
-                        for search in self._validated_searches(searches)
-                    ]
+                    "version": 2 if has_new_filters else 1,
+                    "searches": portable,
                 }
             )
             self.normalize_searches(document.searches)
@@ -177,7 +185,9 @@ class PortableSavedSearchService:
             document = PortableSavedSearches.model_validate_json(
                 input_path.read_bytes()
             )
-            searches = self.normalize_searches(document.searches)
+            searches = self.normalize_searches(
+                document.searches, legacy=document.version == 1
+            )
         except (OSError, ValidationError, ValueError) as error:
             LOGGER.error("Could not load saved searches from %s: %s", input_path, error)
             raise SavedSearchError(
@@ -190,6 +200,8 @@ class PortableSavedSearchService:
     def normalize_searches(
         self,
         searches: list[PortableSavedSearch],
+        *,
+        legacy: bool = False,
     ) -> list[dict[str, str | None]]:
         normalized = []
         for search in searches:
@@ -205,7 +217,8 @@ class PortableSavedSearchService:
                     "districtLabel": location["district"] or "Todos los distritos",
                     "management": ",".join(search.management or ("publica", "privada")),
                     "level": ",".join(
-                        search.levels or ("primaria", "secundaria", "cetpro")
+                        search.levels
+                        or (("primaria", "secundaria", "cetpro") if legacy else ())
                     ),
                 }
             )

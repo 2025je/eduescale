@@ -41,6 +41,7 @@ RECORD_FIELDS = (
     "provincia",
     "region",
     "gestion",
+    "gestion_dependencia",
     "nivel",
     "codigo_local",
 )

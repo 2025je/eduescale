@@ -37,6 +37,7 @@ ColumnLayout {
             RowLayout {
                 Layout.fillWidth: true
                 visible: root.workflowStep === 0
+                    && (root.viewModel == null || !root.viewModel.scrapeRunning)
                 spacing: 6
 
                 MaterialSymbol {
@@ -63,7 +64,8 @@ ColumnLayout {
                 Layout.preferredHeight: 8
                 visible: root.viewModel != null
                     && root.viewModel.progressVisible
-                    && root.workflowStep >= 2
+                    && (root.workflowStep >= 2
+                        || (root.workflowStep === 0 && root.viewModel.scrapeRunning))
                 from: 0
                 to: root.viewModel != null
                     ? Math.max(root.viewModel.progressMaximum, 1) : 1
@@ -75,6 +77,8 @@ ColumnLayout {
             RowLayout {
                 Layout.fillWidth: true
                 visible: root.workflowStep >= 2
+                    || (root.workflowStep === 0 && root.viewModel != null
+                        && root.viewModel.scrapeRunning)
                 spacing: 6
 
                 MaterialSymbol {
@@ -157,13 +161,14 @@ ColumnLayout {
                     font.pixelSize: EduStyle.Style.bodyFontSize
                     padding: 8
                     visible: root.viewModel != null
-                        && root.workflowStep === 2
+                        && (root.workflowStep === 0 || root.workflowStep === 2)
                         && root.viewModel.scrapeRunning
                     enabled: root.viewModel != null
                         && !root.viewModel.cancelRequested
                     iconName: "cancel"
                     text: root.viewModel != null && root.viewModel.cancelRequested
-                        ? "Cancelando..." : "Cancelar"
+                        ? "Cancelando..."
+                        : root.workflowStep === 0 ? "Cancelar actualización" : "Cancelar"
                     onClicked: root.viewModel.cancelScrape()
                 }
 

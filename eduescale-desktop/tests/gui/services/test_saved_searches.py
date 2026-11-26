@@ -33,12 +33,29 @@ def test_portable_search_document_round_trips():
     assert decoded.searches[0].levels == ("primaria", "secundaria")
 
 
+def test_version_two_supports_new_filters():
+    document = PortableSavedSearches.model_validate(
+        {
+            "version": 2,
+            "searches": [
+                {
+                    "name": "Convenio",
+                    "management": ["publica_convenio"],
+                    "levels": ["inicial", "superior_tecnologica"],
+                },
+            ],
+        }
+    )
+    assert document.searches[0].management == ("publica_convenio",)
+    assert document.searches[0].levels == ("inicial", "superior_tecnologica")
+
+
 @pytest.mark.parametrize(
     "document",
     [
         {
             "format": "eduescale.saved-searches",
-            "version": 2,
+            "version": 3,
             "searches": [{"name": "Lima"}],
         },
         {

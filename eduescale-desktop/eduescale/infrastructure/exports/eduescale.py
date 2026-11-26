@@ -43,6 +43,18 @@ def export_eduescale(
             record_count = database.execute("SELECT COUNT(*) FROM records").fetchone()[
                 0
             ]
+            has_new_levels = database.execute(
+                """
+                SELECT EXISTS (
+                    SELECT 1 FROM records
+                    WHERE json_extract(payload, '$.nivel') IN (
+                        'inicial', 'basica_alternativa', 'educacion_especial',
+                        'superior_pedagogica', 'superior_artistica',
+                        'superior_tecnologica'
+                    )
+                )
+                """
+            ).fetchone()[0]
             cursor = database.execute(
                 """
                 SELECT region, province, district, payload
@@ -62,7 +74,8 @@ def export_eduescale(
                 "w", encoding="utf-8", newline="\n"
             ) as output_file:
                 output_file.write(
-                    f'{{"formato":"eduescale","version":{EDUESCALE_FORMAT_VERSION},'
+                    f'{{"formato":"eduescale","version":'
+                    f"{2 if has_new_levels else EDUESCALE_FORMAT_VERSION},"
                     '"metadatos":'
                 )
                 json.dump(
@@ -87,6 +100,8 @@ def export_eduescale(
                         "distrito": district,
                         **{field: item.get(field) for field in ANDROID_FIELDS},
                     }
+                    if item.get("gestion_dependencia") is not None:
+                        record["gestion_dependencia"] = item["gestion_dependencia"]
                     if not first_record:
                         output_file.write(",")
                     json.dump(

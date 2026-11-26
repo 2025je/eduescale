@@ -1,8 +1,8 @@
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from eduescale.domain.schools import SchoolLevel, SchoolManagement
+from eduescale.domain.schools import SchoolLevel, SchoolManagementFilter
 
 SAVED_SEARCHES_FORMAT: Literal["eduescale.saved-searches"] = "eduescale.saved-searches"
 SAVED_SEARCHES_VERSION: Literal[1] = 1
@@ -18,7 +18,7 @@ class PortableSavedSearch(BaseModel):
     department_code: str | None = None
     province_code: str | None = None
     district_code: str | None = None
-    management: tuple[SchoolManagement, ...] = ()
+    management: tuple[SchoolManagementFilter, ...] = ()
     levels: tuple[SchoolLevel, ...] = ()
 
     @field_validator("name")
@@ -42,5 +42,15 @@ class PortableSavedSearches(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     format: Literal["eduescale.saved-searches"] = SAVED_SEARCHES_FORMAT
-    version: Literal[1] = SAVED_SEARCHES_VERSION
+    version: Literal[1, 2] = SAVED_SEARCHES_VERSION
     searches: list[PortableSavedSearch] = Field(min_length=1, max_length=500)
+
+    @model_validator(mode="after")
+    def validate_version(self) -> "PortableSavedSearches":
+        if self.version == 1 and any(
+            set(search.management).difference({"publica", "privada"})
+            or set(search.levels).difference({"primaria", "secundaria", "cetpro"})
+            for search in self.searches
+        ):
+            raise ValueError("La versión 1 no admite estos filtros.")
+        return self

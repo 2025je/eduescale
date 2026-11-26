@@ -114,12 +114,14 @@ En la barra de búsqueda puedes elegir entre **ESCALE en línea** y **Base
 offline**. Para usar una base local, selecciona un archivo `.sqlite3` creado
 por EduEscale; la aplicación recuerda su ruta. Las bases nuevas usan SQLAlchemy
 y claves normalizadas e indexadas para aplicar en SQLite los mismos filtros de
-ubicación, gestión y nivel. Las bases antiguas siguen siendo compatibles y se
-buscan con el lector heredado. Antes de aceptarla, la aplicación comprueba
+ubicación, gestión y nivel. Las bases antiguas siguen siendo compatibles para
+los filtros anteriores; para los niveles nuevos, CETPRO completo y los subtipos
+de gestión pública se debe descargar una base actualizada. Antes de aceptarla, la aplicación comprueba
 `quick_check` y contrasta el número de colegios con sus estadísticas guardadas.
 
 Usa **Actualizar base** para descargar los datos de ESCALE sin filtros y crear
-o reemplazar la base local. La aplicación muestra el progreso y, al terminar,
+o reemplazar la base local. La aplicación muestra el progreso y permite
+cancelar la actualización sin reemplazar la base anterior. Al terminar, muestra
 el total de registros recibidos, los colegios únicos, las páginas consultadas
 y la fecha de actualización, además del tiempo de descarga, las páginas
 reanudadas y los reintentos. El archivo anterior se conserva si la descarga
@@ -131,8 +133,10 @@ mantenga el mismo total de resultados. La descarga completa puede tardar hasta
 en el diálogo.
 
 Selecciona la ubicación desde la pestaña «Mapa» o con los tres combobox de
-departamento, provincia y distrito. Luego elige una o ambas opciones de gestión
-pública/privada y uno o varios niveles entre primaria, secundaria y CETPRO.
+departamento, provincia y distrito. Luego elige gestión pública directa, pública
+de gestión privada o privada, y uno o varios niveles: Inicial, Primaria,
+Secundaria, Básica Alternativa, Educación Especial, Superior Pedagógica,
+Superior Artística, Superior Tecnológica o CETPRO.
 Pulsa **Agregar a mis búsquedas** para guardar los filtros y repite el
 proceso para agregar otros criterios. Cada combinación debe tener al menos una
 opción de Gestión y una de Nivel educativo. Puedes quitar combinaciones antes
@@ -151,8 +155,8 @@ se abre con la aplicación predeterminada del sistema. El nombre sugerido incluy
 finalizó la descarga de datos, por ejemplo
 `colegios_escale_2026-11-04_16-09-53.xlsx`; ambos formatos usan el mismo nombre
 base. Los colegios repetidos se guardan una sola vez. El Excel crea una hoja por
-distrito y, dentro de cada hoja, una tabla por cada nivel presente (Primaria,
-Secundaria o CETPRO). Cada tabla indica el nivel y el distrito en su cabecera;
+distrito y, dentro de cada hoja, una tabla por cada nivel presente.
+Cada tabla indica el nivel y el distrito en su cabecera;
 sus columnas incluyen nombre del colegio, dirección, localidad, centro poblado
 (CP), turno, alumnos y secciones. La primera columna indica el orden de los
 colegios dentro de cada tabla, empezando en 1. Departamento, provincia y distrito solo
@@ -227,7 +231,8 @@ EduEscale si la app está instalada.
 Las opciones de exportación muestran la versión del formato y la versión de
 Desktop que se incluirán en el archivo.
 
-`gestion` identifica colegios públicos o privados y `nivel` clasifica el servicio como primaria, secundaria o CETPRO.
+`gestion` identifica colegios públicos o privados, `gestion_dependencia` conserva
+el código de gestión de ESCALE y `nivel` identifica la categoría educativa.
 `codigo_local` identifica el local educativo.
 La app móvil combina los registros con el mismo código de local, nombre,
 gestión y ubicación para mostrar un solo marcador con todos sus niveles; los
@@ -291,10 +296,12 @@ con los límites disueltos por departamento y provincia que usa la navegación
 por etapas del mapa.
 
 Los filtros `region_code`, `province_code`, `district_code`, `management` y
-`level` son opcionales. Los valores para gestión son `publica` y `privada`; los
-valores para nivel son `primaria`, `secundaria` y `cetpro`. Para combinar
-valores en la terminal, sepáralos con comas. Los registros de otros niveles
-se omiten.
+`level` son opcionales. Los valores para gestión son `publica` (ambas gestiones
+públicas), `publica_directa`, `publica_convenio` y `privada`; los valores para
+nivel son `inicial`, `primaria`, `secundaria`, `basica_alternativa`,
+`educacion_especial`, `superior_pedagogica`, `superior_artistica`,
+`superior_tecnologica` y `cetpro`. Para combinar valores en la terminal,
+sepáralos con comas.
 
 La app consulta los servicios activos, como en la configuración predeterminada
 del buscador de ESCALE. La ubicación corresponde al local donde se brinda el

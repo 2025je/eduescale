@@ -71,7 +71,7 @@ def test_saves_one_excel_sheet_per_district_with_tables_per_level():
 
         assert database_path.is_file()
         database_metadata = read_local_database_metadata(database_path)
-        assert database_metadata["schema_version"] == "3"
+        assert database_metadata["schema_version"] == "4"
         assert database_metadata["pages_retried"] == "0"
         assert database_metadata["resumed_pages"] == "0"
         assert database_metadata["verified_pages"] == "3"

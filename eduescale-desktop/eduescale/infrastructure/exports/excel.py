@@ -29,8 +29,14 @@ HEADERS = (
 )
 EXCEL_MAX_ROWS = 1_048_576
 EXCEL_LEVEL_LABELS = {
+    "inicial": "Inicial",
     "primaria": "Primaria",
     "secundaria": "Secundaria",
+    "basica_alternativa": "Básica Alternativa",
+    "educacion_especial": "Educación Especial",
+    "superior_pedagogica": "Superior Pedagógica",
+    "superior_artistica": "Superior Artística",
+    "superior_tecnologica": "Superior Tecnológica",
     "cetpro": "CETPRO",
 }
 EXCEL_FIELDS = (
@@ -124,10 +130,16 @@ def export_excel(database_path: Path, output_path: Path) -> None:
                          province COLLATE NOCASE,
                          district COLLATE NOCASE,
                          CASE json_extract(payload, '$.nivel')
-                             WHEN 'primaria' THEN 0
-                             WHEN 'secundaria' THEN 1
-                             WHEN 'cetpro' THEN 2
-                             ELSE 3
+                             WHEN 'inicial' THEN 0
+                             WHEN 'primaria' THEN 1
+                             WHEN 'secundaria' THEN 2
+                             WHEN 'basica_alternativa' THEN 3
+                             WHEN 'educacion_especial' THEN 4
+                             WHEN 'superior_pedagogica' THEN 5
+                             WHEN 'superior_artistica' THEN 6
+                             WHEN 'superior_tecnologica' THEN 7
+                             WHEN 'cetpro' THEN 8
+                             ELSE 9
                          END,
                          rowid
                 """
