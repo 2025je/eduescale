@@ -37,18 +37,19 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import java.util.Locale
-import pe.eduescale.mobile.data.SchoolCoordinates
 import pe.eduescale.mobile.data.SchoolFilters
 import pe.eduescale.mobile.data.SchoolRecord
 import pe.eduescale.mobile.data.SavedSearch
-import pe.eduescale.mobile.data.distanceInMeters
 import pe.eduescale.mobile.ui.EduEscaleUiState
+import pe.eduescale.mobile.routing.RoadRoutingState
 import pe.eduescale.mobile.ui.components.BrandHeader
 import pe.eduescale.mobile.ui.components.EmptyState
+import pe.eduescale.mobile.ui.files.RoadDownloadProgress
 
 @Composable
 internal fun SchoolsScreen(
     state: EduEscaleUiState,
+    roadState: RoadRoutingState,
     onQueryChanged: (String) -> Unit,
     onApplyFilters: (SchoolFilters) -> Unit,
     onOpenFilters: () -> Unit,
@@ -113,6 +114,8 @@ internal fun SchoolsScreen(
         }
         ActiveFilterChips(state.filters, Modifier.padding(top = 4.dp))
         val schoolsWithoutCoordinates = state.visibleSchools.count { !it.hasCoordinates }
+        val matchingRoadInputs = roadState.inputSchools == state.visibleSchools &&
+            roadState.inputOrigin == state.userLocation
         Text(
             if (state.schoolFile == null) {
                 "Importa un archivo desde la sección Archivos."
@@ -125,8 +128,14 @@ internal fun SchoolsScreen(
                     append(
                         if (state.userLocation == null) {
                             " · activa la ubicación en Mapa"
+                        } else if (!roadState.available) {
+                            " · ordenadas por línea recta (no por carretera)"
+                        } else if (roadState.calculating || !matchingRoadInputs) {
+                            " · calculando rutas"
+                        } else if (roadState.error == null) {
+                            " · ordenadas por carretera"
                         } else {
-                            " · ordenadas por cercanía"
+                            " · rutas no disponibles"
                         },
                     )
                 }
@@ -135,6 +144,43 @@ internal fun SchoolsScreen(
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        roadState.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        if (!roadState.supportsRoadRouting && state.schoolFile != null) {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                ),
+                shape = RoundedCornerShape(16.dp),
+            ) {
+                Text(
+                    "EduEscale Lite calcula distancias en línea recta y no incluye rutas por carretera.",
+                    modifier = Modifier.padding(12.dp),
+                )
+            }
+        } else if ((!roadState.available || roadState.downloading) && state.schoolFile != null) {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                ),
+                shape = RoundedCornerShape(16.dp),
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (roadState.downloading) {
+                        RoadDownloadProgress(roadState.downloadedBytes, roadState.totalBytes)
+                    } else {
+                        Text(
+                            "No hay rutas descargadas. Las distancias se muestran en línea recta, " +
+                                "no por carretera; descarga los datos en Archivos para obtener distancias por carretera.",
+                        )
+                    }
+                }
+            }
+        }
         if (state.schoolFile == null) {
             EmptyState("Aún no hay colegios cargados", "Abre Archivos para importar un archivo .eduescale.")
         } else if (state.visibleSchools.isEmpty()) {
@@ -145,10 +191,24 @@ internal fun SchoolsScreen(
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                items(state.schoolsByDistance, key = SchoolRecord::id) { school ->
+                items(
+                    if (matchingRoadInputs) {
+                        roadState.orderedSchools
+                    } else {
+                        state.visibleSchools
+                    },
+                    key = SchoolRecord::id,
+                ) { school ->
                     SchoolListCard(
                         school = school,
-                        userLocation = state.userLocation,
+                        distance = if (matchingRoadInputs) {
+                            roadState.distances[school.id]
+                        } else null,
+                        userLocationAvailable = state.userLocation != null,
+                        roadsAvailable = roadState.available,
+                        calculating = roadState.calculating || !matchingRoadInputs,
+                        routingError = roadState.error != null,
+                        supportsRoadRouting = roadState.supportsRoadRouting,
                         onClick = { onSchoolSelected(school) },
                     )
                 }
@@ -190,10 +250,14 @@ internal fun SchoolsScreen(
 @Composable
 internal fun SchoolListCard(
     school: SchoolRecord,
-    userLocation: SchoolCoordinates?,
+    distance: Double?,
+    userLocationAvailable: Boolean,
+    roadsAvailable: Boolean,
+    calculating: Boolean,
+    routingError: Boolean,
+    supportsRoadRouting: Boolean = true,
     onClick: () -> Unit,
 ) {
-    val distance = userLocation?.let { distanceInMeters(school, it) }
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -227,11 +291,27 @@ internal fun SchoolListCard(
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.secondary,
                 )
+                !userLocationAvailable -> Text(
+                    "Activa la ubicación para calcular la distancia",
+                    style = MaterialTheme.typography.labelMedium,
+                )
+                !roadsAvailable && distance != null -> Text(
+                    "${formatDistanceKm(distance)} en línea recta (no por carretera)",
+                    style = MaterialTheme.typography.labelMedium,
+                )
+                !roadsAvailable -> Text(
+                    if (supportsRoadRouting) "Descarga las carreteras en Archivos"
+                    else "Distancia en línea recta no disponible",
+                    style = MaterialTheme.typography.labelMedium,
+                )
+                calculating -> Text("Calculando ruta…", style = MaterialTheme.typography.labelMedium)
+                routingError -> Text("No se pudo calcular la ruta", style = MaterialTheme.typography.labelMedium)
                 distance != null -> Text(
-                    formatDistanceKm(distance),
+                    "${formatDistanceKm(distance)} por carretera",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary,
                 )
+                else -> Text("Ruta no disponible", style = MaterialTheme.typography.labelMedium)
             }
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),

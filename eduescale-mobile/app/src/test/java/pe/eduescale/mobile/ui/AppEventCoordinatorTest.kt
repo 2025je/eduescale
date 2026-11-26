@@ -17,7 +17,7 @@ class AppEventCoordinatorTest {
             fileLoaded = { calls.add("file:${it.result.name}:${it.fromUser}") },
             showMessage = { calls.add("message:$it") },
         )
-        val file = SchoolFile(0, 0, emptyList())
+        val file = SchoolFile(0, 0, emptyList(), formatVersion = 1)
         coordinator.onFileImportEvent(SchoolFileImportEvent.Loaded(ImportedSchoolFile(file, "test"), true))
         coordinator.onBackupEvent(ActivityBackupEvent.Restored)
         coordinator.onBackupEvent(ActivityBackupEvent.Message("listo"))

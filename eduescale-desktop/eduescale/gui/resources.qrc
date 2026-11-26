@@ -4,6 +4,7 @@
     <file alias="qml/EduEscale/Gui/Components/qmldir">qml/components/qmldir</file>
     <file alias="qml/EduEscale/Gui/Components/DashboardHeader.qml">qml/components/DashboardHeader.qml</file>
     <file alias="qml/EduEscale/Gui/Components/LogsButton.qml">qml/components/LogsButton.qml</file>
+    <file alias="qml/EduEscale/Gui/Components/MaterialSymbol.qml">qml/components/MaterialSymbol.qml</file>
     <file alias="qml/EduEscale/Gui/Components/SearchActionBar.qml">qml/components/SearchActionBar.qml</file>
     <file alias="qml/EduEscale/Gui/Components/SchoolDetailsCard.qml">qml/components/SchoolDetailsCard.qml</file>
     <file alias="qml/EduEscale/Gui/Components/StyledButton.qml">qml/components/StyledButton.qml</file>
@@ -37,6 +38,8 @@
     <file alias="assets/maplibre/maplibre-gl.css">assets/maplibre/maplibre-gl.css</file>
     <file alias="assets/maplibre/maplibre-gl.js">assets/maplibre/maplibre-gl.js</file>
     <file alias="fonts/OFL.txt">fonts/OFL.txt</file>
+    <file alias="fonts/LICENSE-Material-Symbols.txt">fonts/LICENSE-Material-Symbols.txt</file>
+    <file alias="fonts/MaterialSymbolsOutlined.ttf">fonts/MaterialSymbolsOutlined.ttf</file>
     <file alias="fonts/Roboto-Variable.ttf">fonts/Roboto-Variable.ttf</file>
   </qresource>
 </RCC>

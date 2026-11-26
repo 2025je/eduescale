@@ -36,7 +36,12 @@ build = [
     "pyinstaller",
 ]
 test = [
+    "hypothesis>=6.168.5",
+    "jsonschema>=4.26.0",
     "pytest",
+    "pytest-cov>=7.1.0",
+    "pytest-mock>=3.17.0",
+    "rfc3339-validator>=0.1.4",
 ]
 mapdata = [
     "shapely>=2.0",

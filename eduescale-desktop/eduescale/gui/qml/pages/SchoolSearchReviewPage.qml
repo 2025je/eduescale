@@ -9,8 +9,11 @@ Item {
     objectName: "schoolWizardReviewPage"
 
     required property var window
-    signal logsRequested()
-    anchors.fill: parent
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.bottom: parent.bottom
+    anchors.top: parent.top
+    anchors.topMargin: root.window.dashboardHeaderBottom + 8
     z: 10
     visible: window.workflowStep === 1
 
@@ -38,10 +41,6 @@ Item {
                 elide: Text.ElideRight
             }
 
-            LogsButton {
-                objectName: "reviewLogsButton"
-                onClicked: root.logsRequested()
-            }
         }
 
         Label {

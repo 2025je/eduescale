@@ -5,9 +5,7 @@ MAP_DATA_PATH = (
     Path(__file__).parents[3] / "eduescale" / "gui" / "assets" / "districts_map.json"
 )
 HIERARCHY_DATA_PATH = MAP_DATA_PATH.with_name("districts_map_hierarchy.json")
-ESCALE_CODES_PATH = (
-    Path(__file__).parents[2] / "data" / "escale_district_codes.txt"
-)
+ESCALE_CODES_PATH = Path(__file__).parents[2] / "data" / "escale_district_codes.txt"
 MAPLIBRE_ASSETS_PATH = (
     Path(__file__).parents[3] / "eduescale" / "gui" / "assets" / "maplibre"
 )

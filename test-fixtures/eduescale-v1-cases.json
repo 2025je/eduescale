@@ -1,0 +1,73 @@
+[
+  {
+    "name": "legacy-with-extra-fields",
+    "valid": true,
+    "document": {
+      "formato": "eduescale",
+      "version": 1,
+      "colegios": [{"nombre": "Colegio antiguo", "campo_futuro": "ignorado"}],
+      "campo_futuro": true
+    }
+  },
+  {
+    "name": "unsupported-version",
+    "valid": false,
+    "document": {"formato": "eduescale", "version": 2, "colegios": []}
+  },
+  {
+    "name": "missing-schools",
+    "valid": false,
+    "document": {"formato": "eduescale", "version": 1}
+  },
+  {
+    "name": "unsupported-school-level",
+    "valid": false,
+    "document": {
+      "formato": "eduescale",
+      "version": 1,
+      "colegios": [{"nombre": "No admitido", "nivel": "Inicial"}]
+    }
+  },
+  {
+    "name": "invalid-metadata",
+    "valid": false,
+    "document": {
+      "formato": "eduescale",
+      "version": 1,
+      "metadatos": {"cantidad_colegios": 0},
+      "colegios": []
+    }
+  },
+  {
+    "name": "invalid-timestamp",
+    "valid": false,
+    "document": {
+      "formato": "eduescale",
+      "version": 1,
+      "metadatos": {
+        "generado_en": "invalid",
+        "cantidad_colegios": 0,
+        "crs": "EPSG:4326",
+        "aplicacion": "EduEscale Desktop",
+        "version_aplicacion": "1"
+      },
+      "colegios": []
+    }
+  },
+  {
+    "name": "incorrect-record-count",
+    "valid": false,
+    "document": {
+      "formato": "eduescale",
+      "version": 1,
+      "metadatos": {
+        "generado_en": "2026-01-01T00:00:00Z",
+        "cantidad_colegios": 1,
+        "crs": "EPSG:4326",
+        "aplicacion": "EduEscale Desktop",
+        "version_aplicacion": "1"
+      },
+      "colegios": []
+    }
+  }
+]

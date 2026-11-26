@@ -102,10 +102,7 @@ class SchoolSearchWorkflow(QObject):
         if data_source not in {"online", "offline"}:
             raise ValueError(f"Unknown school data source: {data_source}")
         if data_source == "offline":
-            if (
-                request.offline_database_path is None
-                or request.local_filters is None
-            ):
+            if request.offline_database_path is None or request.local_filters is None:
                 raise RuntimeError("La solicitud de búsqueda offline está incompleta.")
             self._active_operation = "offline_search"
             self._local_database_search_runner.start(
@@ -237,4 +234,3 @@ class SchoolSearchWorkflow(QObject):
     @Slot(str, str)
     def _warning(self, title: str, details: str) -> None:
         self.warning.emit(title, details)
-

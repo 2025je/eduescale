@@ -15,6 +15,14 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.14"
+          enable-cache: true
+          cache-dependency-glob: "eduescale-desktop/uv.lock"
+      - name: Generate current Desktop contract fixtures
+        run: uv run --locked python scripts/generate_format_contract_fixtures.py
+        working-directory: eduescale-desktop
       - uses: docker/setup-buildx-action@v3
       - name: Prepare empty Android signing files
         run: |
@@ -25,11 +33,13 @@ jobs:
       - name: Run Android tests and build with Docker Compose
         run: docker compose run --build --rm android
         working-directory: eduescale-mobile
-      - name: Upload Android debug APK
+      - name: Upload Android debug APKs
         uses: actions/upload-artifact@v4
         with:
           name: eduescale-android-${{ github.sha }}
-          path: eduescale-mobile/dist/EduEscale-debug.apk
+          path: |
+            eduescale-mobile/dist/EduEscale-completa-debug.apk
+            eduescale-mobile/dist/EduEscale-lite-debug.apk
           retention-days: 7
       - name: Remove temporary Android signing files
         if: always()
@@ -43,6 +53,14 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.14"
+          enable-cache: true
+          cache-dependency-glob: "eduescale-desktop/uv.lock"
+      - name: Generate current Desktop contract fixtures
+        run: uv run --locked python scripts/generate_format_contract_fixtures.py
+        working-directory: eduescale-desktop
       - uses: docker/setup-buildx-action@v3
       - name: Recreate Android signing files from GitHub secrets
         env:
@@ -67,9 +85,12 @@ jobs:
         with:
           name: eduescale-android-${{ github.sha }}
           path: |
-            eduescale-mobile/dist/EduEscale-debug.apk
-            eduescale-mobile/dist/EduEscale-release.apk
-            eduescale-mobile/dist/EduEscale-release.aab
+            eduescale-mobile/dist/EduEscale-completa-debug.apk
+            eduescale-mobile/dist/EduEscale-completa-release.apk
+            eduescale-mobile/dist/EduEscale-completa-release.aab
+            eduescale-mobile/dist/EduEscale-lite-debug.apk
+            eduescale-mobile/dist/EduEscale-lite-release.apk
+            eduescale-mobile/dist/EduEscale-lite-release.aab
           retention-days: 7
       - name: Remove temporary Android signing files
         if: always()

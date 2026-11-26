@@ -107,7 +107,7 @@ class SchoolActivityViewModelTest {
                 SchoolReminder("alarm", school.activityKey(), "Otro colegio", "Llamar", Long.MAX_VALUE),
             )
             val viewModel = SchoolActivityViewModel(store)
-            viewModel.setHistorySchools(SchoolFile(1, 0, listOf(school)))
+            viewModel.setHistorySchools(SchoolFile(1, 0, listOf(school), formatVersion = 1))
             viewModel.refreshActivityHistory()
             advanceUntilIdle()
 
@@ -143,7 +143,7 @@ class SchoolActivityViewModelTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try {
             val school = school(1)
-            val file = SchoolFile(1, 0, listOf(school))
+            val file = SchoolFile(1, 0, listOf(school), formatVersion = 1)
             val schools = EduEscaleViewModel(StandardTestDispatcher(testScheduler))
             val activities = SchoolActivityViewModel(FakeStore())
             val map = FakeMap()

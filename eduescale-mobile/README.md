@@ -11,6 +11,8 @@ La interfaz usa la familia `sans-serif` de Android, basada en Roboto.
   permisos de almacenamiento.
 - Lee el JSON versionado del archivo `.eduescale` en streaming, valida los
   metadatos si están presentes y sigue admitiendo JSON anterior y ZIP.
+- Muestra la versión del formato y la versión de Desktop que generó el archivo;
+  en archivos anteriores sin metadatos indica que esta última no está disponible.
 - Importa archivos `.eduescale` protegidos con contraseña, verifica el cifrado
   autenticado y guarda la copia descifrada solo en el almacenamiento privado de
   la app para restaurar la sesión.
@@ -26,9 +28,21 @@ La interfaz usa la familia `sans-serif` de Android, basada en Roboto.
   mapa, los locales cercanos forman grupos con su cantidad; al tocarlos, el mapa
   se acerca y muestra marcadores individuales al aumentar el zoom.
 - Permite buscar colegios por nombre, sin distinguir mayúsculas ni tildes.
-- Ordena la pestaña **Colegios** por cercanía y muestra la distancia aproximada en
-  kilómetros; identifica los colegios sin ubicación, permite abrir sus detalles
-  y muestra cuántos hay entre los resultados.
+- Ordena **Colegios** por la distancia de la ruta en automóvil calculada por
+  Valhalla; identifica los colegios sin coordenadas o sin ruta y permite abrir
+  sus detalles. El cálculo puede tardar para listas grandes.
+- Al seleccionar un colegio con ubicación disponible, dibuja en el mapa la ruta
+  local en automóvil y muestra distancia y tiempo estimado. Los tramos punteados
+  conectan las coordenadas con la carretera en línea recta: son aproximaciones,
+  no caminos comprobados ni parte de la distancia o tiempo de la ruta. Se usa
+  la ubicación obtenida al seleccionarlo; no es navegación en tiempo real. La
+  ruta permanece al cerrar la ficha hasta seleccionar otro colegio.
+- En **Archivos**, descarga por separado la red vial de Perú (aproximadamente
+  425 MiB) para calcular rutas sin conexión. No es el mismo archivo que los
+  mapas visuales: se necesita ubicación y espacio libre para la descarga; al
+  actualizarla se conserva la versión anterior hasta verificar la nueva. El
+  avance aparece en **Archivos** y **Colegios**, con porcentaje cuando se
+  conoce el tamaño total.
 - En **Archivos**, distingue los registros originales del archivo, los locales
   agrupados con ubicación y los registros sin coordenadas utilizables.
 - Filtra los resultados por departamento, provincia, distrito, gestión y nivel
@@ -90,6 +104,14 @@ los registros importados; la ficha del colegio se presenta en una hoja inferior
 con opciones para abrir rutas en Google Maps o Waze y compartir la ubicación.
 El borrador de filtros y la confirmación de eliminación de un mapa se conservan
 al girar la pantalla.
+
+Las rutas usan datos de [OpenStreetMap](https://www.openstreetmap.org/copyright)
+© sus colaboradores, obtenidos de [Geofabrik](https://download.geofabrik.de/south-america/peru.html).
+La cobertura y los resultados dependen de esos datos; pueden faltar carreteras,
+conexiones o restricciones, especialmente cerca de las fronteras. La distancia
+corresponde a la ruta calculada, no necesariamente a la ruta más corta.
+En **Archivos** puedes consultar el espacio ocupado y eliminar las carreteras
+sin conexión previa confirmación; también puedes volver a descargarlas.
 
 Las búsquedas guardadas solo contienen sus filtros, nunca datos de colegios ni
 secretos. Su documento portátil usa el formato `eduescale.saved-searches`,
@@ -153,38 +175,61 @@ La inyección de dependencias usa Hilt (`MainActivity`, receivers y
 ## Abrir y ejecutar
 
 Abre esta carpeta (`eduescale-mobile`) en Android Studio y sincroniza Gradle.
-Se requiere JDK 17 y Android SDK Platform 36. Ejecuta la configuración `app` en
-un dispositivo o emulador con Android 7.0 (API 24) o posterior y conexión a
+Se requiere JDK 21 y Android SDK Platform 36. Ejecuta la configuración `app` en
+un dispositivo o emulador con Android 8.0 (API 26) o posterior y conexión a
 Internet.
 
 Desde PowerShell, también puedes compilar e instalar las pruebas unitarias con
 el Gradle Wrapper incluido:
 
 ```powershell
-.\gradlew.bat :app:testDebugUnitTest
-.\gradlew.bat :app:assembleDebug
+.\gradlew.bat :app:testCompleteDebugUnitTest :app:testLiteDebugUnitTest
+.\gradlew.bat :app:assembleCompleteDebug :app:assembleLiteDebug
 ```
+
+Las dependencias de prueba incluyen Turbine para `Flow` y Robolectric para
+pruebas locales. Room Testing está disponible para pruebas instrumentadas de
+la base de datos y sus migraciones; Turbine también puede usarse en ellas.
+Navigation Testing y Hilt Testing están disponibles para pruebas locales e
+instrumentadas. Las pruebas instrumentadas usan un runner con
+`HiltTestApplication`; en Robolectric se puede especificar con `@Config`.
+Consulta la [guía de pruebas de Hilt](https://developer.android.com/training/dependency-injection/hilt-testing).
+
+El proyecto ofrece dos variantes: **EduEscale Completa**, con Valhalla y rutas
+por carretera, conserva el identificador `pe.eduescale.mobile`; **EduEscale
+Lite** calcula distancias en línea recta y usa `pe.eduescale.mobile.lite`.
+Pueden instalarse juntas, pero mantienen datos locales independientes.
 
 ## Compilar con Docker
 
 Desde esta carpeta, ejecuta:
 
 ```powershell
-docker buildx build --target apk --output type=local,dest=dist .
+docker buildx build --file Dockerfile --target apk --output type=local,dest=dist ..
 ```
 
-Docker genera `dist/EduEscale-debug.apk` y `dist/EduEscale-debug-androidTest.apk`.
-La imagen instala JDK 17, Android SDK Platform 36 y Build Tools 36.0.0, ejecuta
-las pruebas unitarias y compila las pruebas instrumentadas. Se requiere Docker
-BuildKit y conexión a Internet durante la primera compilación.
+Docker genera los APK debug y de pruebas instrumentadas de ambas variantes:
+`EduEscale-completa-debug.apk`, `EduEscale-lite-debug.apk` y los dos archivos
+`*-debug-androidTest.apk`. La variante Lite no incluye las dependencias nativas
+de Valhalla ni la descarga de carreteras; las distancias se calculan y etiquetan
+en línea recta. La imagen instala JDK 21, Android SDK Platform 36 y Build Tools
+36.0.0, ejecuta las pruebas unitarias de ambas variantes y compila las pruebas
+instrumentadas. Para controlar el uso de memoria, Docker ejecuta las tareas
+debug y cada release por separado, con hasta dos workers y 4 GiB de heap para
+Gradle; además se necesita memoria para Kotlin y otros procesos. Se requiere
+Docker BuildKit y conexión a Internet durante la primera compilación.
 
 Para ejecutar las pruebas instrumentadas, conecta un dispositivo o inicia un
 emulador y, desde esta carpeta, ejecuta:
 
 ```powershell
-adb install -r dist\EduEscale-debug.apk
-adb install -r dist\EduEscale-debug-androidTest.apk
-adb shell am instrument -w pe.eduescale.mobile.test/androidx.test.runner.AndroidJUnitRunner
+adb install -r dist\EduEscale-completa-debug.apk
+adb install -r dist\EduEscale-completa-debug-androidTest.apk
+adb shell am instrument -w pe.eduescale.mobile.test/pe.eduescale.mobile.HiltTestRunner
+
+adb install -r dist\EduEscale-lite-debug.apk
+adb install -r dist\EduEscale-lite-debug-androidTest.apk
+adb shell am instrument -w pe.eduescale.mobile.lite.test/pe.eduescale.mobile.HiltTestRunner
 ```
 
 El workflow móvil de GitHub Actions usa este mismo `docker-compose.yml` para ejecutar las pruebas y
@@ -213,27 +258,30 @@ docker compose run --build --rm android
 
 Compose monta `../android-secrets/release.jks` y
 `../android-secrets/keystore.properties` como secretos BuildKit durante la
-compilación; no los copia a la imagen. Se generan el APK debug, el APK release
-firmado y el AAB firmado en `dist/`.
+compilación; no los copia a la imagen. Se generan los APK debug, los APK release
+y los AAB de ambas variantes en `dist/`. Con el keystore local disponible, los
+artefactos release se firman con esa clave.
 
 Para generar el bundle Android de release:
 
 ```powershell
-docker buildx build --target release --output type=local,dest=dist .
+docker buildx build --file Dockerfile --target release --output type=local,dest=dist ..
 ```
 
-Docker genera `dist/EduEscale-release.aab`. El bundle se compila sin firma de
-publicación; antes de subirlo a Google Play, debe firmarse con la clave de carga
-configurada para la aplicación.
+Docker genera `dist/EduEscale-completa-release-unsigned.aab` y
+`dist/EduEscale-lite-release-unsigned.aab`. Los bundles se compilan sin firma de
+publicación; antes de subirlos a Google Play, deben firmarse con la clave de
+carga configurada para cada aplicación.
 
 Para generar un APK de release:
 
 ```powershell
-docker buildx build --target release-apk --output type=local,dest=dist .
+docker buildx build --file Dockerfile --target release-apk --output type=local,dest=dist ..
 ```
 
-Docker genera `dist/EduEscale-release-unsigned.apk`. El APK no está firmado;
-antes de instalarlo o distribuirlo, debe firmarse con una clave de release.
+Docker genera `dist/EduEscale-completa-release-unsigned.apk` y
+`dist/EduEscale-lite-release-unsigned.apk`. Los APK no están firmados; antes de
+instalarlos o distribuirlos, deben firmarse con una clave de release.
 
 En la aplicación, pulsa **Abrir archivo**, selecciona el archivo `.eduescale` y
 acerca o aleja el mapa. Toca un punto para consultar sus datos. Los archivos

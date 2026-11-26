@@ -44,11 +44,15 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import pe.eduescale.mobile.data.SchoolFile
 import pe.eduescale.mobile.ui.OfflineMapAreaUi
+import pe.eduescale.mobile.routing.RoadRoutingState
 import pe.eduescale.mobile.ui.components.BrandHeader
 import pe.eduescale.mobile.ui.schools.StatisticLine
 
 @Composable
 internal fun FilesScreen(
+    roadState: RoadRoutingState,
+    onDownloadRoadData: () -> Unit,
+    onDeleteRoadData: () -> Unit,
     file: SchoolFile?,
     fileName: String?,
     importing: Boolean,
@@ -65,6 +69,7 @@ internal fun FilesScreen(
     onDeleteOfflineMapArea: (Long) -> Unit,
 ) {
     var pendingOfflineAreaDeletion by rememberSaveable { mutableStateOf<Long?>(null) }
+    var pendingRoadDeletion by rememberSaveable { mutableStateOf(false) }
     val context = LocalContext.current
     Column(
         modifier = Modifier
@@ -114,6 +119,11 @@ internal fun FilesScreen(
                         fontWeight = FontWeight.SemiBold,
                     )
                     HorizontalDivider(Modifier.padding(vertical = 4.dp))
+                    StatisticLine("Versión del formato", file.formatVersion.toString())
+                    StatisticLine(
+                        "Versión de EduEscale Desktop",
+                        file.applicationVersion ?: "No disponible (archivo anterior)",
+                    )
                     StatisticLine(
                         "Registros en el archivo (antes de agrupar)",
                         file.totalCount.toString(),
@@ -200,6 +210,49 @@ internal fun FilesScreen(
                 )
             }
         }
+        if (roadState.supportsRoadRouting) {
+            HorizontalDivider()
+            Text("Carreteras sin conexión", style = MaterialTheme.typography.titleMedium)
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        "Descarga la red de carreteras de Perú para calcular distancias sin conexión.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        "Datos de carreteras © colaboradores de OpenStreetMap (openstreetmap.org/copyright).",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (roadState.downloading) {
+                        RoadDownloadProgress(roadState.downloadedBytes, roadState.totalBytes)
+                    }
+                    if (roadState.storedBytes > 0) {
+                        StatisticLine("Almacenamiento utilizado", formatMapBytes(roadState.storedBytes))
+                    }
+                    roadState.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    Button(onClick = onDownloadRoadData, enabled = !roadState.downloading && !roadState.deleting) {
+                        Text(if (roadState.available) "Actualizar carreteras" else "Descargar carreteras")
+                    }
+                    if (roadState.storedBytes > 0) {
+                        TextButton(
+                            onClick = { pendingRoadDeletion = true },
+                            enabled = !roadState.downloading && !roadState.deleting,
+                        ) {
+                            Icon(Icons.Default.Delete, contentDescription = null)
+                            Spacer(Modifier.width(4.dp))
+                            Text(if (roadState.deleting) "Eliminando…" else "Eliminar carreteras")
+                        }
+                    }
+                }
+            }
+        }
         HorizontalDivider()
         Text("Copia local", style = MaterialTheme.typography.titleMedium)
         Text(
@@ -251,6 +304,44 @@ internal fun FilesScreen(
                 }
             },
         )
+    }
+    if (pendingRoadDeletion) {
+        AlertDialog(
+            onDismissRequest = { pendingRoadDeletion = false },
+            title = { Text("Eliminar carreteras sin conexión") },
+            text = { Text("¿Quieres eliminar la red de carreteras del dispositivo? Podrás volver a descargarla.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingRoadDeletion = false
+                    onDeleteRoadData()
+                }) { Text("Eliminar") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingRoadDeletion = false }) { Text("Cancelar") }
+            },
+        )
+    }
+}
+
+@Composable
+internal fun RoadDownloadProgress(downloadedBytes: Long, totalBytes: Long) {
+    val progress = if (totalBytes > 0) {
+        (downloadedBytes.toDouble() / totalBytes).coerceIn(0.0, 1.0).toFloat()
+    } else null
+    Text(
+        if (progress != null) {
+            "Descargando: ${formatMapBytes(downloadedBytes)} / ${formatMapBytes(totalBytes)} · ${(progress * 100).toInt()} %"
+        } else if (downloadedBytes > 0) {
+            "Descargando: ${formatMapBytes(downloadedBytes)}"
+        } else {
+            "Preparando descarga de carreteras…"
+        },
+        style = MaterialTheme.typography.labelMedium,
+    )
+    if (progress != null) {
+        LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+    } else {
+        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
     }
 }
 

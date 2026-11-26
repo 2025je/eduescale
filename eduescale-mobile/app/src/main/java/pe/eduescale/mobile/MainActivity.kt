@@ -26,6 +26,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import org.maplibre.android.maps.MapView
 import pe.eduescale.mobile.activity.SchoolActivityViewModel
@@ -42,24 +43,28 @@ import pe.eduescale.mobile.ui.map.OfflineMapsViewModel
 import pe.eduescale.mobile.navigation.SchoolNavigator
 import pe.eduescale.mobile.reminders.ReminderController
 import pe.eduescale.mobile.reminders.ReminderViewModel
+import pe.eduescale.mobile.routing.RoadRoutingViewModel
 import pe.eduescale.mobile.ui.EduEscaleApp
 import pe.eduescale.mobile.ui.AppEventCoordinator
 import pe.eduescale.mobile.ui.EduEscaleViewModel
 import pe.eduescale.mobile.ui.files.SchoolFileImportViewModel
 import pe.eduescale.mobile.ui.files.StorageSpaceViewModel
 import pe.eduescale.mobile.ui.theme.ThemeViewModel
+import pe.eduescale.mobile.activity.SchoolVisitViewModel
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     private val viewModel: EduEscaleViewModel by viewModels()
     private val activityViewModel: SchoolActivityViewModel by viewModels()
     private val reminderViewModel: ReminderViewModel by viewModels()
+    private val roadRoutingViewModel: RoadRoutingViewModel by viewModels()
     private val activityBackupViewModel: ActivityBackupViewModel by viewModels()
     private val savedSearchViewModel: SavedSearchViewModel by viewModels()
     private val offlineMapsViewModel: OfflineMapsViewModel by viewModels()
     private val schoolFileImportViewModel: SchoolFileImportViewModel by viewModels()
     private val storageSpaceViewModel: StorageSpaceViewModel by viewModels()
     private val themeViewModel: ThemeViewModel by viewModels()
+    private val visitViewModel: SchoolVisitViewModel by viewModels()
     private lateinit var mapView: MapView
     private val schoolNavigator by lazy { SchoolNavigator(this) }
     private lateinit var mapController: SchoolMapController
@@ -182,6 +187,7 @@ class MainActivity : ComponentActivity() {
                         storageSpaceViewModel = storageSpaceViewModel,
                         themeViewModel = themeViewModel,
                         reminderViewModel = reminderViewModel,
+                        roadRoutingViewModel = roadRoutingViewModel,
                         onReminderMessage = ::showReminderMessage,
                         onMapTouchEnabled = { enabled -> root.mapTouchEnabled = enabled },
                         onThemeChanged = { darkTheme ->
@@ -221,6 +227,9 @@ class MainActivity : ComponentActivity() {
                         onSearchComments = activityViewModel::searchComments,
                         onAddReminder = reminderViewModel::createSchoolReminder,
                         onDeleteReminder = reminderViewModel::deleteSchoolReminder,
+                        onMarkAsVisited = { schoolId, schoolName -> visitViewModel.markAsVisited(schoolId, schoolName, "") },
+                        onScheduleVisit = { schoolId, schoolName, dateMillis -> visitViewModel.scheduleVisit(schoolId, schoolName, dateMillis) },
+                        onReportPermissionDenied = { schoolId, schoolName, reason -> visitViewModel.reportPermissionDenied(schoolId, schoolName, reason) },
                         onExportActivityBackup = {
                             createActivityBackup.launch("EduEscale-copia.json")
                         },
@@ -254,6 +263,16 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.state.collect(mapCoordinator::synchronize)
+            }
+        }
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                combine(viewModel.state, roadRoutingViewModel.state) { schools, roads ->
+                    roads.route.takeIf {
+                        roads.routeSchoolId == schools.routeSchool?.id &&
+                            roads.routeDestination == schools.routeSchool?.coordinates
+                    }
+                }.distinctUntilChanged().collect(mapController::setRoute)
             }
         }
         lifecycleScope.launch {

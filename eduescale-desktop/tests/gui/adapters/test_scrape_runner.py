@@ -96,10 +96,10 @@ def _replace_process(runner):
 
 
 def test_frozen_windows_runner_initializes_without_qprocess_modifier(
-    monkeypatch, application
+    mocker, application
 ):
-    monkeypatch.setattr(sys, "frozen", True, raising=False)
-    monkeypatch.setattr(sys, "platform", "win32")
+    mocker.patch.object(sys, "frozen", True, create=True)
+    mocker.patch.object(sys, "platform", "win32")
 
     runner = ScrapeRunner()
     try:
@@ -120,7 +120,7 @@ def test_scrape_runner_satisfies_split_runner_ports(application):
     assert application is not None
 
 
-def test_frozen_windows_runner_uses_onedir_scraper(tmp_path, monkeypatch, application):
+def test_frozen_windows_runner_uses_onedir_scraper(tmp_path, mocker, application):
     distribution_directory = tmp_path / "dist"
     worker_directory = distribution_directory / "eduescale-scraper"
     worker_directory.mkdir(parents=True)
@@ -128,9 +128,9 @@ def test_frozen_windows_runner_uses_onedir_scraper(tmp_path, monkeypatch, applic
     gui_executable.touch()
     worker_executable = worker_directory / "eduescale-scraper.exe"
     worker_executable.touch()
-    monkeypatch.setattr(sys, "frozen", True, raising=False)
-    monkeypatch.setattr(sys, "platform", "win32")
-    monkeypatch.setattr(sys, "executable", str(gui_executable))
+    mocker.patch.object(sys, "frozen", True, create=True)
+    mocker.patch.object(sys, "platform", "win32")
+    mocker.patch.object(sys, "executable", str(gui_executable))
 
     runner = ScrapeRunner()
     process = _replace_process(runner)
@@ -259,7 +259,7 @@ def test_online_search_does_not_infer_database_update_from_extension(
 
 def test_cleanup_retries_transient_windows_file_locks(
     tmp_path,
-    monkeypatch,
+    mocker,
     application,
 ):
     runner = ScrapeRunner()
@@ -280,10 +280,10 @@ def test_cleanup_retries_transient_windows_file_locks(
             raise error
         original_rmtree(path)
 
-    monkeypatch.setattr(
+    mocker.patch.object(
         scrape_runner_module.shutil, "rmtree", rmtree_with_transient_lock
     )
-    monkeypatch.setattr(scrape_runner_module.time, "sleep", delays.append)
+    mocker.patch.object(scrape_runner_module.time, "sleep", delays.append)
 
     try:
         assert runner._cleanup_staging() is None

@@ -35,6 +35,7 @@ import pe.eduescale.mobile.activity.SchoolActivityViewModel
 import pe.eduescale.mobile.map.OfflineMapBounds
 import pe.eduescale.mobile.reminders.ReminderPrompt
 import pe.eduescale.mobile.reminders.ReminderViewModel
+import pe.eduescale.mobile.routing.RoadRoutingViewModel
 import pe.eduescale.mobile.ui.files.FilesScreen
 import pe.eduescale.mobile.ui.files.SchoolFileImportViewModel
 import pe.eduescale.mobile.ui.files.StorageSpaceViewModel
@@ -56,6 +57,7 @@ fun EduEscaleApp(
     storageSpaceViewModel: StorageSpaceViewModel,
     themeViewModel: ThemeViewModel,
     reminderViewModel: ReminderViewModel,
+    roadRoutingViewModel: RoadRoutingViewModel,
     onReminderMessage: (String) -> Unit,
     onMapTouchEnabled: (Boolean) -> Unit,
     onThemeChanged: (Boolean) -> Unit,
@@ -77,6 +79,9 @@ fun EduEscaleApp(
     onSearchComments: (SchoolRecord, String) -> Unit,
     onAddReminder: (SchoolRecord, String) -> Unit,
     onDeleteReminder: (SchoolRecord, String) -> Unit,
+    onMarkAsVisited: (String, String) -> Unit,
+    onScheduleVisit: (String, String, Long) -> Unit,
+    onReportPermissionDenied: (String, String, String) -> Unit,
     onExportActivityBackup: () -> Unit,
     onImportActivityBackup: () -> Unit,
     onDownloadVisibleArea: (OfflineMapBounds, Int, Int) -> Unit,
@@ -94,6 +99,13 @@ fun EduEscaleApp(
     val storageState by storageSpaceViewModel.state.collectAsStateWithLifecycle()
     val themeMode by themeViewModel.mode.collectAsStateWithLifecycle()
     val reminderPrompt by reminderViewModel.prompt.collectAsStateWithLifecycle()
+    val roadState by roadRoutingViewModel.state.collectAsStateWithLifecycle()
+    LaunchedEffect(state.visibleSchools, state.userLocation) {
+        roadRoutingViewModel.updateInputs(state.visibleSchools, state.userLocation)
+    }
+    LaunchedEffect(state.routeSchool, state.userLocation) {
+        roadRoutingViewModel.updateSelectedRoute(state.routeSchool, state.userLocation)
+    }
     val systemDarkTheme = isSystemInDarkTheme()
     val darkTheme = themeMode.isDark(systemDarkTheme)
     val navController = rememberNavController()
@@ -156,6 +168,7 @@ fun EduEscaleApp(
                 composable("map") {
                     MapScreen(
                         state = state,
+                        roadState = roadState,
                         activityState = activityState,
                         offlineMapsState = offlineMapsState,
                         onMapTopOverlayBottomChanged = onMapTopOverlayBottomChanged,
@@ -183,11 +196,15 @@ fun EduEscaleApp(
                         onDeleteReminder = onDeleteReminder,
                         onDownloadVisibleArea = onDownloadVisibleArea,
                         onToggleOfflineMapArea = onToggleOfflineMapArea,
+                        onMarkAsVisited = onMarkAsVisited,
+                        onScheduleVisit = onScheduleVisit,
+                        onReportPermissionDenied = onReportPermissionDenied,
                     )
                 }
                 composable("schools") {
                     SchoolsScreen(
                         state = state,
+                        roadState = roadState,
                         onQueryChanged = viewModel::setQuery,
                         onApplyFilters = onApplyFilters,
                         onOpenFilters = viewModel::openFilters,
@@ -211,10 +228,16 @@ fun EduEscaleApp(
                     )
                 }
                 composable("files") {
-                    LaunchedEffect(offlineMapsState.offlineMapAreas.sumOf(OfflineMapAreaUi::completedBytes)) {
+                    LaunchedEffect(
+                        offlineMapsState.offlineMapAreas.sumOf(OfflineMapAreaUi::completedBytes),
+                        roadState.storedBytes,
+                    ) {
                         storageSpaceViewModel.refresh()
                     }
                     FilesScreen(
+                        roadState = roadState,
+                        onDownloadRoadData = roadRoutingViewModel::download,
+                        onDeleteRoadData = roadRoutingViewModel::delete,
                         file = state.schoolFile,
                         fileName = state.fileName,
                         importing = schoolFileImportState.isImporting,

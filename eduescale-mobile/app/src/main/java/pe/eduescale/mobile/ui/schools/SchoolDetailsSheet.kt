@@ -13,12 +13,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.EventNote
+import androidx.compose.material.icons.automirrored.filled.NoteAdd
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.Close
@@ -30,6 +33,14 @@ import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.TurnRight
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.DoNotDisturb
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.EventAvailable
+import androidx.compose.material.icons.filled.HistoryEdu
+import androidx.compose.material.icons.filled.Report
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -66,9 +77,12 @@ import kotlinx.coroutines.launch
 import pe.eduescale.mobile.activity.SchoolComment
 import pe.eduescale.mobile.data.SchoolCoordinates
 import pe.eduescale.mobile.data.SchoolRecord
-import pe.eduescale.mobile.activity.SchoolReminder
-import pe.eduescale.mobile.data.SchoolScheduleRow
 import pe.eduescale.mobile.data.distanceInMeters
+import pe.eduescale.mobile.activity.SchoolReminder
+import pe.eduescale.mobile.activity.SchoolVisit
+import pe.eduescale.mobile.activity.VisitStatus
+import pe.eduescale.mobile.data.SchoolScheduleRow
+import pe.eduescale.mobile.routing.RoadRoutingState
 import pe.eduescale.mobile.reminders.ReminderDateTimePicker
 import pe.eduescale.mobile.reminders.ReminderPrompt
 import pe.eduescale.mobile.ui.history.formatActivityDate
@@ -80,6 +94,7 @@ import pe.eduescale.mobile.ui.history.reminderStatusLabel
 internal fun SchoolDetailsSheet(
     school: SchoolRecord?,
     userLocation: SchoolCoordinates?,
+    roadState: RoadRoutingState,
     onSheetShown: (SchoolRecord, Float) -> Unit,
     onDismiss: () -> Unit,
     onDirections: (SchoolRecord) -> Unit,
@@ -97,8 +112,16 @@ internal fun SchoolDetailsSheet(
     onReminderDateCancelled: () -> Unit,
     onReminderMessage: (String) -> Unit,
     onDeleteReminder: (String) -> Unit,
+    visits: List<SchoolVisit> = emptyList(),
+    onMarkAsVisited: (String, String) -> Unit = { _, _ -> },
+    onScheduleVisit: (String, String, Long) -> Unit = { _, _, _ -> },
+    onReportPermissionDenied: (String, String, String) -> Unit = { _, _, _ -> },
 ) {
     if (school == null) return
+    val matchingRoute = roadState.routeSchoolId == school.id &&
+        roadState.routeDestination == school.coordinates
+    val route = roadState.route.takeIf { matchingRoute && roadState.available }
+    val straightLineDistance = userLocation?.let { distanceInMeters(school, it) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val scope = rememberCoroutineScope()
     var commentText by rememberSaveable(school.id) { mutableStateOf("") }
@@ -108,10 +131,16 @@ internal fun SchoolDetailsSheet(
     var commentEditText by rememberSaveable(school.id) { mutableStateOf("") }
     var commentPendingDeletionId by rememberSaveable(school.id) { mutableStateOf<String?>(null) }
     var reminderPendingDeletionId by rememberSaveable(school.id) { mutableStateOf<String?>(null) }
+    var visitObservations by rememberSaveable(school.id) { mutableStateOf("") }
+    var permissionDenialReason by rememberSaveable(school.id) { mutableStateOf("") }
+    var showVisitScheduleDialog by rememberSaveable(school.id) { mutableStateOf(false) }
+    var showMarkVisitedDialog by rememberSaveable(school.id) { mutableStateOf(false) }
+    var showPermissionDenialDialog by rememberSaveable(school.id) { mutableStateOf(false) }
     var sheetTopOnScreen by remember(school.id) { mutableStateOf<Float?>(null) }
-    LaunchedEffect(school.id) {
-        sheetState.show()
-        sheetTopOnScreen?.let { top -> onSheetShown(school, top) }
+    LaunchedEffect(school.id, sheetState.currentValue, sheetState.isAnimationRunning, sheetTopOnScreen) {
+        if (sheetState.currentValue != SheetValue.Hidden && !sheetState.isAnimationRunning) {
+            sheetTopOnScreen?.let { top -> onSheetShown(school, top) }
+        }
     }
     LaunchedEffect(school.id, commentSearchQuery) {
         if (commentQuery != commentSearchQuery) {
@@ -155,19 +184,33 @@ internal fun SchoolDetailsSheet(
                             when {
                                 !school.hasCoordinates ->
                                     "Distancia no disponible · sin coordenadas"
+                                route != null -> {
+                                    val minutes = kotlin.math.ceil(route.durationSeconds / 60.0).toInt()
+                                    "${formatDistanceKm(route.distanceMeters)} por carretera · $minutes min aprox."
+                                }
                                 userLocation == null ->
                                     "Activa la ubicación para calcular la distancia"
-                                else -> distanceInMeters(school, userLocation)?.let { distance ->
-                                    "${formatDistanceKm(distance)} desde tu ubicación"
+                                !roadState.available -> straightLineDistance?.let {
+                                    "${formatDistanceKm(it)} en línea recta (no por carretera)"
                                 } ?: "Distancia no disponible"
+                                !matchingRoute || roadState.routeCalculating -> "Calculando ruta…"
+                                roadState.routeError != null -> roadState.routeError
+                                else -> "Ruta no disponible"
                             },
                             style = MaterialTheme.typography.labelMedium,
-                            color = if (school.hasCoordinates && userLocation != null) {
+                            color = if (school.hasCoordinates && (userLocation != null || route != null)) {
                                 MaterialTheme.colorScheme.primary
                             } else {
                                 MaterialTheme.colorScheme.onSurfaceVariant
                             },
                         )
+                        if (route != null) {
+                            Text(
+                                "Los tramos punteados son aproximaciones en línea recta, no rutas transitables.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
                 IconButton(
@@ -211,13 +254,13 @@ internal fun SchoolDetailsSheet(
                 )
             }
             Text(
-                "Oferta educativa",
+                "📚 Oferta educativa",
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
             )
             SchoolOfferTable(school.ofertaEducativa)
             HorizontalDivider()
-            Text("Información del local", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Text("📍 Información del local", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
             DetailRow("Dirección", school.direccion)
             DetailRow("Localidad", school.localidad)
             DetailRow("Centro poblado", school.cp)
@@ -229,7 +272,7 @@ internal fun SchoolDetailsSheet(
                 ) {
                     Icon(Icons.Default.TurnRight, contentDescription = null)
                     Spacer(Modifier.width(6.dp))
-                    Text("Cómo llegar")
+                    Text("🗺️ Cómo llegar")
                 }
                 OutlinedButton(
                     onClick = { onShare(school) },
@@ -238,15 +281,31 @@ internal fun SchoolDetailsSheet(
                 ) {
                     Icon(Icons.Default.Share, contentDescription = null)
                     Spacer(Modifier.width(6.dp))
-                    Text("Compartir")
+                    Text("📤 Compartir")
                 }
             }
             HorizontalDivider()
             Text(
-                "Comentarios",
+                "✅ Registro de Visitas",
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
             )
+            VisitStatusSection(
+                visits = visits,
+                onMarkAsVisited = { showMarkVisitedDialog = true },
+                onScheduleVisit = { date ->
+                    onScheduleVisit(school.id.toString(), school.nombre.orEmpty(), date)
+                    showVisitScheduleDialog = false
+                },
+                onReportPermissionDenied = {
+                    onReportPermissionDenied(school.id.toString(), school.nombre.orEmpty(), permissionDenialReason)
+                    permissionDenialReason = ""
+                    showPermissionDenialDialog = false
+                },
+                onShowScheduleDialog = { showVisitScheduleDialog = true },
+                onShowPermissionDialog = { showPermissionDenialDialog = true },
+            )
+            HorizontalDivider()
             OutlinedTextField(
                 value = commentText,
                 onValueChange = { commentText = it },
@@ -265,7 +324,7 @@ internal fun SchoolDetailsSheet(
             ) {
                 Icon(Icons.Default.Add, contentDescription = null)
                 Spacer(Modifier.width(6.dp))
-                Text("Guardar comentario")
+                Text("💬 Guardar comentario")
             }
             OutlinedTextField(
                 value = commentQuery,
@@ -274,7 +333,7 @@ internal fun SchoolDetailsSheet(
                     onSearchComments(query)
                 },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Buscar en el historial") },
+                label = { Text("🔍 Buscar en el historial") },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                 singleLine = true,
             )
@@ -325,7 +384,7 @@ internal fun SchoolDetailsSheet(
             }
             HorizontalDivider()
             Text(
-                "Recordatorios",
+                "🔔 Recordatorios",
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -475,12 +534,358 @@ internal fun SchoolDetailsSheet(
             }
         }
     }
+
+    // Dialogs para gesionar visitas
+    if (showVisitScheduleDialog) {
+        ScheduleVisitDialog(
+            schoolName = school.nombre.orEmpty(),
+            onConfirm = { scheduledDateMillis, observations ->
+                onScheduleVisit(school.id.toString(), school.nombre.orEmpty(), scheduledDateMillis)
+                visitObservations = observations
+                showVisitScheduleDialog = false
+            },
+            onDismiss = { showVisitScheduleDialog = false }
+        )
+    }
+
+    if (showMarkVisitedDialog) {
+        MarkVisitedDialog(
+            schoolName = school.nombre.orEmpty(),
+            onConfirm = { observations ->
+                onMarkAsVisited(school.id.toString(), school.nombre.orEmpty())
+                visitObservations = observations
+                showMarkVisitedDialog = false
+            },
+            onDismiss = { showMarkVisitedDialog = false }
+        )
+    }
+
+    if (showPermissionDenialDialog) {
+        PermissionDeniedDialog(
+            schoolName = school.nombre.orEmpty(),
+            onConfirm = { reason, details ->
+                onReportPermissionDenied(school.id.toString(), school.nombre.orEmpty(), details)
+                permissionDenialReason = reason
+                showPermissionDenialDialog = false
+            },
+            onDismiss = { showPermissionDenialDialog = false }
+        )
+    }
+}
+
+@Composable
+private fun VisitStatusSection(
+    visits: List<SchoolVisit>,
+    onMarkAsVisited: () -> Unit,
+    onScheduleVisit: (Long) -> Unit,
+    onReportPermissionDenied: () -> Unit,
+    onShowScheduleDialog: () -> Unit,
+    onShowPermissionDialog: () -> Unit,
+) {
+    val lastVisit = visits.lastOrNull()
+
+    when (lastVisit?.status) {
+        VisitStatus.VISITED -> {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
+                        )
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.CheckCircle,
+                            contentDescription = "Visitado",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(end = 8.dp),
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "✅ Colegio Visitado",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(top = 4.dp),
+                            ) {
+                                Icon(
+                                    Icons.Default.DateRange,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier
+                                        .size(14.dp)
+                                        .padding(end = 4.dp),
+                                )
+                                Text(
+                                    formatActivityDate(lastVisit.visitDate ?: System.currentTimeMillis()),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                    lastVisit.observations?.takeIf(String::isNotBlank)?.let {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.NoteAdd,
+                                contentDescription = "Observaciones",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier
+                                    .size(16.dp)
+                                    .padding(end = 6.dp),
+                            )
+                            Text(
+                                "Observaciones: $it",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    Button(
+                        onClick = onShowScheduleDialog,
+                        modifier = Modifier.align(Alignment.End),
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.EventNote,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text("📅 Próxima")
+                    }
+                }
+            }
+        }
+
+        VisitStatus.SCHEDULED -> {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.3f),
+                        )
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.Schedule,
+                            contentDescription = "Programado",
+                            tint = MaterialTheme.colorScheme.tertiary,
+                            modifier = Modifier.padding(end = 8.dp),
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "📅 Programado para Visitar",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.tertiary,
+                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(top = 4.dp),
+                            ) {
+                                Icon(
+                                    Icons.Default.EventAvailable,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier
+                                        .size(14.dp)
+                                        .padding(end = 4.dp),
+                                )
+                                Text(
+                                    formatActivityDate(lastVisit.scheduledDate ?: System.currentTimeMillis()),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Button(
+                            onClick = onMarkAsVisited,
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Icon(
+                                Icons.Default.CheckCircle,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text("✅ Visitado")
+                        }
+                        OutlinedButton(
+                            onClick = onShowPermissionDialog,
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Icon(
+                                Icons.Default.DoNotDisturb,
+                                contentDescription = "Permiso denegado",
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text("❌ Denegado")
+                        }
+                    }
+                }
+            }
+        }
+
+        VisitStatus.PERMISSION_DENIED -> {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f),
+                        )
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.DoNotDisturb,
+                            contentDescription = "Permiso denegado",
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(end = 8.dp),
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "❌ Permiso Denegado",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                            lastVisit.permissionDeniedReason?.takeIf(String::isNotBlank)?.let {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(top = 4.dp),
+                                ) {
+                                    Icon(
+                                        Icons.Default.Report,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier
+                                            .size(14.dp)
+                                            .padding(end = 4.dp),
+                                    )
+                                    Text(
+                                        "Razón: $it",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.error,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    Button(
+                        onClick = onShowScheduleDialog,
+                        modifier = Modifier.align(Alignment.End),
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.EventNote,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text("🔄 Reintentar")
+                    }
+                }
+            }
+        }
+
+        else -> {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        )
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(
+                            Icons.Default.HistoryEdu,
+                            contentDescription = "Sin registros",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(end = 8.dp),
+                        )
+                        Text(
+                            "Sin registros de visita",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Button(
+                            onClick = onShowScheduleDialog,
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.EventNote,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text("📅 Programar")
+                        }
+                        OutlinedButton(
+                            onClick = onShowPermissionDialog,
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Icon(
+                                Icons.Default.DoNotDisturb,
+                                contentDescription = "Permiso denegado",
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text("❌ Denegado")
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
 internal fun ManagementBadge(gestion: String?) {
     val colorScheme = MaterialTheme.colorScheme
-    val (label, background, foreground) = when (gestion) {
+    val badge = when (gestion) {
         "publica" -> Triple(
             "Gestión pública",
             colorScheme.primaryContainer,
@@ -502,11 +907,11 @@ internal fun ManagementBadge(gestion: String?) {
             colorScheme.onSurfaceVariant,
         )
     }
-    Surface(shape = RoundedCornerShape(50), color = background) {
+    Surface(shape = RoundedCornerShape(50), color = badge.second) {
         Text(
-            label,
+            badge.first,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-            color = foreground,
+            color = badge.third,
             style = MaterialTheme.typography.labelMedium,
         )
     }

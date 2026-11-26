@@ -364,9 +364,7 @@ def _decode_school_payload(payload: object, record_number: int) -> dict[str, obj
         raise TypeError(f"El registro {record_number} no contiene texto JSON.")
     record = json.loads(payload)
     if not isinstance(record, dict):
-        raise TypeError(
-            f"El registro {record_number} no contiene un objeto JSON."
-        )
+        raise TypeError(f"El registro {record_number} no contiene un objeto JSON.")
     return record
 
 
@@ -509,16 +507,14 @@ def _search_key_variants(value: str) -> tuple[str, ...]:
     )
 
 
-def _spanish_sort_key(value: str) -> tuple[tuple[int, ...], tuple[tuple[int, int], ...]]:
+def _spanish_sort_key(
+    value: str,
+) -> tuple[tuple[int, ...], tuple[tuple[int, int], ...]]:
     primary: list[int] = []
     accents: list[tuple[int, int]] = []
     for character in unicodedata.normalize("NFD", value.casefold()):
         if unicodedata.combining(character):
-            if (
-                character == "\u0303"
-                and primary
-                and primary[-1] == ord("n") * 2
-            ):
+            if character == "\u0303" and primary and primary[-1] == ord("n") * 2:
                 primary[-1] += 1
             elif primary:
                 accents.append((len(primary) - 1, ord(character)))
@@ -536,15 +532,12 @@ def summarize_local_database_by_location(
         region = func.coalesce(records_table.c.region, "Departamento no identificado")
         province = func.coalesce(records_table.c.province, "Provincia no identificada")
         district = func.coalesce(records_table.c.district, "Distrito no identificado")
-        statement = (
-            select(
-                region.label("region"),
-                province.label("province"),
-                district.label("district"),
-                func.count().label("schools"),
-            )
-            .group_by(region, province, district)
-        )
+        statement = select(
+            region.label("region"),
+            province.label("province"),
+            district.label("district"),
+            func.count().label("schools"),
+        ).group_by(region, province, district)
         with engine.connect() as connection:
             location_counts: dict[tuple[str, str, str], int] = {}
             for row in connection.execute(statement):

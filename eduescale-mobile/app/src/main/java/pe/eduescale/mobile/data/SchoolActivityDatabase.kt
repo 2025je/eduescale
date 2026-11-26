@@ -31,10 +31,13 @@ import javax.inject.Singleton
 import pe.eduescale.mobile.activity.SchoolActivityStore
 import pe.eduescale.mobile.activity.ReminderStore
 import pe.eduescale.mobile.activity.ActivityBackupStore
+import pe.eduescale.mobile.activity.SchoolVisitStore
 import pe.eduescale.mobile.activity.ActivityStorageException
 import pe.eduescale.mobile.activity.SchoolActivityBackup
 import pe.eduescale.mobile.activity.SchoolComment
 import pe.eduescale.mobile.activity.SchoolReminder
+import pe.eduescale.mobile.activity.SchoolVisit
+import pe.eduescale.mobile.activity.VisitStatus
 import pe.eduescale.mobile.activity.reactivatedWith
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -67,6 +70,23 @@ internal data class SchoolReminderEntity(
     val status: String? = SchoolReminder.STATUS_PENDING,
 )
 
+@Entity(
+    tableName = "school_visits",
+    indices = [Index(value = ["school_key", "created_at_millis"])],
+)
+internal data class SchoolVisitEntity(
+    @PrimaryKey val id: String,
+    @androidx.room.ColumnInfo(name = "school_key") val schoolKey: String,
+    @androidx.room.ColumnInfo(name = "school_name") val schoolName: String,
+    val status: String, // VisitStatus.name
+    @androidx.room.ColumnInfo(name = "visit_date") val visitDate: Long? = null,
+    @androidx.room.ColumnInfo(name = "scheduled_date") val scheduledDate: Long? = null,
+    @androidx.room.ColumnInfo(name = "permission_denied_reason") val permissionDeniedReason: String? = null,
+    val observations: String? = null,
+    @androidx.room.ColumnInfo(name = "created_at_millis") val createdAtMillis: Long,
+    @androidx.room.ColumnInfo(name = "updated_at_millis") val updatedAtMillis: Long? = null,
+)
+
 internal fun SchoolCommentEntity.toModel() =
     SchoolComment(id, schoolKey, text, createdAtMillis, updatedAtMillis)
 
@@ -78,6 +98,34 @@ internal fun SchoolReminderEntity.toModel() =
 
 internal fun SchoolReminder.toEntity() =
     SchoolReminderEntity(id, schoolKey, schoolName, message, scheduledAtMillis, status)
+
+internal fun SchoolVisitEntity.toModel() =
+    SchoolVisit(
+        id,
+        schoolKey,
+        schoolName,
+        VisitStatus.valueOf(status),
+        visitDate,
+        scheduledDate,
+        permissionDeniedReason,
+        observations,
+        createdAtMillis,
+        updatedAtMillis,
+    )
+
+internal fun SchoolVisit.toEntity() =
+    SchoolVisitEntity(
+        id,
+        schoolKey,
+        schoolName,
+        status.name,
+        visitDate,
+        scheduledDate,
+        permissionDeniedReason,
+        observations,
+        createdAtMillis,
+        updatedAtMillis,
+    )
 
 @Dao
 internal interface SchoolActivityDao {
@@ -183,11 +231,56 @@ internal interface SchoolActivityDao {
 
     @Query("DELETE FROM school_reminders WHERE id = :reminderId")
     suspend fun deleteReminder(reminderId: String)
+
+    @Query(
+        """
+        SELECT * FROM school_visits
+        WHERE school_key = :schoolKey
+        ORDER BY created_at_millis DESC
+        """,
+    )
+    suspend fun visitsForSchool(schoolKey: String): List<SchoolVisitEntity>
+
+    @Query("SELECT * FROM school_visits ORDER BY created_at_millis DESC")
+    suspend fun allVisits(): List<SchoolVisitEntity>
+
+    @Query(
+        """
+        SELECT * FROM school_visits
+        WHERE status = :status
+        ORDER BY scheduled_date ASC NULLS LAST, created_at_millis DESC
+        """,
+    )
+    suspend fun visitsByStatus(status: String): List<SchoolVisitEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertVisit(visit: SchoolVisitEntity)
+
+    @Query(
+        """
+        UPDATE school_visits
+        SET status = :newStatus, visit_date = :visitDate, observations = :observations, updated_at_millis = :updatedAtMillis
+        WHERE school_key = :schoolKey
+        """,
+    )
+    suspend fun markAsVisited(schoolKey: String, newStatus: String, visitDate: Long, observations: String?, updatedAtMillis: Long)
+
+    @Query(
+        """
+        UPDATE school_visits
+        SET permission_denied_reason = :reason, status = :newStatus, updated_at_millis = :updatedAtMillis
+        WHERE school_key = :schoolKey
+        """,
+    )
+    suspend fun reportPermissionDenied(schoolKey: String, reason: String, newStatus: String, updatedAtMillis: Long)
+
+    @Query("DELETE FROM school_visits WHERE school_key = :schoolKey")
+    suspend fun deleteVisit(schoolKey: String)
 }
 
 @Database(
-    entities = [SchoolCommentEntity::class, SchoolReminderEntity::class],
-    version = 3,
+    entities = [SchoolCommentEntity::class, SchoolReminderEntity::class, SchoolVisitEntity::class],
+    version = 4,
     exportSchema = false,
 )
 internal abstract class SchoolActivityDatabase : RoomDatabase() {
@@ -209,29 +302,46 @@ internal abstract class SchoolActivityDatabase : RoomDatabase() {
                 )
             }
         }
-
-        @Volatile
-        private var instance: SchoolActivityDatabase? = null
-
-        fun getInstance(context: Context): SchoolActivityDatabase =
-            instance ?: synchronized(this) {
-                instance ?: Room.databaseBuilder(
-                    context.applicationContext,
-                    SchoolActivityDatabase::class.java,
-                    DATABASE_NAME,
-                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3)
-                    .build()
-                    .also { instance = it }
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS school_visits (
+                        id TEXT PRIMARY KEY NOT NULL,
+                        school_key TEXT NOT NULL,
+                        school_name TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        visit_date INTEGER,
+                        scheduled_date INTEGER,
+                        permission_denied_reason TEXT,
+                        observations TEXT,
+                        created_at_millis INTEGER NOT NULL,
+                        updated_at_millis INTEGER
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_school_visits_school_key_created_at_millis ON school_visits(school_key, created_at_millis)",
+                )
             }
+        }
+
+        fun create(context: Context): SchoolActivityDatabase =
+            Room.databaseBuilder(
+                context.applicationContext,
+                SchoolActivityDatabase::class.java,
+                DATABASE_NAME,
+            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .build()
     }
 }
 
 @Singleton
-class SchoolActivityRepository @Inject constructor(
+class SchoolActivityRepository @Inject internal constructor(
+    private val database: SchoolActivityDatabase,
     @ApplicationContext context: Context,
-) : SchoolActivityStore, ReminderStore, ActivityBackupStore {
+) : SchoolActivityStore, ReminderStore, ActivityBackupStore, SchoolVisitStore {
     private val applicationContext = context.applicationContext
-    private val database = SchoolActivityDatabase.getInstance(applicationContext)
     private val dao = database.schoolActivityDao()
     private val migrationPreferences = applicationContext.getSharedPreferences(
         MIGRATION_PREFERENCES,
@@ -386,6 +496,113 @@ class SchoolActivityRepository @Inject constructor(
     override suspend fun deleteReminder(reminderId: String) = storageOperation {
         migrateLegacyData()
         dao.deleteReminder(reminderId)
+    }
+
+    override suspend fun visitsFor(schoolKey: String): List<SchoolVisit> = storageOperation {
+        migrateLegacyData()
+        dao.visitsForSchool(schoolKey).map(SchoolVisitEntity::toModel)
+    }
+
+    override suspend fun allVisits(): List<SchoolVisit> = storageOperation {
+        migrateLegacyData()
+        dao.allVisits().map(SchoolVisitEntity::toModel)
+    }
+
+    override suspend fun markAsVisited(
+        schoolKey: String,
+        schoolName: String,
+        visitDate: Long,
+        observations: String?,
+    ): SchoolVisit = storageOperation {
+        migrateLegacyData()
+        // Buscar visita existente
+        val existing = dao.visitsForSchool(schoolKey).firstOrNull()?.toModel()
+        val visit = if (existing != null) {
+            existing.copy(
+                status = VisitStatus.VISITED,
+                visitDate = visitDate,
+                observations = observations,
+                updatedAtMillis = System.currentTimeMillis(),
+            )
+        } else {
+            SchoolVisit(
+                id = java.util.UUID.randomUUID().toString(),
+                schoolKey = schoolKey,
+                schoolName = schoolName,
+                status = VisitStatus.VISITED,
+                visitDate = visitDate,
+                observations = observations,
+                createdAtMillis = System.currentTimeMillis(),
+            )
+        }
+        dao.insertVisit(visit.toEntity())
+        visit
+    }
+
+    override suspend fun scheduleVisit(
+        schoolKey: String,
+        schoolName: String,
+        scheduledDate: Long,
+    ): SchoolVisit = storageOperation {
+        require(scheduledDate > System.currentTimeMillis()) {
+            "La fecha programada debe ser futura."
+        }
+        migrateLegacyData()
+        val existing = dao.visitsForSchool(schoolKey).firstOrNull()?.toModel()
+        val visit = if (existing != null) {
+            existing.copy(
+                status = VisitStatus.SCHEDULED,
+                scheduledDate = scheduledDate,
+                updatedAtMillis = System.currentTimeMillis(),
+            )
+        } else {
+            SchoolVisit(
+                id = java.util.UUID.randomUUID().toString(),
+                schoolKey = schoolKey,
+                schoolName = schoolName,
+                status = VisitStatus.SCHEDULED,
+                scheduledDate = scheduledDate,
+                createdAtMillis = System.currentTimeMillis(),
+            )
+        }
+        dao.insertVisit(visit.toEntity())
+        visit
+    }
+
+    override suspend fun reportPermissionDenied(
+        schoolKey: String,
+        schoolName: String,
+        reason: String,
+    ): SchoolVisit = storageOperation {
+        val normalizedReason = reason.trim()
+        require(normalizedReason.isNotEmpty()) {
+            "Especifica la razón por la que no se dio permiso."
+        }
+        migrateLegacyData()
+        val existing = dao.visitsForSchool(schoolKey).firstOrNull()?.toModel()
+        val visit = if (existing != null) {
+            existing.copy(
+                status = VisitStatus.PERMISSION_DENIED,
+                permissionDeniedReason = normalizedReason,
+                updatedAtMillis = System.currentTimeMillis(),
+            )
+        } else {
+            SchoolVisit(
+                id = java.util.UUID.randomUUID().toString(),
+                schoolKey = schoolKey,
+                schoolName = schoolName,
+                status = VisitStatus.PERMISSION_DENIED,
+                permissionDeniedReason = normalizedReason,
+                createdAtMillis = System.currentTimeMillis(),
+            )
+        }
+        dao.insertVisit(visit.toEntity())
+        visit
+    }
+
+    override suspend fun visitsByStatus(status: VisitStatus): List<SchoolVisit> = storageOperation {
+        migrateLegacyData()
+        dao.visitsByStatus(status.name).map(SchoolVisitEntity::toModel)
     }
 
     override suspend fun exportBackup(): SchoolActivityBackup = storageOperation {

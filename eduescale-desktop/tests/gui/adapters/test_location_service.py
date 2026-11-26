@@ -1,3 +1,5 @@
+import gc
+from functools import partial
 from threading import Event
 
 import pytest
@@ -106,11 +108,28 @@ def test_failed_location_request_can_be_retried(application):
         service.shutdown()
 
 
-def test_escale_provider_translates_transport_errors(monkeypatch):
+def test_repeated_location_requests_and_shutdown(application):
+    class Provider:
+        def fetch(self, kind, parent_code):
+            return [("01", "Lima")]
+
+    for _ in range(40):
+        service = LocationService(Provider())
+        try:
+            loaded = wait_for_signal(service.loaded, partial(service.load, "regions"))
+            assert loaded == [("regions", "", [("01", "Lima")])]
+        finally:
+            service.shutdown()
+        del service
+        application.processEvents()
+        gc.collect()
+
+
+def test_escale_provider_translates_transport_errors(mocker):
     def fail_request():
         raise location_provider.requests.ConnectionError("servicio no disponible")
 
-    monkeypatch.setattr(location_provider, "fetch_regions", fail_request)
+    mocker.patch.object(location_provider, "fetch_regions", fail_request)
 
     with pytest.raises(LocationFetchError, match="servicio no disponible"):
         location_provider.ESCALELocationProvider().fetch("regions", "")

@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: desktop-lint
+        name: Desktop lint
+        entry: uv run --directory eduescale-desktop --locked --group nox nox -r -s lint
+        language: system
+        files: ^eduescale-desktop/(.*\.pyi?$|pyproject\.toml$|uv\.lock$)
+        pass_filenames: false

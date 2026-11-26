@@ -13,7 +13,11 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QDesktopServices, QGuiApplication
 
 from eduescale.application.errors import DataAccessError
-from eduescale.application.export_policy import android_data_path
+from eduescale.application.export_policy import (
+    EDUESCALE_FORMAT_VERSION,
+    android_data_path,
+    eduescale_application_version,
+)
 from eduescale.application.models import OfflineDatabaseLocationSummary
 from eduescale.application.ports import ExportType
 from eduescale.gui.contracts.ports import (
@@ -200,12 +204,8 @@ class SchoolFinderViewModel(QObject):
         self._location_service.failed.connect(self._locations_failed)
         self._school_search_workflow.started.connect(self._scrape_started)
         self._school_search_workflow.progressChanged.connect(self._scrape_progress)
-        self._school_search_workflow.schoolsReceived.connect(
-            self._receive_school_batch
-        )
-        self._school_search_workflow.searchCompleted.connect(
-            self._search_completed
-        )
+        self._school_search_workflow.schoolsReceived.connect(self._receive_school_batch)
+        self._school_search_workflow.searchCompleted.connect(self._search_completed)
         self._school_search_workflow.databaseUpdateCompleted.connect(
             self._database_update_completed
         )
@@ -220,6 +220,14 @@ class SchoolFinderViewModel(QObject):
     @Property(QObject, constant=True)
     def logViewer(self) -> QObject:
         return self._log_viewer
+
+    @Property(int, constant=True)
+    def eduEscaleFormatVersion(self) -> int:
+        return EDUESCALE_FORMAT_VERSION
+
+    @Property(str, constant=True)
+    def eduEscaleApplicationVersion(self) -> str:
+        return eduescale_application_version()
 
     @Property(list, notify=regionsChanged)
     def regions(self):
@@ -832,9 +840,7 @@ class SchoolFinderViewModel(QObject):
 
         self._last_search_summary = request.summary
         self._output_path = request.output_path
-        if not self._preferences.save_last_export_directory(
-            self._output_path.parent
-        ):
+        if not self._preferences.save_last_export_directory(self._output_path.parent):
             LOGGER.error("No se pudo guardar la carpeta de exportación.")
         self._cancel_requested = False
         self._school_search_active = True

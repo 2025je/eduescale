@@ -23,6 +23,7 @@ import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.Point
 import pe.eduescale.mobile.data.SchoolFile
 import pe.eduescale.mobile.data.SchoolRecord
+import pe.eduescale.mobile.routing.RoadRoute
 import pe.eduescale.mobile.ui.map.SchoolMapPort
 
 /** Owns the MapLibre map: camera, school markers, selection and sheet alignment. */
@@ -49,6 +50,7 @@ internal class SchoolMapController(
     var hasPendingUserFileImport = false
     private val clusterCountOverlay = ClusterCountOverlay(context)
     private val camera = SchoolMapCamera(context, mapView, { map }, selectedSchool)
+    private val routeOverlay = SchoolRouteOverlay()
 
     override fun onSchoolFileLoaded(file: SchoolFile?, schools: List<SchoolRecord>) {
         schoolFile = file
@@ -106,6 +108,8 @@ internal class SchoolMapController(
         mapLibreMap.setStyle(Style.Builder().fromUri(MapStyle.OPEN_FREE_MAP_STYLE_URL)) { loadedStyle ->
             style = loadedStyle
             updateMapData()
+            routeOverlay.render(loadedStyle)
+            routeOverlay.route?.let(camera::focusRoute)
             updateVisibleMapBounds(mapLibreMap)
             onStyleReady()
         }
@@ -173,6 +177,13 @@ internal class SchoolMapController(
 
     fun updateCompassPosition() = camera.updateCompassPosition()
 
+    fun setRoute(route: RoadRoute?) {
+        if (routeOverlay.route == route) return
+        routeOverlay.setRoute(style, route)
+        camera.setRouteVisible(route != null)
+        if (style != null && route != null) camera.focusRoute(route)
+    }
+
     override fun focusSelectedSchoolFromList(school: SchoolRecord) {
         camera.focusSelectedSchool(school)
     }
@@ -182,7 +193,7 @@ internal class SchoolMapController(
         sheetTopOnScreen: Float,
         mapTopOverlayBottomPx: Float,
     ) {
-        camera.alignSelectedSchool(school, sheetTopOnScreen, mapTopOverlayBottomPx)
+        camera.alignSelectedSchool(school, sheetTopOnScreen, mapTopOverlayBottomPx, routeOverlay.route)
     }
 
     override fun updateMapData() {

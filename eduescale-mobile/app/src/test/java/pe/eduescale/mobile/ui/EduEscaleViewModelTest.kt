@@ -24,6 +24,7 @@ class EduEscaleViewModelTest {
             val file = SchoolFile(
                 totalCount = 2,
                 withoutCoordinates = 0,
+                formatVersion = 1,
                 schools = listOf(
                     school(1, "Institución Educativa San Martín"),
                     school(2, "Colegio Central"),
@@ -51,6 +52,7 @@ class EduEscaleViewModelTest {
         val file = SchoolFile(
             totalCount = 2,
             withoutCoordinates = 1,
+            formatVersion = 1,
             schools = listOf(locatedSchool),
             schoolsWithoutCoordinates = listOf(schoolWithoutCoordinates),
         )
@@ -77,26 +79,34 @@ class EduEscaleViewModelTest {
     }
 
     @Test
-    fun sortsOnlyTheListAndUpdatesItWhenLocationOrFiltersChange() = runTest {
+    fun disablingLocationClearsTheOriginUsedForRoutes() {
+        val viewModel = EduEscaleViewModel()
+        viewModel.setLocationServicesEnabled(true)
+        viewModel.setUserLocation(-12.0, -77.0)
+        viewModel.setLocationServicesEnabled(false)
+        assertNull(viewModel.state.value.userLocation)
+        viewModel.setLocationServicesEnabled(true)
+        assertNull(viewModel.state.value.userLocation)
+    }
+
+    @Test
+    fun closingDetailsAndFilteringKeepRouteDestinationUntilAnotherSchoolIsSelected() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try {
             val viewModel = EduEscaleViewModel(StandardTestDispatcher(testScheduler))
-            val far = school(1, "Lejos").copy(latitud = -13.0)
-            val near = school(2, "Cerca")
-            val unlocated = school(3, "Sin coordenadas").copy(latitud = null, longitud = null)
-            viewModel.setSchoolFile(SchoolFile(3, 1, listOf(far, near), listOf(unlocated)), "test")
-            viewModel.setUserLocation(-12.0, -77.0)
-            advanceUntilIdle()
-            assertEquals(listOf(1, 2, 3), viewModel.state.value.visibleSchools.map { it.id })
-            assertEquals(listOf(2, 1, 3), viewModel.state.value.schoolsByDistance.map { it.id })
+            val first = school(1, "Primero")
+            val second = school(2, "Segundo")
+            viewModel.setSchoolFile(SchoolFile(2, 0, listOf(first, second), formatVersion = 1), "test")
+            viewModel.selectSchool(first)
+            viewModel.selectSchool(null)
+            assertNull(viewModel.state.value.selectedSchool)
+            assertEquals(first, viewModel.state.value.routeSchool)
 
-            viewModel.setQuery("lejos")
+            viewModel.setQuery("Segundo")
             advanceUntilIdle()
-            assertEquals(listOf(1), viewModel.state.value.schoolsByDistance.map { it.id })
-            viewModel.setQuery("")
-            viewModel.setUserLocation(-13.0, -77.0)
-            advanceUntilIdle()
-            assertEquals(listOf(1, 2, 3), viewModel.state.value.schoolsByDistance.map { it.id })
+            assertEquals(first, viewModel.state.value.routeSchool)
+            viewModel.selectSchool(second)
+            assertEquals(second, viewModel.state.value.routeSchool)
         } finally {
             Dispatchers.resetMain()
         }
@@ -107,7 +117,7 @@ class EduEscaleViewModelTest {
         val viewModel = EduEscaleViewModel()
         val lima = school(1, "Lima").copy(provincia = "Lima", distrito = "Miraflores")
         val cusco = school(2, "Cusco").copy(departamento = "Cusco", provincia = "Cusco", distrito = "Wanchaq")
-        viewModel.setSchoolFile(SchoolFile(2, 0, listOf(lima, cusco)), "test")
+        viewModel.setSchoolFile(SchoolFile(2, 0, listOf(lima, cusco), formatVersion = 1), "test")
         viewModel.openFilters()
         viewModel.updateFilterDraft(SchoolFilters(departamento = "Cusco"))
 

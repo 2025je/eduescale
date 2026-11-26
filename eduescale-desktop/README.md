@@ -224,6 +224,8 @@ Los tres tipos siguen usando la extensión `.eduescale`: JSON plano, ZIP con
 admite ZIP antiguos y continúa leyendo JSON v1 sin metadatos. Puedes enviar el
 archivo como documento por WhatsApp; al tocarlo, Android ofrecerá abrirlo con
 EduEscale si la app está instalada.
+Las opciones de exportación muestran la versión del formato y la versión de
+Desktop que se incluirán en el archivo.
 
 `gestion` identifica colegios públicos o privados y `nivel` clasifica el servicio como primaria, secundaria o CETPRO.
 `codigo_local` identifica el local educativo.
@@ -337,7 +339,14 @@ uv run --group nox nox
 Nox crea el entorno de pruebas con `uv`, instala el grupo `test` desde el
 `uv.lock` y ejecuta `pytest`. La suite incluye una prueba QML que verifica la
 navegación jerárquica del mapa y el diseño en 1280 × 720, 1366 × 768, 1600 × 900
-y 1920 × 1080.
+y 1920 × 1080. Ejecuta [qml_smoke.py](tests/gui/qml/qml_smoke.py) en un
+subproceso para aislar Qt WebEngine. Los dobles y parches de prueba usan la
+fixture `mocker` de `pytest-mock`. El grupo `test` también incluye Hypothesis
+para pruebas basadas en propiedades y `pytest-cov` para medir la cobertura:
+
+```powershell
+uv run --locked --group test pytest --cov=eduescale --cov-report=term-missing
+```
 
 ## Ejecutable para Windows
 
@@ -349,8 +358,8 @@ Nox:
 uv run --group nox nox -s build
 ```
 
-La carpeta `dist` contendrá `eduescale-gui.exe`, la carpeta
-`eduescale-scraper` con el worker y sus dependencias, y
+La carpeta `dist` contendrá las carpetas `eduescale-gui` y `eduescale-scraper`
+con los ejecutables y sus dependencias, y
 `installer\EduEscale-Setup-<versión>.exe`. El instalador coloca ambos componentes
 juntos en `Program Files`, crea accesos directos en el menú Inicio y permite
 crear uno en el escritorio. La interfaz usa `QProcess` para iniciar el worker
@@ -363,8 +372,8 @@ como configuración de empaquetado. GitHub Actions ejecuta las pruebas, Ruff, my
 Windows y una comprobación del comando `list` del scraper, los recursos QML de Material,
 los certificados, MapLibre y Qt WebEngine incluidos en la GUI en cada push y pull request.
 También se puede ejecutar manualmente desde GitHub Actions; ese flujo permite
-descargar la interfaz, la carpeta del worker y el instalador como artefacto
-durante siete días.
+descargar la carpeta portable de la interfaz (con el worker dentro) y el
+instalador como artefacto durante siete días.
 
 Para comprobar lint, formato y tipos con Ruff y mypy:
 

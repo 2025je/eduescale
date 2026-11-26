@@ -1,9 +1,12 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Layouts
 import EduEscale.Gui.Styles 1.0 as EduStyle
 
 ComboBox {
     id: control
+
+    property var iconNames: []
 
     implicitHeight: EduStyle.Style.comboHeight
     font.pixelSize: EduStyle.Style.bodyFontSize
@@ -11,16 +14,32 @@ ComboBox {
     leftPadding: 9
     rightPadding: 28
 
-    contentItem: Text {
-        leftPadding: 9
-        rightPadding: control.indicator.width + control.spacing
-        text: control.displayText
-        font: control.font
-        color: control.enabled
-            ? EduStyle.Style.textColor
-            : EduStyle.Style.disabledTextColor
-        verticalAlignment: Text.AlignVCenter
-        elide: Text.ElideRight
+    contentItem: RowLayout {
+        spacing: 7
+
+        MaterialSymbol {
+            symbolName: control.currentIndex >= 0
+                && control.currentIndex < control.iconNames.length
+                ? control.iconNames[control.currentIndex] : ""
+            symbolSize: control.font.pixelSize + 2
+            symbolColor: control.enabled
+                ? EduStyle.Style.textColor
+                : EduStyle.Style.disabledTextColor
+            visible: symbolName.length > 0
+        }
+
+        Text {
+            Layout.fillWidth: true
+            leftPadding: 2
+            rightPadding: control.indicator.width + control.spacing
+            text: control.displayText
+            font: control.font
+            color: control.enabled
+                ? EduStyle.Style.textColor
+                : EduStyle.Style.disabledTextColor
+            verticalAlignment: Text.AlignVCenter
+            elide: Text.ElideRight
+        }
     }
 
     background: Rectangle {
@@ -48,14 +67,27 @@ ComboBox {
         highlighted: control.highlightedIndex === index
         hoverEnabled: true
 
-        contentItem: Text {
-            leftPadding: 8
-            rightPadding: 8
-            text: popupDelegate.text
-            font: popupDelegate.font
-            color: EduStyle.Style.textColor
-            verticalAlignment: Text.AlignVCenter
-            elide: Text.ElideRight
+        contentItem: RowLayout {
+            spacing: 7
+
+            MaterialSymbol {
+                symbolName: index >= 0 && index < control.iconNames.length
+                    ? control.iconNames[index] : ""
+                symbolSize: popupDelegate.font.pixelSize + 2
+                symbolColor: EduStyle.Style.textColor
+                visible: symbolName.length > 0
+            }
+
+            Text {
+                Layout.fillWidth: true
+                leftPadding: 2
+                rightPadding: 8
+                text: popupDelegate.text
+                font: popupDelegate.font
+                color: EduStyle.Style.textColor
+                verticalAlignment: Text.AlignVCenter
+                elide: Text.ElideRight
+            }
         }
 
         background: Rectangle {

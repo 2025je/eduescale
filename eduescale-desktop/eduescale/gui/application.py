@@ -182,6 +182,28 @@ def configure_application_font(application: QGuiApplication) -> bool:
     return True
 
 
+def configure_material_symbols_font() -> bool:
+    symbols_path = resource_path("fonts/MaterialSymbolsOutlined.ttf")
+    font_id = QFontDatabase.addApplicationFont(symbols_path)
+    if font_id < 0:
+        LOGGER.error(
+            "Could not load Material Symbols font from %s",
+            symbols_path,
+        )
+        return False
+
+    font_families = QFontDatabase.applicationFontFamilies(font_id)
+    if "Material Symbols Outlined" not in font_families:
+        LOGGER.error(
+            "Material Symbols font file registered unexpected families: %s",
+            font_families,
+        )
+        return False
+
+    LOGGER.info("Using Material Symbols font from %s", symbols_path)
+    return True
+
+
 def configure_application_icon(application: QGuiApplication) -> bool:
     icon_path = resource_path("assets/edutrack-logo.png")
     icon = QIcon(icon_path)
@@ -229,19 +251,13 @@ def create_view_model(
             providers.Object(offline_database_update_service)
         )
     if export_history_store is not None:
-        container.export_history_store.override(
-            providers.Object(export_history_store)
-        )
+        container.export_history_store.override(providers.Object(export_history_store))
     if district_map_catalog is not None:
-        container.district_map_catalog.override(
-            providers.Object(district_map_catalog)
-        )
+        container.district_map_catalog.override(providers.Object(district_map_catalog))
     if preferences is not None:
         container.preferences.override(providers.Object(preferences))
     if saved_search_service is not None:
-        container.saved_search_service.override(
-            providers.Object(saved_search_service)
-        )
+        container.saved_search_service.override(providers.Object(saved_search_service))
     if school_search_service is not None:
         container.school_search_service.override(
             providers.Object(school_search_service)
@@ -268,6 +284,8 @@ def main(
         QQuickStyle.setStyle("Universal")
         application = QGuiApplication(sys.argv)
         if not configure_application_font(application):
+            return 1
+        if not configure_material_symbols_font():
             return 1
         if not configure_application_icon(application):
             return 1

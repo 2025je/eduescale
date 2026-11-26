@@ -1,6 +1,7 @@
 module EduEscale.Gui.Components
 DashboardHeader 1.0 DashboardHeader.qml
 LogsButton 1.0 LogsButton.qml
+MaterialSymbol 1.0 MaterialSymbol.qml
 SearchActionBar 1.0 SearchActionBar.qml
 SchoolDetailsCard 1.0 SchoolDetailsCard.qml
 StyledButton 1.0 StyledButton.qml

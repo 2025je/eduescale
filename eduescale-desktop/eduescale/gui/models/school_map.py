@@ -34,7 +34,7 @@ def _number(value: object) -> int | float | None:
     return value if math.isfinite(value) else None
 
 
-def _sum(current: int | float | None, value: object) -> int | float | None:
+def _sum(current: float | None, value: object) -> int | float | None:
     number = _number(value)
     if number is None:
         return current
@@ -151,7 +151,7 @@ class SchoolMapAccumulator:
         changed: dict[str, _School] = {}
         for record in records:
             local_code = _text(record, "codigo_local")
-            identity = [
+            identity: list[object] = [
                 local_code,
                 _text(record, "region"),
                 _text(record, "provincia"),
@@ -160,9 +160,7 @@ class SchoolMapAccumulator:
                 _text(record, "gestion"),
             ]
             if not local_code:
-                identity.append(
-                    [record.get(field) for field in MAP_RECORD_FIELDS]
-                )
+                identity.append([record.get(field) for field in MAP_RECORD_FIELDS])
             identity_json = json.dumps(
                 identity,
                 ensure_ascii=False,

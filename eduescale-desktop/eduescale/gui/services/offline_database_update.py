@@ -51,7 +51,5 @@ class OfflineDatabaseUpdateService:
             unique_records=unique_records,
             pages=pages,
         )
-        cleanup_error = (
-            self._offline_database_download.complete_database_download()
-        )
+        cleanup_error = self._offline_database_download.complete_database_download()
         return OfflineDatabaseUpdateResult(metadata, cleanup_error)

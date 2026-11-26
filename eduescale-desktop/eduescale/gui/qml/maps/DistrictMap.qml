@@ -22,6 +22,9 @@ Rectangle {
     property var pendingSchoolBatches: []
     readonly property int maxSchoolLocationsPerUpdate: 500
     property int schoolPointCount: 0
+    property bool schoolFitPending: false
+    property string schoolMapBoundsJson: ""
+    property real schoolMapZoom: 0
     property var parentCodes: []
     property var selectionCodes: []
     property var selectedCodes: []
@@ -98,8 +101,12 @@ Rectangle {
     }
 
     function flushSchoolLocations() {
-        if (!mapReady || !pendingSchoolBatches.length)
+        if (!mapReady)
             return
+        if (!pendingSchoolBatches.length) {
+            fitSchoolLocationsIfReady()
+            return
+        }
         var locations = []
         while (locations.length < maxSchoolLocationsPerUpdate
                 && pendingSchoolBatches.length) {
@@ -123,12 +130,32 @@ Rectangle {
         }
         if (pendingSchoolBatches.length)
             schoolBatchTimer.start()
+        else
+            fitSchoolLocationsIfReady()
+    }
+
+    function fitSchoolLocations() {
+        if (!schoolPointCount)
+            return
+        schoolFitPending = true
+        if (mapReady && !schoolBatchTimer.running)
+            flushSchoolLocations()
+    }
+
+    function fitSchoolLocationsIfReady() {
+        if (!schoolFitPending || pendingSchoolBatches.length)
+            return
+        schoolFitPending = false
+        webView.runJavaScript("window.fitSchoolFeatures()")
     }
 
     function clearSchoolLocations() {
         schoolBatchTimer.stop()
         pendingSchoolBatches = []
         schoolPointCount = 0
+        schoolFitPending = false
+        schoolMapBoundsJson = ""
+        schoolMapZoom = 0
         if (mapReady)
             webView.runJavaScript("window.clearSchoolLocations()")
     }
@@ -224,6 +251,25 @@ Rectangle {
         function reportMapError(message) {
             root.mapReady = false
             root.loadingError = "No se pudo cargar el mapa: " + String(message)
+        }
+
+        function reportSchoolMapView(boundsJson, zoom) {
+            if (!root.schoolMode)
+                return
+            var bounds
+            try {
+                bounds = JSON.parse(boundsJson)
+            } catch (error) {
+                root.loadingError = "La vista de colegios no es válida."
+                return
+            }
+            if (!Array.isArray(bounds) || bounds.length !== 2
+                    || !Number.isFinite(Number(zoom))) {
+                root.loadingError = "La vista de colegios no es válida."
+                return
+            }
+            root.schoolMapBoundsJson = JSON.stringify(bounds)
+            root.schoolMapZoom = Number(zoom)
         }
     }
 

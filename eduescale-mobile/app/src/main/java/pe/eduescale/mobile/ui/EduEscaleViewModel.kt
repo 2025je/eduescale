@@ -18,7 +18,6 @@ import pe.eduescale.mobile.data.SchoolFilters
 import pe.eduescale.mobile.data.SchoolRecord
 import pe.eduescale.mobile.data.filterSchools
 import pe.eduescale.mobile.data.schoolLevelOptions
-import pe.eduescale.mobile.data.sortSchoolsByDistance
 
 data class SchoolFilterOptions(
     val departments: List<String> = emptyList(),
@@ -48,10 +47,10 @@ data class EduEscaleUiState(
     val filterDraft: SchoolFilters? = null,
     val filterOptions: SchoolFilterOptions = SchoolFilterOptions(),
     val visibleSchools: List<SchoolRecord> = emptyList(),
-    val schoolsByDistance: List<SchoolRecord> = emptyList(),
     val userLocation: SchoolCoordinates? = null,
     val locationServicesEnabled: Boolean? = null,
     val selectedSchool: SchoolRecord? = null,
+    val routeSchool: SchoolRecord? = null,
 )
 
 class EduEscaleViewModel(
@@ -60,7 +59,6 @@ class EduEscaleViewModel(
     private val mutableState = MutableStateFlow(EduEscaleUiState())
     val state: StateFlow<EduEscaleUiState> = mutableState.asStateFlow()
     private var filterJob: Job? = null
-    private var sortJob: Job? = null
 
     fun setSchoolFile(file: SchoolFile, fileName: String) {
         filterJob?.cancel()
@@ -74,11 +72,9 @@ class EduEscaleViewModel(
                 filterDraft = null,
                 filterOptions = SchoolFilterOptions(),
                 visibleSchools = schools,
-                schoolsByDistance = schools,
                 selectedSchool = null,
             )
         }
-        sortSchoolsAsync()
     }
 
     fun setQuery(query: String) {
@@ -125,17 +121,19 @@ class EduEscaleViewModel(
         mutableState.update {
             it.copy(userLocation = SchoolCoordinates(latitude, longitude))
         }
-        sortSchoolsAsync()
     }
 
     fun setLocationServicesEnabled(enabled: Boolean) {
-        mutableState.update { it.copy(locationServicesEnabled = enabled) }
+        mutableState.update {
+            it.copy(locationServicesEnabled = enabled, userLocation = if (enabled) it.userLocation else null)
+        }
     }
 
     fun selectSchool(school: SchoolRecord?) {
         mutableState.update {
             it.copy(
                 selectedSchool = school,
+                routeSchool = school ?: it.routeSchool,
             )
         }
     }
@@ -163,27 +161,8 @@ class EduEscaleViewModel(
                     }
                     current.copy(
                         visibleSchools = matches,
-                        schoolsByDistance = matches,
                         selectedSchool = selectedSchool,
                     )
-                } else {
-                    current
-                }
-            }
-            if (mutableState.value.visibleSchools === matches) sortSchoolsAsync()
-        }
-    }
-
-    private fun sortSchoolsAsync() {
-        sortJob?.cancel()
-        val snapshot = mutableState.value
-        val origin = snapshot.userLocation ?: return
-        val schools = snapshot.visibleSchools
-        sortJob = viewModelScope.launch {
-            val sorted = withContext(filteringDispatcher) { sortSchoolsByDistance(schools, origin) }
-            mutableState.update { current ->
-                if (current.visibleSchools === schools && current.userLocation == origin) {
-                    current.copy(schoolsByDistance = sorted)
                 } else {
                     current
                 }

@@ -1,4 +1,3 @@
-
 import pytest
 from PySide6.QtCore import QCoreApplication, QObject, QSettings, Signal
 
@@ -31,6 +30,7 @@ class FakeLocationService(QObject):
     def shutdown(self):
         pass
 
+
 class FakeScrapeRunner(QObject):
     started = Signal()
     progressChanged = Signal(object)
@@ -57,6 +57,7 @@ class FakeScrapeRunner(QObject):
     def shutdown(self):
         pass
 
+
 class FakeLocalDatabaseSearchRunner(QObject):
     started = Signal()
     progressChanged = Signal(object)
@@ -78,6 +79,7 @@ class FakeLocalDatabaseSearchRunner(QObject):
 
     def shutdown(self):
         pass
+
 
 class FakeExportRunner(QObject):
     started = Signal(str)

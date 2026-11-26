@@ -60,6 +60,8 @@ data class SchoolFile(
     val totalCount: Int,
     val withoutCoordinates: Int,
     val schools: List<SchoolRecord>,
+    val formatVersion: Int,
+    val applicationVersion: String? = null,
     val schoolsWithoutCoordinates: List<SchoolRecord> = emptyList(),
 )
 
@@ -189,6 +191,8 @@ object SchoolDataReader {
             totalCount = result.totalCount,
             withoutCoordinates = result.withoutCoordinates,
             schools = groupedSchools.filter(SchoolRecord::hasCoordinates),
+            formatVersion = version,
+            applicationVersion = metadata?.applicationVersion,
             schoolsWithoutCoordinates = groupedSchools.filterNot(SchoolRecord::hasCoordinates),
         )
     }

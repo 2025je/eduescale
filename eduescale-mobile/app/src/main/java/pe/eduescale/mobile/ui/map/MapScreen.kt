@@ -63,6 +63,7 @@ import pe.eduescale.mobile.ui.components.BrandHeader
 import pe.eduescale.mobile.ui.components.LegendRow
 import pe.eduescale.mobile.ui.files.formatMapBytes
 import pe.eduescale.mobile.ui.schools.SchoolDetailsSheet
+import pe.eduescale.mobile.routing.RoadRoutingState
 import pe.eduescale.mobile.ui.theme.EduGray
 import pe.eduescale.mobile.ui.theme.EduGreen
 import pe.eduescale.mobile.ui.theme.EduOrange
@@ -70,6 +71,7 @@ import pe.eduescale.mobile.ui.theme.EduOrange
 @Composable
 internal fun MapScreen(
     state: EduEscaleUiState,
+    roadState: RoadRoutingState,
     activityState: SchoolActivityUiState,
     offlineMapsState: OfflineMapsUiState,
     onMapTopOverlayBottomChanged: (Float) -> Unit,
@@ -92,6 +94,9 @@ internal fun MapScreen(
     onDeleteReminder: (SchoolRecord, String) -> Unit,
     onDownloadVisibleArea: (OfflineMapBounds, Int, Int) -> Unit,
     onToggleOfflineMapArea: (Long, Boolean) -> Unit,
+    onMarkAsVisited: (String, String) -> Unit,
+    onScheduleVisit: (String, String, Long) -> Unit,
+    onReportPermissionDenied: (String, String, String) -> Unit,
 ) {
     var legendExpanded by rememberSaveable { mutableStateOf(false) }
     var showOfflineMapDialog by rememberSaveable { mutableStateOf(false) }
@@ -109,7 +114,13 @@ internal fun MapScreen(
                 },
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            BrandHeader()
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surface,
+                shadowElevation = 2.dp,
+            ) {
+                BrandHeader(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
+            }
             if (state.schoolFile == null) {
                 Card(
                     modifier = Modifier
@@ -276,7 +287,7 @@ internal fun MapScreen(
                 containerColor = MaterialTheme.colorScheme.surface,
                 contentColor = MaterialTheme.colorScheme.primary,
                 icon = { Icon(Icons.Default.MyLocation, contentDescription = null) },
-                text = { Text("Activar ubicación") },
+                text = { Text("🧭 Activar ubicación") },
             )
         } else {
             FloatingActionButton(
@@ -287,7 +298,7 @@ internal fun MapScreen(
                 containerColor = MaterialTheme.colorScheme.surface,
                 contentColor = MaterialTheme.colorScheme.primary,
             ) {
-                Icon(Icons.Default.MyLocation, contentDescription = "Centrar mi ubicación")
+                Icon(Icons.Default.MyLocation, contentDescription = "🧭 Centrar mi ubicación")
             }
         }
     }
@@ -308,6 +319,7 @@ internal fun MapScreen(
     SchoolDetailsSheet(
         school = state.selectedSchool,
         userLocation = state.userLocation,
+        roadState = roadState,
         onSheetShown = onSchoolDetailsSheetShown,
         onDismiss = onClearSelection,
         onDirections = onDirections,
@@ -351,6 +363,9 @@ internal fun MapScreen(
         onDeleteReminder = { reminderId ->
             state.selectedSchool?.let { school -> onDeleteReminder(school, reminderId) }
         },
+        onMarkAsVisited = onMarkAsVisited,
+        onScheduleVisit = onScheduleVisit,
+        onReportPermissionDenied = onReportPermissionDenied,
     )
 }
 

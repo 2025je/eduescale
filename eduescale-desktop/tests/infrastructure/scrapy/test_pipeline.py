@@ -195,7 +195,7 @@ def test_saves_one_excel_sheet_per_district_with_tables_per_level():
         assert "google maps" not in android_json.lower()
 
 
-def test_failed_excel_replace_preserves_both_existing_exports(monkeypatch):
+def test_failed_excel_replace_preserves_both_existing_exports(mocker):
     record = {
         "nombre": "Colegio Ejemplo",
         "direccion": "Av. Principal",
@@ -236,7 +236,7 @@ def test_failed_excel_replace_preserves_both_existing_exports(monkeypatch):
                 raise PermissionError("archivo en uso")
             return original_replace(source, destination)
 
-        monkeypatch.setattr(export_files.os, "replace", fail_excel_replace)
+        mocker.patch.object(export_files.os, "replace", fail_excel_replace)
 
         with pytest.raises(RuntimeError, match="Cierra el archivo"):
             pipeline.close_spider()

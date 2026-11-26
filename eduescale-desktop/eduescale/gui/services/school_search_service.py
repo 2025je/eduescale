@@ -163,13 +163,13 @@ class SchoolSearchRequestService:
                 province = location["province"]
                 district = location["district"]
             elif filters.province_code:
-                location = province_metadata.get(filters.province_code)
-                if location is None:
+                province_location = province_metadata.get(filters.province_code)
+                if province_location is None:
                     raise ValueError(
                         f"Ubigeo provincial no reconocido: {filters.province_code}."
                     )
-                region = str(location["department"])
-                province = str(location["name"])
+                region = str(province_location["department"])
+                province = str(province_location["name"])
             elif filters.region_code:
                 location = department_metadata.get(filters.region_code)
                 if location is None:

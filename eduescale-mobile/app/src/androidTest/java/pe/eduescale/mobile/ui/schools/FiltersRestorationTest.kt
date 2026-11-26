@@ -17,6 +17,7 @@ import pe.eduescale.mobile.data.SchoolFile
 import pe.eduescale.mobile.data.SchoolFilters
 import pe.eduescale.mobile.data.SchoolRecord
 import pe.eduescale.mobile.ui.EduEscaleViewModel
+import pe.eduescale.mobile.routing.RoadRoutingState
 
 @OptIn(ExperimentalTestApi::class)
 class FiltersRestorationTest {
@@ -32,13 +33,14 @@ class FiltersRestorationTest {
             alumnos = null, secciones = null, gestion = "publica", codigoLocal = "1",
             niveles = listOf("primaria"), longitud = -72.0, latitud = -13.0,
         )
-        model.setSchoolFile(SchoolFile(1, 0, listOf(school)), "test")
+        model.setSchoolFile(SchoolFile(1, 0, listOf(school), formatVersion = 1), "test")
         val restoration = StateRestorationTester(compose)
         restoration.setContent {
             val state by model.state.collectAsState()
             MaterialTheme {
                 SchoolsScreen(
                     state = state,
+                    roadState = RoadRoutingState(orderedSchools = state.visibleSchools),
                     onQueryChanged = model::setQuery,
                     onApplyFilters = model::setFilters,
                     onOpenFilters = model::openFilters,

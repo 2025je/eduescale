@@ -78,10 +78,6 @@ class ScrapyOutputParser:
                     "Scrapy emitted a live school batch with an invalid shape."
                 )
             schools.append(
-                {
-                    key: value
-                    for key, value in school.items()
-                    if isinstance(key, str)
-                }
+                {key: value for key, value in school.items() if isinstance(key, str)}
             )
         return SchoolBatch(schools)

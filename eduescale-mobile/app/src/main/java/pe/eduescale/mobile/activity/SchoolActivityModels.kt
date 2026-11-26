@@ -30,6 +30,26 @@ data class SchoolReminder(
 internal fun SchoolReminder.reactivatedWith(message: String, scheduledAtMillis: Long): SchoolReminder =
     copy(message = message, scheduledAtMillis = scheduledAtMillis, status = SchoolReminder.STATUS_PENDING)
 
+enum class VisitStatus {
+    NOT_VISITED,
+    SCHEDULED,
+    VISITED,
+    PERMISSION_DENIED,
+}
+
+data class SchoolVisit(
+    val id: String,
+    val schoolKey: String,
+    val schoolName: String,
+    val status: VisitStatus,
+    val visitDate: Long? = null,
+    val scheduledDate: Long? = null,
+    val permissionDeniedReason: String? = null,
+    val observations: String? = null,
+    val createdAtMillis: Long,
+    val updatedAtMillis: Long? = null,
+)
+
 data class SchoolActivityBackup(
     val format: String = BACKUP_FORMAT,
     val version: Int = BACKUP_VERSION,

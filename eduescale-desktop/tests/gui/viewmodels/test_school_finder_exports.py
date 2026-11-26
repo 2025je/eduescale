@@ -25,6 +25,7 @@ def test_persists_only_the_latest_50_export_metadata_entries(view_model_componen
     assert view_model.exportHistory[0]["filters"] == ("Lima / Miraflores · primaria")
     assert not any("password" in key for key in view_model.exportHistory[0])
 
+
 def test_default_output_url_avoids_overwriting_existing_exports(
     view_model_components,
     tmp_path,
@@ -40,9 +41,10 @@ def test_default_output_url_avoids_overwriting_existing_exports(
 
     assert next_output == tmp_path / "colegios_escale_1.xlsx"
 
+
 def test_export_buttons_generate_and_open_the_requested_file(
     view_model_components,
-    monkeypatch,
+    mocker,
     tmp_path,
 ):
     view_model, _scrape_runner, _errors = view_model_components
@@ -51,7 +53,7 @@ def test_export_buttons_generate_and_open_the_requested_file(
     eduescale_path = android_data_path(output_path)
     pdf_path = output_path.with_suffix(".pdf")
     opened_urls = []
-    monkeypatch.setattr(
+    mocker.patch.object(
         view_model_module,
         "QDesktopServices",
         SimpleNamespace(openUrl=lambda url: opened_urls.append(url) or True),
@@ -90,6 +92,7 @@ def test_export_buttons_generate_and_open_the_requested_file(
         eduescale_path,
         pdf_path,
     ]
+
 
 def test_starts_optional_compressed_and_protected_export(
     view_model_components, tmp_path, caplog
