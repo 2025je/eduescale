@@ -12,7 +12,7 @@
   {
     "name": "unsupported-version",
     "valid": false,
-    "document": {"formato": "eduescale", "version": 2, "colegios": []}
+    "document": {"formato": "eduescale", "version": 3, "colegios": []}
   },
   {
     "name": "missing-schools",

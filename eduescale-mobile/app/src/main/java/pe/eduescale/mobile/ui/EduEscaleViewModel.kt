@@ -46,6 +46,7 @@ data class EduEscaleUiState(
     val filters: SchoolFilters = SchoolFilters(),
     val filterDraft: SchoolFilters? = null,
     val filterOptions: SchoolFilterOptions = SchoolFilterOptions(),
+    val filterError: String? = null,
     val visibleSchools: List<SchoolRecord> = emptyList(),
     val userLocation: SchoolCoordinates? = null,
     val locationServicesEnabled: Boolean? = null,
@@ -71,6 +72,7 @@ class EduEscaleViewModel(
                 filters = SchoolFilters(),
                 filterDraft = null,
                 filterOptions = SchoolFilterOptions(),
+                filterError = null,
                 visibleSchools = schools,
                 selectedSchool = null,
             )
@@ -83,7 +85,25 @@ class EduEscaleViewModel(
     }
 
     fun setFilters(filters: SchoolFilters) {
-        mutableState.update { it.copy(filters = filters) }
+        val file = mutableState.value.schoolFile
+        val schools = file?.let { it.schools + it.schoolsWithoutCoordinates }.orEmpty()
+        if (file?.formatVersion == 1 &&
+            filters.niveles.any { it !in setOf("primaria", "secundaria", "cetpro") }
+        ) {
+            mutableState.update {
+                it.copy(filterError = "El archivo antiguo no contiene todos los niveles. Exporta un archivo actualizado desde Desktop.")
+            }
+            return
+        }
+        if (filters.gestiones.any { it == "publica_directa" || it == "publica_convenio" } &&
+            schools.any { it.gestionDependenciaDesconocida }
+        ) {
+            mutableState.update {
+                it.copy(filterError = "El archivo no contiene el tipo de gestión de todos los colegios públicos. Exporta un archivo actualizado desde Desktop.")
+            }
+            return
+        }
+        mutableState.update { it.copy(filters = filters, filterError = null) }
         filterSchoolsAsync()
     }
 
@@ -181,7 +201,16 @@ class EduEscaleViewModel(
             departments = schools.mapNotNull(SchoolRecord::departamento).distinct().sorted(),
             provinces = departmentSchools.mapNotNull(SchoolRecord::provincia).distinct().sorted(),
             districts = provinceSchools.mapNotNull(SchoolRecord::distrito).distinct().sorted(),
-            management = schools.mapNotNull(SchoolRecord::gestion).distinct().sorted(),
+            management = buildList {
+                if (schools.any { it.gestion == "publica" }) {
+                    if (schools.any { it.gestionDependenciaDesconocida }) add("publica")
+                    else {
+                        add("publica_directa")
+                        add("publica_convenio")
+                    }
+                }
+                if (schools.any { it.gestion == "privada" }) add("privada")
+            },
             levels = schoolLevelOptions(schools),
         )
     }

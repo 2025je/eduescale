@@ -25,8 +25,13 @@ fun filterSchools(
             (filters.departamento == null || school.departamento == filters.departamento) &&
             (filters.provincia == null || school.provincia == filters.provincia) &&
             (filters.distrito == null || school.distrito == filters.distrito) &&
-            (filters.gestiones.isEmpty() || school.gestion in filters.gestiones) &&
-            (filters.niveles.isEmpty() || school.niveles.any(filters.niveles::contains))
+            ((filters.gestiones.isEmpty() || school.gestion in filters.gestiones) &&
+                (filters.niveles.isEmpty() || school.niveles.any(filters.niveles::contains)) ||
+                school.nivelesPorGestionDependencia.any { (code, levels) ->
+                    (("publica_directa" in filters.gestiones && code in setOf("A1", "A2", "A3")) ||
+                        ("publica_convenio" in filters.gestiones && code == "A4")) &&
+                        (filters.niveles.isEmpty() || levels.any(filters.niveles::contains))
+                })
     }
 }
 

@@ -1,12 +1,24 @@
-# Formato `.eduescale` v1
+# Formato `.eduescale`
 
-El contenido es un documento JSON UTF-8 conforme a
+La versión 1 es un documento JSON UTF-8 conforme a
 [eduescale-v1.schema.json](./eduescale-v1.schema.json). Los campos adicionales
 son compatibles y los lectores deben ignorarlos. `metadatos` es opcional para
 archivos antiguos; si existe, `cantidad_colegios` debe coincidir con el número
 de registros de `colegios`. Los registros pueden omitir campos o tener valores
 nulos. Las coordenadas no utilizables no impiden importar el archivo; Android
 las trata como ausentes. El nivel inicial no está admitido.
+
+La [versión 2](./eduescale-v2.schema.json) admite Inicial y los demás niveles
+de ESCALE. Desktop la utiliza cuando la exportación contiene niveles nuevos;
+Android actualizado lee ambas versiones. Las versiones anteriores de Android
+no pueden abrir archivos v2. El campo opcional `gestion_dependencia` conserva
+el código de ESCALE para distinguir gestión pública directa y por convenio;
+los archivos antiguos pueden no contenerlo.
+
+Las búsquedas guardadas compartidas usan el formato
+`eduescale.saved-searches`: la versión 2 admite los niveles y subtipos nuevos.
+Desktop y Android siguen leyendo la versión 1; para compartir filtros nuevos
+es necesario actualizar ambas aplicaciones.
 
 El documento puede almacenarse directamente, en un ZIP con una única entrada
 `colegios.json`, o en un contenedor cifrado. El contenedor v1 consta de:

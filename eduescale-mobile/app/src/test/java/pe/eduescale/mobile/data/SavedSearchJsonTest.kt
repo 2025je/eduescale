@@ -7,6 +7,28 @@ import org.junit.Test
 
 class SavedSearchJsonTest {
     @Test
+    fun versionsNewFiltersWithoutChangingLegacyDocuments() {
+        val search = SavedSearch(
+            name = "Convenio", department = null, province = null, district = null,
+            management = listOf("publica_convenio"), levels = listOf("inicial"),
+        )
+        val encoded = SavedSearchJson.encode(listOf(search))
+        assertEquals(true, encoded.contains("\"version\":2"))
+        assertEquals(listOf(search), SavedSearchJson.decode(encoded))
+        assertInvalid(encoded.replace("\"version\":2", "\"version\":1"))
+    }
+
+    @Test
+    fun legacyEmptyLevelsDoNotExpandToNewLevels() {
+        val legacy = document(searches = "[${search().replace(
+            "\"levels\":[\"primaria\"]",
+            "\"levels\":[]",
+        )}]")
+        val decoded = SavedSearchJson.decode(legacy).single()
+        assertEquals(listOf("primaria", "secundaria", "cetpro"), decoded.levels)
+    }
+
+    @Test
     fun encodesAndDecodesPortableSearchesWithNullCodes() {
         val searches = listOf(
             SavedSearch(
@@ -51,7 +73,7 @@ class SavedSearchJsonTest {
     @Test
     fun rejectsUnsupportedFormatVersionAndMissingFields() {
         assertInvalid(document(format = "eduescale"))
-        assertInvalid(document(version = 2))
+        assertInvalid(document(version = 3))
         assertInvalid("""{"format":"eduescale.saved-searches","version":1}""")
     }
 

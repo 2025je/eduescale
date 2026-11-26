@@ -37,7 +37,7 @@ data class SavedSearch(
 
 object SavedSearchJson {
     private const val FORMAT = "eduescale.saved-searches"
-    private const val VERSION = 1
+    private const val VERSION = 2
     private val fields = setOf(
         "name",
         "department",
@@ -49,14 +49,26 @@ object SavedSearchJson {
         "management",
         "levels",
     )
-    private val managementValues = setOf("publica", "privada")
-    private val levelValues = setOf("primaria", "secundaria", "cetpro")
+    private val legacyManagementValues = setOf("publica", "privada")
+    private val legacyLevelValues = setOf("primaria", "secundaria", "cetpro")
+    private val managementValues = legacyManagementValues + setOf("publica_directa", "publica_convenio")
+    private val levelValues = legacyLevelValues + setOf(
+        "inicial", "basica_alternativa", "educacion_especial", "superior_pedagogica",
+        "superior_artistica", "superior_tecnologica",
+    )
 
     fun encode(searches: List<SavedSearch>): String {
         validateSearches(searches)
         val root = JsonObject().apply {
             addProperty("format", FORMAT)
-            addProperty("version", VERSION)
+            addProperty(
+                "version",
+                if (searches.any {
+                        it.levels.isEmpty() ||
+                            it.management.any { value -> value !in legacyManagementValues } ||
+                            it.levels.any { value -> value !in legacyLevelValues }
+                    }) VERSION else 1,
+            )
             add("searches", JsonArray().apply { searches.forEach { add(it.toJson()) } })
         }
         return root.toString()
@@ -74,7 +86,7 @@ object SavedSearchJson {
         if (root.string("format") != FORMAT) invalid("El formato del archivo no es compatible.")
         val version = root.get("version")
         if (version == null || !version.isJsonPrimitive || !version.asJsonPrimitive.isNumber ||
-            version.asInt != VERSION || version.asString != VERSION.toString()
+            version.asInt !in 1..VERSION || version.asString != version.asInt.toString()
         ) {
             invalid("La versión del archivo no es compatible.")
         }
@@ -100,7 +112,24 @@ object SavedSearchJson {
             )
         }
         validateSearches(searches)
-        return searches
+        if (version.asInt == 1 && searches.any {
+                it.management.any { value -> value !in legacyManagementValues } ||
+                    it.levels.any { value -> value !in legacyLevelValues }
+            }
+        ) {
+            invalid("La versión 1 no admite estos filtros.")
+        }
+        return if (version.asInt == 1) {
+            searches.map { search ->
+                if (search.levels.isEmpty()) {
+                    search.copy(levels = listOf("primaria", "secundaria", "cetpro"))
+                } else {
+                    search
+                }
+            }
+        } else {
+            searches
+        }
     }
 
     private fun SavedSearch.toJson() = JsonObject().apply {

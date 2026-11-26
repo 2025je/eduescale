@@ -17,6 +17,35 @@ import org.junit.Test
 
 class SchoolDataReaderTest {
     @Test
+    fun readsVersionTwoAndPreservesManagementLevelPairsWhenGrouping() {
+        val json = """
+            {"formato":"eduescale","version":2,"colegios":[
+              {"nombre":"Colegio","codigo_local":"1","gestion":"publica","gestion_dependencia":"A1",
+               "nivel":"primaria","longitud":-77,"latitud":-12},
+              {"nombre":"Colegio","codigo_local":"1","gestion":"publica","gestion_dependencia":"A4",
+               "nivel":"inicial","longitud":-77,"latitud":-12}
+            ]}
+        """.trimIndent()
+        val file = SchoolDataReader.read(StringReader(json))
+        assertEquals(2, file.formatVersion)
+        assertEquals(1, file.schools.size)
+        assertEquals(setOf("A1", "A4"), file.schools.single().gestionDependencias)
+        assertEquals(1, filterSchools(file.schools, "", SchoolFilters(
+            gestiones = setOf("publica_convenio"), niveles = setOf("inicial"),
+        )).size)
+        assertEquals(0, filterSchools(file.schools, "", SchoolFilters(
+            gestiones = setOf("publica_directa"), niveles = setOf("inicial"),
+        )).size)
+    }
+
+    @Test
+    fun marksLegacyPublicManagementAsUnknown() {
+        val json = """{"formato":"eduescale","version":1,"colegios":[{"gestion":"publica","nivel":"primaria"}]}"""
+        val file = SchoolDataReader.read(StringReader(json))
+        assertEquals(true, file.schoolsWithoutCoordinates.single().gestionDependenciaDesconocida)
+    }
+
+    @Test
     fun readsCompressedEduEscaleZip() {
         val json = """{"formato":"eduescale","version":1,"colegios":[{"nombre":"Colegio ZIP","longitud":-77.0,"latitud":-12.0}]}"""
         val archiveBytes = ByteArrayOutputStream()
@@ -312,7 +341,7 @@ class SchoolDataReaderTest {
 
     @Test
     fun rejectsUnsupportedFormatVersion() {
-        val json = """{"formato":"eduescale","version":2,"colegios":[]}"""
+        val json = """{"formato":"eduescale","version":3,"colegios":[]}"""
 
         assertThrows(IllegalArgumentException::class.java) {
             SchoolDataReader.read(StringReader(json))

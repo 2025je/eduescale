@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EduEscale JSON v2",
+  "type": "object",
+  "required": ["formato", "version", "colegios"],
+  "properties": {
+    "formato": {"const": "eduescale"},
+    "version": {"const": 2},
+    "metadatos": {
+      "type": "object",
+      "required": ["generado_en", "cantidad_colegios", "crs", "aplicacion", "version_aplicacion"],
+      "properties": {
+        "generado_en": {"type": "string", "format": "date-time"},
+        "cantidad_colegios": {"type": "integer", "minimum": 0},
+        "crs": {"const": "EPSG:4326"},
+        "aplicacion": {"type": "string", "pattern": "\\S"},
+        "version_aplicacion": {"type": "string", "pattern": "\\S"}
+      }
+    },
+    "colegios": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "departamento": {"$ref": "#/$defs/text"},
+          "provincia": {"$ref": "#/$defs/text"},
+          "distrito": {"$ref": "#/$defs/text"},
+          "nombre": {"$ref": "#/$defs/text"},
+          "direccion": {"$ref": "#/$defs/text"},
+          "localidad": {"$ref": "#/$defs/text"},
+          "cp": {"$ref": "#/$defs/text"},
+          "turno": {"$ref": "#/$defs/text"},
+          "alumnos": {"$ref": "#/$defs/text"},
+          "secciones": {"$ref": "#/$defs/text"},
+          "gestion": {"$ref": "#/$defs/text"},
+          "gestion_dependencia": {"type": ["string", "null"]},
+          "nivel": {"$ref": "#/$defs/text"},
+          "niveles": {
+            "anyOf": [
+              {"$ref": "#/$defs/text"},
+              {"type": "array", "items": {"$ref": "#/$defs/text"}}
+            ]
+          },
+          "codigo_local": {"$ref": "#/$defs/text"},
+          "longitud": {"$ref": "#/$defs/coordinate"},
+          "latitud": {"$ref": "#/$defs/coordinate"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "text": {"type": ["string", "number", "boolean", "null"]},
+    "coordinate": {"type": ["number", "string", "null"]}
+  }
+}

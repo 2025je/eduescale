@@ -1018,13 +1018,18 @@ internal fun StatisticLine(label: String, value: String) {
 
 internal fun managementLabel(value: String): String = when (value) {
     "publica" -> "Pública"
+    "publica_directa" -> "Pública de gestión directa"
+    "publica_convenio" -> "Pública de gestión privada"
     "privada" -> "Privada"
     else -> value.replaceFirstChar(Char::uppercase)
 }
 
-internal fun schoolLevelLabel(value: String): String =
-    if (value.equals("cetpro", ignoreCase = true)) {
-        "CETPRO"
-    } else {
-        value.replaceFirstChar(Char::uppercase)
-    }
+internal fun schoolLevelLabel(value: String): String = when (value.lowercase()) {
+    "cetpro" -> "CETPRO"
+    "basica_alternativa" -> "Básica Alternativa"
+    "educacion_especial" -> "Educación Especial"
+    "superior_pedagogica" -> "Superior Pedagógica"
+    "superior_artistica" -> "Superior Artística"
+    "superior_tecnologica" -> "Superior Tecnológica"
+    else -> value.replaceFirstChar(Char::uppercase)
+}

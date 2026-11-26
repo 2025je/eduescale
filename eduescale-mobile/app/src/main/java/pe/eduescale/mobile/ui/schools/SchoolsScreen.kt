@@ -112,6 +112,9 @@ internal fun SchoolsScreen(
                 style = MaterialTheme.typography.bodySmall,
             )
         }
+        state.filterError?.let { message ->
+            Text(message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        }
         ActiveFilterChips(state.filters, Modifier.padding(top = 4.dp))
         val schoolsWithoutCoordinates = state.visibleSchools.count { !it.hasCoordinates }
         val matchingRoadInputs = roadState.inputSchools == state.visibleSchools &&

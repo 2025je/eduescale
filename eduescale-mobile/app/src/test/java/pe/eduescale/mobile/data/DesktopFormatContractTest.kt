@@ -19,6 +19,20 @@ class DesktopFormatContractTest {
     ).firstOrNull(Files::isRegularFile) ?: error("No se encontró el fixture $name.")
 
     @Test
+    fun readsDesktopVersionTwoWithInitialAndPublicConvention() {
+        val bytes = Base64.getDecoder().decode(
+            String(Files.readAllBytes(fixturePath("desktop-contract-v2.base64")), StandardCharsets.US_ASCII).trim(),
+        )
+        val file = SchoolDataReader.read(ByteArrayInputStream(bytes))
+        assertEquals(2, file.formatVersion)
+        val result = filterSchools(
+            file.schools, "",
+            SchoolFilters(gestiones = setOf("publica_convenio"), niveles = setOf("inicial")),
+        )
+        assertEquals("Colegio contrato v2", result.single().nombre)
+    }
+
+    @Test
     fun readsCurrentDesktopExportsInAllContainers() {
         for (format in listOf("json", "zip", "encrypted")) {
             val name = "desktop-contract-$format.base64"

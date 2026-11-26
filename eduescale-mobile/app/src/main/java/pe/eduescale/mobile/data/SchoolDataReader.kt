@@ -31,6 +31,9 @@ data class SchoolRecord(
     val latitud: Double?,
     val estadisticasPorNivel: Map<String, SchoolLevelStatistics> = emptyMap(),
     val ofertaEducativa: List<SchoolScheduleRow> = emptyList(),
+    val gestionDependencias: Set<String> = emptySet(),
+    val gestionDependenciaDesconocida: Boolean = false,
+    val nivelesPorGestionDependencia: Map<String, Set<String>> = emptyMap(),
 ) {
     val coordinates: SchoolCoordinates?
         get() {
@@ -91,7 +94,7 @@ private data class SchoolGroupKey(
 
 object SchoolDataReader {
     private const val EXPECTED_FORMAT = "eduescale"
-    private const val SUPPORTED_VERSION = 1
+    private const val SUPPORTED_VERSION = 2
     private const val MAX_MERCATOR_LATITUDE = 85.05112878
     private const val ZIP_ENTRY_NAME = "colegios.json"
 
@@ -174,13 +177,19 @@ object SchoolDataReader {
         if (format != EXPECTED_FORMAT) {
             throw IllegalArgumentException("El archivo no tiene formato EduEscale.")
         }
-        if (version != SUPPORTED_VERSION) {
+        if (version == null || version !in 1..SUPPORTED_VERSION) {
             throw IllegalArgumentException(
                 "Versión no compatible: ${version ?: "desconocida"}.",
             )
         }
         val result = parsedSchools
             ?: throw IllegalArgumentException("El archivo no contiene la lista colegios.")
+        if (version == 1 && result.schools.any { school ->
+                school.niveles.any { it.contains("inicial", ignoreCase = true) }
+            }
+        ) {
+            throw IllegalArgumentException("El archivo contiene un nivel no admitido.")
+        }
         if (metadata != null && metadata.recordCount != result.totalCount) {
             throw IllegalArgumentException(
                 "La cantidad de colegios no coincide con los metadatos del archivo.",
@@ -279,6 +288,7 @@ object SchoolDataReader {
         var alumnos: String? = null
         var secciones: String? = null
         var gestion: String? = null
+        var gestionDependencia: String? = null
         var codigoLocal: String? = null
         val niveles = mutableListOf<String>()
         var longitud: Double? = null
@@ -298,6 +308,7 @@ object SchoolDataReader {
                 "alumnos" -> alumnos = readText(reader)
                 "secciones" -> secciones = readText(reader)
                 "gestion" -> gestion = readText(reader)
+                "gestion_dependencia" -> gestionDependencia = readText(reader)
                 "codigo_local" -> codigoLocal = readText(reader)
                 "nivel" -> readText(reader)?.takeIf(String::isNotBlank)?.let(niveles::add)
                 "niveles" -> niveles += readLevels(reader)
@@ -324,9 +335,6 @@ object SchoolDataReader {
         }
 
         val distinctLevels = niveles.distinct()
-        if (distinctLevels.any { it.contains("inicial", ignoreCase = true) }) {
-            throw IllegalArgumentException("El archivo contiene un nivel no admitido.")
-        }
         return SchoolRecord(
             id = id,
             departamento = departamento,
@@ -355,6 +363,11 @@ object SchoolDataReader {
                     turno = turno?.takeIf(String::isNotBlank),
                 ),
             ),
+            gestionDependencias = setOfNotNull(gestionDependencia?.takeIf(String::isNotBlank)),
+            gestionDependenciaDesconocida = gestion == "publica" &&
+                gestionDependencia !in setOf("A1", "A2", "A3", "A4"),
+            nivelesPorGestionDependencia = gestionDependencia?.takeIf(String::isNotBlank)
+                ?.let { mapOf(it to distinctLevels.toSet()) }.orEmpty(),
         )
     }
 
@@ -390,6 +403,12 @@ object SchoolDataReader {
             niveles = group.flatMap { it.niveles }
                 .distinct()
                 .sortedBy { levelOrder.indexOf(it).let { index -> if (index < 0) Int.MAX_VALUE else index } },
+            gestionDependencias = group.flatMap { it.gestionDependencias }.toSet(),
+            gestionDependenciaDesconocida = group.any { it.gestionDependenciaDesconocida },
+            nivelesPorGestionDependencia = group
+                .flatMap { it.nivelesPorGestionDependencia.entries }
+                .groupBy({ it.key }, { it.value })
+                .mapValues { (_, values) -> values.flatten().toSet() },
             longitud = group.firstOrNull(SchoolRecord::hasCoordinates)?.longitud,
             latitud = group.firstOrNull(SchoolRecord::hasCoordinates)?.latitud,
             estadisticasPorNivel = group

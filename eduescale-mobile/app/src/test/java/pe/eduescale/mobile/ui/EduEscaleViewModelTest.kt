@@ -9,6 +9,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import pe.eduescale.mobile.data.SchoolFile
 import pe.eduescale.mobile.data.SchoolFilters
@@ -16,6 +17,21 @@ import pe.eduescale.mobile.data.SchoolRecord
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class EduEscaleViewModelTest {
+    @Test
+    fun refusesNewFiltersWhenLegacyDataCannotSupportThem() {
+        val viewModel = EduEscaleViewModel()
+        val legacySchool = school(1, "Antiguo").copy(gestionDependenciaDesconocida = true)
+        viewModel.setSchoolFile(SchoolFile(1, 0, listOf(legacySchool), formatVersion = 1), "test")
+
+        viewModel.setFilters(SchoolFilters(niveles = setOf("inicial")))
+        assertEquals(SchoolFilters(), viewModel.state.value.filters)
+        assertTrue(viewModel.state.value.filterError!!.contains("niveles"))
+
+        viewModel.setFilters(SchoolFilters(gestiones = setOf("publica_convenio")))
+        assertEquals(SchoolFilters(), viewModel.state.value.filters)
+        assertTrue(viewModel.state.value.filterError!!.contains("gestión"))
+    }
+
     @Test
     fun searchesImportedRecordsIgnoringAccents() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
