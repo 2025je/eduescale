@@ -137,7 +137,7 @@ dependencies {
     kapt("com.google.dagger:hilt-android-compiler:$hiltVersion")
     kapt("org.jetbrains.kotlin:kotlin-metadata-jvm:2.3.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("org.maplibre.gl:android-sdk-opengl:13.6.1")
+    implementation("org.maplibre.gl:android-sdk-opengl:13.7.1")
     add("completeImplementation", "io.github.rallista:valhalla-mobile:0.6.6")
     add("completeImplementation", "io.github.rallista:valhalla-models:0.6.0")
     add("completeImplementation", "io.github.rallista:valhalla-models-config:0.6.0")
