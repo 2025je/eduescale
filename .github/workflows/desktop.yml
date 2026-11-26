@@ -2,7 +2,17 @@ name: Desktop CI
 
 on:
   push:
+    paths:
+      - "eduescale-desktop/**"
+      - "format/**"
+      - "test-fixtures/**"
+      - ".github/workflows/desktop.yml"
   pull_request:
+    paths:
+      - "eduescale-desktop/**"
+      - "format/**"
+      - "test-fixtures/**"
+      - ".github/workflows/desktop.yml"
   workflow_dispatch:
 
 permissions:

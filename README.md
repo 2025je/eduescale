@@ -12,6 +12,20 @@ Para instalarla y ejecutarla, sigue las instrucciones de su documentación.
 El contrato compartido de los archivos `.eduescale` está en
 [formato v1](./format/README.md).
 
+## Integración continua
+
+En pushes y pull requests, cada workflow se ejecuta cuando cambian archivos de
+su proyecto o del contrato compartido. Mobile también se ejecuta cuando cambian
+el generador de fixtures o el código de exportación de Desktop. Las
+actualizaciones exclusivas de dependencias Python solo ejecutan Desktop, aunque
+puedan afectar a la generación de archivos para Android; la compatibilidad con
+esas dependencias se puede comprobar ejecutando Mobile manualmente. Los
+workflows conservan su ejecución manual.
+
+Si se configuran checks obligatorios en GitHub, los workflows omitidos por sus
+filtros de rutas pueden quedar pendientes e impedir la fusión; ajusta las
+reglas de protección antes de exigirlos.
+
 ## Pre-commit
 
 Instala el hook desde la raíz del repositorio:

@@ -232,8 +232,9 @@ adb install -r dist\EduEscale-lite-debug-androidTest.apk
 adb shell am instrument -w pe.eduescale.mobile.lite.test/pe.eduescale.mobile.HiltTestRunner
 ```
 
-El workflow móvil de GitHub Actions usa este mismo `docker-compose.yml` para ejecutar las pruebas y
-generar el APK en cada push y pull request. Para firmar builds desde una
+El workflow móvil de GitHub Actions usa este mismo `docker-compose.yml` para
+ejecutar las pruebas y generar el APK en pushes y pull requests que afecten a
+Mobile o al contrato compartido. Para firmar builds desde una
 ejecución manual del workflow, configura el environment de GitHub Actions
 `android-release` con estos secrets:
 

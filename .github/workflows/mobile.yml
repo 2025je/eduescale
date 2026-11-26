@@ -2,7 +2,25 @@ name: Mobile CI
 
 on:
   push:
+    paths:
+      - "eduescale-mobile/**"
+      - "eduescale-desktop/eduescale/application/export_policy.py"
+      - "eduescale-desktop/eduescale/infrastructure/exports/**"
+      - "eduescale-desktop/scripts/generate_format_contract_fixtures.py"
+      - "format/**"
+      - "test-fixtures/**"
+      - ".dockerignore"
+      - ".github/workflows/mobile.yml"
   pull_request:
+    paths:
+      - "eduescale-mobile/**"
+      - "eduescale-desktop/eduescale/application/export_policy.py"
+      - "eduescale-desktop/eduescale/infrastructure/exports/**"
+      - "eduescale-desktop/scripts/generate_format_contract_fixtures.py"
+      - "format/**"
+      - "test-fixtures/**"
+      - ".dockerignore"
+      - ".github/workflows/mobile.yml"
   workflow_dispatch:
 
 permissions:
