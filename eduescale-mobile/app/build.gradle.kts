@@ -111,7 +111,7 @@ tasks.withType<Test>().configureEach {
 }
 
 dependencies {
-    val hiltVersion = "2.57.2"
+    val hiltVersion = "2.60.1"
     val navigationVersion = "2.9.5"
     val roomVersion = "2.7.2"
 
