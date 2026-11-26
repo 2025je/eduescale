@@ -34,7 +34,7 @@ jobs:
         run: docker compose run --build --rm android
         working-directory: eduescale-mobile
       - name: Upload Android debug APKs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: eduescale-android-${{ github.sha }}
           path: |
@@ -81,7 +81,7 @@ jobs:
         run: docker compose run --build --rm android
         working-directory: eduescale-mobile
       - name: Upload signed Android artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: eduescale-android-${{ github.sha }}
           path: |
