@@ -78,14 +78,15 @@ def validate_local_database(database_path: Path) -> None:
                         MetaData(),
                         autoload_with=engine,
                     )
-                    stored_values = dict(
-                        connection.execute(
+                    stored_values = {
+                        key: value
+                        for key, value in connection.execute(
                             select(
                                 metadata_table.c.key,
                                 metadata_table.c.value,
                             )
-                        ).all()
-                    )
+                        )
+                    }
                     schema_version = stored_values.get("schema_version")
                     if schema_version in {"2", "3"} and not SEARCH_KEY_COLUMNS.issubset(
                         columns
