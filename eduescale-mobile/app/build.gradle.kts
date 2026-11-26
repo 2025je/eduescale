@@ -112,7 +112,7 @@ tasks.withType<Test>().configureEach {
 
 dependencies {
     val hiltVersion = "2.57.2"
-    val navigationVersion = "2.9.5"
+    val navigationVersion = "2.10.2"
     val roomVersion = "2.7.2"
 
     implementation("androidx.activity:activity-ktx:1.10.1")
