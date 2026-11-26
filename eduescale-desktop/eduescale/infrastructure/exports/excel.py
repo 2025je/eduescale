@@ -39,6 +39,40 @@ EXCEL_LEVEL_LABELS = {
     "superior_tecnologica": "Superior Tecnológica",
     "cetpro": "CETPRO",
 }
+MANAGEMENT_LABELS = {
+    "publica_directa": "Pública",
+    "publica_convenio": "Parroquial",
+    "privada": "Particular",
+    "publica_sin_detalle": "Pública (sin detalle)",
+    "sin_especificar": "No especificada",
+}
+LEVEL_ORDER_SQL = """
+CASE json_extract(payload, '$.nivel')
+    WHEN 'secundaria' THEN 0
+    WHEN 'primaria' THEN 1
+    WHEN 'cetpro' THEN 2
+    WHEN 'inicial' THEN 3
+    WHEN 'basica_alternativa' THEN 4
+    WHEN 'educacion_especial' THEN 5
+    WHEN 'superior_pedagogica' THEN 6
+    WHEN 'superior_artistica' THEN 7
+    WHEN 'superior_tecnologica' THEN 8
+    ELSE 9
+END
+"""
+MANAGEMENT_ORDER_SQL = """
+CASE
+    WHEN json_extract(payload, '$.gestion') = 'publica'
+         AND json_extract(payload, '$.gestion_dependencia') IN ('A1', 'A2', 'A3')
+        THEN 0
+    WHEN json_extract(payload, '$.gestion') = 'privada' THEN 1
+    WHEN json_extract(payload, '$.gestion') = 'publica'
+         AND json_extract(payload, '$.gestion_dependencia') = 'A4'
+        THEN 2
+    WHEN json_extract(payload, '$.gestion') = 'publica' THEN 3
+    ELSE 4
+END
+"""
 EXCEL_FIELDS = (
     "nombre",
     "direccion",
@@ -53,6 +87,7 @@ EXCEL_FIELDS = (
 class _DistrictSheetState(TypedDict):
     worksheet: Worksheet
     current_level: str | None
+    current_management: str | None
     table_start_row: int
     sheet_row_count: int
     table_order: int
@@ -95,6 +130,7 @@ def export_excel(database_path: Path, output_path: Path) -> None:
         return {
             "worksheet": worksheet,
             "current_level": None,
+            "current_management": None,
             "table_start_row": 0,
             "sheet_row_count": 0,
             "table_order": 0,
@@ -123,24 +159,14 @@ def export_excel(database_path: Path, output_path: Path) -> None:
     try:
         with closing(sqlite3.connect(database_path)) as database:
             cursor = database.execute(
-                """
+                f"""
                 SELECT region, province, district, payload
                 FROM records
                 ORDER BY region COLLATE NOCASE,
                          province COLLATE NOCASE,
                          district COLLATE NOCASE,
-                         CASE json_extract(payload, '$.nivel')
-                             WHEN 'inicial' THEN 0
-                             WHEN 'primaria' THEN 1
-                             WHEN 'secundaria' THEN 2
-                             WHEN 'basica_alternativa' THEN 3
-                             WHEN 'educacion_especial' THEN 4
-                             WHEN 'superior_pedagogica' THEN 5
-                             WHEN 'superior_artistica' THEN 6
-                             WHEN 'superior_tecnologica' THEN 7
-                             WHEN 'cetpro' THEN 8
-                             ELSE 9
-                         END,
+                         {LEVEL_ORDER_SQL},
+                         {MANAGEMENT_ORDER_SQL},
                          rowid
                 """
             )
@@ -151,6 +177,7 @@ def export_excel(database_path: Path, output_path: Path) -> None:
                     raise ValueError(
                         f"Nivel educativo no admitido para Excel: {level!r}."
                     )
+                management = management_group(item)
 
                 district_key = (region, province, district)
                 if district_key != current_district:
@@ -163,7 +190,10 @@ def export_excel(database_path: Path, output_path: Path) -> None:
                     current_district = district_key
 
                 assert current_state is not None
-                if level != current_state["current_level"]:
+                if (
+                    level != current_state["current_level"]
+                    or management != current_state["current_management"]
+                ):
                     if current_state["current_level"] is not None:
                         finish_table(current_state)
                         append_row(current_state, [])
@@ -175,6 +205,7 @@ def export_excel(database_path: Path, output_path: Path) -> None:
                             province,
                             district,
                             EXCEL_LEVEL_LABELS[level],
+                            MANAGEMENT_LABELS[management],
                         ),
                     )
                     append_row(
@@ -186,6 +217,7 @@ def export_excel(database_path: Path, output_path: Path) -> None:
                     )
                     current_state["table_start_row"] = current_state["sheet_row_count"]
                     current_state["current_level"] = level
+                    current_state["current_management"] = management
                     current_state["table_order"] = 0
 
                 current_state["table_order"] += 1
@@ -250,7 +282,21 @@ def _safe_cell(worksheet, value):
     return cell
 
 
-def _district_heading(worksheet, region, province, district, level):
+def management_group(item: dict) -> str:
+    management = str(item.get("gestion") or "").strip().lower()
+    dependency = str(item.get("gestion_dependencia") or "").strip().upper()
+    if management == "publica":
+        if dependency in {"A1", "A2", "A3"}:
+            return "publica_directa"
+        if dependency == "A4":
+            return "publica_convenio"
+        return "publica_sin_detalle"
+    if management == "privada":
+        return "privada"
+    return "sin_especificar"
+
+
+def _district_heading(worksheet, region, province, district, level, management):
     fill = PatternFill(fill_type="solid", fgColor="1E4D73")
     row = []
     for index, value in enumerate(
@@ -259,11 +305,12 @@ def _district_heading(worksheet, region, province, district, level):
             f"Provincia: {province}",
             f"Distrito: {district}",
             f"Nivel: {level}",
+            f"Gestión: {management}",
         )
-        + ("",) * (len(HEADERS) - 4)
+        + ("",) * (len(HEADERS) - 5)
     ):
         cell = _safe_cell(worksheet, value)
-        if index < 4:
+        if index < 5:
             cell.font = Font(bold=True, color="FFFFFF", size=12)
         cell.fill = fill
         row.append(cell)

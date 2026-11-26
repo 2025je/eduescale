@@ -69,3 +69,33 @@ def test_invalid_coordinates_do_not_create_map_locations():
     schools = accumulator.add_batch([_record(longitud=-77.2, latitud=91)])
 
     assert schools == []
+
+
+def test_map_locations_include_management_type_and_every_level_glyph():
+    accumulator = SchoolMapAccumulator()
+    levels = (
+        "inicial",
+        "primaria",
+        "secundaria",
+        "basica_alternativa",
+        "educacion_especial",
+        "superior_pedagogica",
+        "superior_artistica",
+        "superior_tecnologica",
+        "cetpro",
+    )
+
+    schools = accumulator.add_batch(
+        [
+            _record(
+                longitud=-77.2,
+                latitud=-12.1,
+                nivel=level,
+                gestion_dependencia="A4" if level == "cetpro" else "A1",
+            )
+            for level in levels
+        ]
+    )
+
+    assert schools[0]["gestionTipo"] == "mixta"
+    assert schools[0]["nivelGlifos"] == "I · P · S · BA · EE · SP · SA · ST · C"

@@ -17,6 +17,7 @@ MAP_RECORD_FIELDS = (
     "provincia",
     "region",
     "gestion",
+    "gestion_dependencia",
     "nivel",
     "codigo_local",
 )
@@ -31,6 +32,17 @@ LEVEL_ORDER = (
     "superior_tecnologica",
     "cetpro",
 )
+LEVEL_GLYPHS = {
+    "inicial": "I",
+    "primaria": "P",
+    "secundaria": "S",
+    "basica_alternativa": "BA",
+    "educacion_especial": "EE",
+    "superior_pedagogica": "SP",
+    "superior_artistica": "SA",
+    "superior_tecnologica": "ST",
+    "cetpro": "C",
+}
 
 
 def _text(record: dict[str, object], key: str) -> str:
@@ -69,6 +81,7 @@ class _School:
     provincia: str
     distrito: str
     gestion: str
+    gestion_dependencias: set[str] = field(default_factory=set)
     longitud: float | None = None
     latitud: float | None = None
     alumnos: int | float | None = None
@@ -79,6 +92,9 @@ class _School:
 
     def add(self, record: dict[str, object]) -> None:
         level = _text(record, "nivel")
+        dependency = _text(record, "gestion_dependencia").upper()
+        if dependency:
+            self.gestion_dependencias.add(dependency)
         shift = _text(record, "turno")
         if level and level not in self.niveles:
             self.niveles.append(level)
@@ -134,6 +150,7 @@ class _School:
             "provincia": self.provincia,
             "distrito": self.distrito,
             "gestion": self.gestion,
+            "gestionTipo": _management_type(self.gestion, self.gestion_dependencias),
             "longitud": self.longitud,
             "latitud": self.latitud,
             "alumnos": self.alumnos,
@@ -141,6 +158,11 @@ class _School:
             "niveles": sorted(
                 self.niveles,
                 key=lambda level: level_order.get(level, len(LEVEL_ORDER)),
+            ),
+            "nivelGlifos": " · ".join(
+                LEVEL_GLYPHS[level]
+                for level in LEVEL_ORDER
+                if level in self.niveles and level in LEVEL_GLYPHS
             ),
             "turnos": self.turnos,
             "ofertaEducativa": offers,
@@ -200,3 +222,17 @@ class SchoolMapAccumulator:
             for school in changed.values()
             if school.longitud is not None and school.latitud is not None
         ]
+
+
+def _management_type(gestion: str, dependencies: set[str]) -> str:
+    if gestion == "privada":
+        return "privada"
+    if gestion != "publica":
+        return "desconocida"
+    has_direct = bool(dependencies.intersection({"A1", "A2", "A3"}))
+    has_parish = "A4" in dependencies
+    if has_direct and has_parish:
+        return "mixta"
+    if has_parish:
+        return "parroquial"
+    return "publica" if has_direct else "desconocida"

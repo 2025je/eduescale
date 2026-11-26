@@ -111,6 +111,10 @@ def test_maplibre_uses_unlabeled_basemap_and_centered_boundary_labels():
     assert "0.5" in map_page
     assert 'id: "boundary-labels"' in map_page
     assert '"text-field": ["get", "mapLabel"]' in map_page
+    assert 'id: "school-level-icons"' in map_page
+    assert '"text-field": ["get", "nivelGlifos"]' in map_page
+    assert 'gestionTipo: location.gestionTipo || "desconocida"' in map_page
+    assert '"parroquial"' in map_page
     assert '"text-halo-color": "#FFFFFF"' in map_page
     assert 'properties.mapLabel = level === "district"' in map_page
     assert "window.setMapView" in map_page

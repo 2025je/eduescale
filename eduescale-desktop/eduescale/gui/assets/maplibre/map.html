@@ -399,7 +399,19 @@
                     visibility: schoolMode ? "visible" : "none"
                 },
                 paint: {
-                    "circle-color": "#176B50",
+                    "circle-color": [
+                        "match",
+                        ["get", "gestionTipo"],
+                        "publica",
+                        "#176B50",
+                        "parroquial",
+                        "#6B4E9B",
+                        "mixta",
+                        "#167A8B",
+                        "privada",
+                        "#D97706",
+                        "#7B8794"
+                    ],
                     "circle-radius": [
                         "interpolate",
                         ["linear"],
@@ -413,6 +425,31 @@
                     ],
                     "circle-stroke-color": "#FFFFFF",
                     "circle-stroke-width": 1.5
+                }
+            });
+            map.addLayer({
+                id: "school-level-icons",
+                type: "symbol",
+                source: "schools-live",
+                filter: [
+                    "all",
+                    ["!", ["has", "point_count"]],
+                    ["!=", ["get", "nivelGlifos"], ""]
+                ],
+                layout: {
+                    visibility: schoolMode ? "visible" : "none",
+                    "text-field": ["get", "nivelGlifos"],
+                    "text-font": ["Noto Sans Regular"],
+                    "text-size": 8,
+                    "text-anchor": "center",
+                    "text-max-width": 8,
+                    "text-allow-overlap": true,
+                    "text-ignore-placement": true
+                },
+                paint: {
+                    "text-color": "#FFFFFF",
+                    "text-halo-color": "#123B2E",
+                    "text-halo-width": 0.6
                 }
             });
             schoolLayerReady = true;
@@ -461,7 +498,11 @@
                 const feature = {
                     type: "Feature",
                     id: location.schoolId,
-                    properties: {schoolId: location.schoolId},
+                    properties: {
+                        schoolId: location.schoolId,
+                        gestionTipo: location.gestionTipo || "desconocida",
+                        nivelGlifos: location.nivelGlifos || ""
+                    },
                     geometry: {
                         type: "Point",
                         coordinates: [location.longitud, location.latitud]
@@ -519,6 +560,11 @@
             );
             map.setLayoutProperty(
                 "school-points",
+                "visibility",
+                schoolMode ? "visible" : "none"
+            );
+            map.setLayoutProperty(
+                "school-level-icons",
                 "visibility",
                 schoolMode ? "visible" : "none"
             );

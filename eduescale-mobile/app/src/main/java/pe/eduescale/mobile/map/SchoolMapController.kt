@@ -12,10 +12,16 @@ import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.expressions.Expression
 import org.maplibre.android.style.layers.CircleLayer
+import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.layers.PropertyFactory.circleColor
 import org.maplibre.android.style.layers.PropertyFactory.circleRadius
 import org.maplibre.android.style.layers.PropertyFactory.circleStrokeColor
 import org.maplibre.android.style.layers.PropertyFactory.circleStrokeWidth
+import org.maplibre.android.style.layers.PropertyFactory.textAllowOverlap
+import org.maplibre.android.style.layers.PropertyFactory.textColor
+import org.maplibre.android.style.layers.PropertyFactory.textField
+import org.maplibre.android.style.layers.PropertyFactory.textIgnorePlacement
+import org.maplibre.android.style.layers.PropertyFactory.textSize
 import org.maplibre.android.style.sources.GeoJsonOptions
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Feature
@@ -204,6 +210,7 @@ internal class SchoolMapController(
         }
 
         currentStyle.getLayer(SCHOOL_LAYER)?.let(currentStyle::removeLayer)
+        currentStyle.getLayer(SCHOOL_LEVEL_LAYER)?.let(currentStyle::removeLayer)
         currentStyle.getLayer(CLUSTER_LAYER)?.let(currentStyle::removeLayer)
         currentStyle.getLayer(SELECTED_SCHOOL_LAYER)?.let(currentStyle::removeLayer)
         currentStyle.getLayer(SELECTED_SCHOOL_ACCENT_LAYER)?.let(currentStyle::removeLayer)
@@ -220,8 +227,15 @@ internal class SchoolMapController(
             val coordinates = school.coordinates ?: return@mapNotNull null
             Feature.fromGeometry(Point.fromLngLat(coordinates.longitude, coordinates.latitude)).apply {
                 addStringProperty(SCHOOL_ID_PROPERTY, school.id.toString())
-                addStringProperty(MARKER_COLOR_PROPERTY, SchoolMarkerStyle.color(school.gestion))
+                addStringProperty(
+                    MARKER_COLOR_PROPERTY,
+                    SchoolMarkerStyle.color(school.gestion, school.gestionDependencias),
+                )
                 addNumberProperty(MARKER_RADIUS_PROPERTY, SchoolMarkerStyle.radius(school.niveles))
+                addStringProperty(
+                    LEVEL_GLYPHS_PROPERTY,
+                    SchoolMarkerStyle.levelGlyphs(school.niveles),
+                )
             }
         }
         currentStyle.addSource(
@@ -267,6 +281,20 @@ internal class SchoolMapController(
                 circleRadius(Expression.get(MARKER_RADIUS_PROPERTY)),
                 circleStrokeColor(Color.WHITE),
                 circleStrokeWidth(2f),
+            ),
+        )
+        currentStyle.addLayer(
+            SymbolLayer(SCHOOL_LEVEL_LAYER, SCHOOL_SOURCE).withFilter(
+                Expression.all(
+                    Expression.not(Expression.has("point_count")),
+                    Expression.has(LEVEL_GLYPHS_PROPERTY),
+                ),
+            ).withProperties(
+                textField(Expression.get(LEVEL_GLYPHS_PROPERTY)),
+                textColor(Color.WHITE),
+                textSize(8f),
+                textAllowOverlap(true),
+                textIgnorePlacement(true),
             ),
         )
         val selectedSchool = selectedSchool()
@@ -315,6 +343,7 @@ internal class SchoolMapController(
     companion object {
         const val SCHOOL_SOURCE = "eduescale-schools"
         const val SCHOOL_LAYER = "eduescale-school-markers"
+        const val SCHOOL_LEVEL_LAYER = "eduescale-school-level-glyphs"
         const val CLUSTER_LAYER = "eduescale-school-clusters"
         const val SELECTED_SCHOOL_SOURCE = "eduescale-selected-school"
         const val SELECTED_SCHOOL_LAYER = "eduescale-selected-school-highlight"
@@ -322,6 +351,7 @@ internal class SchoolMapController(
         const val SCHOOL_ID_PROPERTY = "school_id"
         const val MARKER_COLOR_PROPERTY = "marker_color"
         const val MARKER_RADIUS_PROPERTY = "marker_radius"
+        const val LEVEL_GLYPHS_PROPERTY = "level_glyphs"
         const val SELECTED_MARKER_RADIUS = 22f
         const val SELECTED_MARKER_OUTLINE_STROKE_WIDTH = 8f
         const val SELECTED_MARKER_ACCENT_STROKE_WIDTH = 4f

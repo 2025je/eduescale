@@ -22,6 +22,10 @@ from eduescale.infrastructure.exports.excel import (
     EXCEL_FIELDS,
     EXCEL_LEVEL_LABELS,
     HEADERS,
+    LEVEL_ORDER_SQL,
+    MANAGEMENT_LABELS,
+    MANAGEMENT_ORDER_SQL,
+    management_group,
 )
 
 PAGE_RESOLUTION = 120
@@ -50,7 +54,7 @@ class _PdfRenderer:
         self.y = self.page_rect.y()
         self.page_number = 1
         self.page_has_content = False
-        self.current_heading: tuple[str, str, str, str] | None = None
+        self.current_heading: tuple[str, str, str, str, str] | None = None
         self.row_index = 0
         self.title_font = QFont("Sans Serif")
         self.title_font.setPointSizeF(8.5)
@@ -135,12 +139,13 @@ class _PdfRenderer:
                 )
         self.y += 8
 
-    def start_table(self, region, province, district, level, first_row):
+    def start_table(self, region, province, district, level, management, first_row):
         self.current_heading = (
             f"Departamento: {region}",
             f"Provincia: {province}",
             f"Distrito: {district}",
             f"Nivel: {level}",
+            f"Gestión: {management}",
         )
         self.row_index = 0
         required_height = (
@@ -370,29 +375,20 @@ def export_pdf(database_path: Path, output_path: Path) -> None:
                 level_counts,
             )
             cursor = database.execute(
-                """
+                f"""
                 SELECT region, province, district, payload
                 FROM records
                 ORDER BY region COLLATE NOCASE,
                          province COLLATE NOCASE,
                          district COLLATE NOCASE,
-                         CASE json_extract(payload, '$.nivel')
-                             WHEN 'inicial' THEN 0
-                             WHEN 'primaria' THEN 1
-                             WHEN 'secundaria' THEN 2
-                             WHEN 'basica_alternativa' THEN 3
-                             WHEN 'educacion_especial' THEN 4
-                             WHEN 'superior_pedagogica' THEN 5
-                             WHEN 'superior_artistica' THEN 6
-                             WHEN 'superior_tecnologica' THEN 7
-                             WHEN 'cetpro' THEN 8
-                             ELSE 9
-                         END,
+                         {LEVEL_ORDER_SQL},
+                         {MANAGEMENT_ORDER_SQL},
                          rowid
                 """
             )
             current_district = None
             current_level = None
+            current_management = None
             found_records = False
             for region, province, district, payload in cursor:
                 item = json.loads(payload)
@@ -401,22 +397,26 @@ def export_pdf(database_path: Path, output_path: Path) -> None:
                     raise ValueError(
                         f"Nivel educativo no admitido para PDF: {level!r}."
                     )
+                management = management_group(item)
 
                 district_key = (region, province, district)
                 if district_key != current_district:
                     current_district = district_key
                     current_level = None
+                    current_management = None
 
                 values = [item[field] for field in EXCEL_FIELDS]
-                if level != current_level:
+                if level != current_level or management != current_management:
                     renderer.start_table(
                         region,
                         province,
                         district,
                         EXCEL_LEVEL_LABELS[level],
+                        MANAGEMENT_LABELS[management],
                         values,
                     )
                     current_level = level
+                    current_management = management
                 renderer.draw_row(values)
                 found_records = True
 

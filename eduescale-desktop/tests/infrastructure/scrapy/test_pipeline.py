@@ -27,6 +27,7 @@ def test_saves_one_excel_sheet_per_district_with_tables_per_level():
         "alumnos": 10,
         "secciones": 1,
         "gestion": "publica",
+        "gestion_dependencia": "A1",
         "nivel": "primaria",
         "codigo_local": "000123",
         "longitud": -77.2,
@@ -40,10 +41,17 @@ def test_saves_one_excel_sheet_per_district_with_tables_per_level():
         "nombre": "Colegio Secundario",
         "nivel": "secundaria",
     }
+    private_record = {
+        **first_record,
+        "nombre": "Colegio Privado",
+        "gestion": "privada",
+        "gestion_dependencia": None,
+    }
     third_record = {
         **first_record,
         "nombre": "Colegio CETPRO",
         "distrito": "Nauta",
+        "gestion_dependencia": "A4",
         "nivel": "cetpro",
     }
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -52,9 +60,9 @@ def test_saves_one_excel_sheet_per_district_with_tables_per_level():
         spider = SimpleNamespace(
             output=str(database_path),
             count_received=True,
-            expected_total=3,
-            items_received=3,
-            unique_items_received=3,
+            expected_total=4,
+            items_received=4,
+            unique_items_received=4,
             pages_received=3,
             failed_pages={},
             pages_retried=0,
@@ -66,6 +74,7 @@ def test_saves_one_excel_sheet_per_district_with_tables_per_level():
         pipeline.open_spider()
         pipeline.process_item(first_record)
         pipeline.process_item(second_record)
+        pipeline.process_item(private_record)
         pipeline.process_item(third_record)
         pipeline.close_spider()
 
@@ -92,12 +101,18 @@ def test_saves_one_excel_sheet_per_district_with_tables_per_level():
             assert [table.displayName for table in iquitos_tables] == [
                 "DistrictTable0001",
                 "DistrictTable0002",
+                "DistrictTable0003",
             ]
-            assert [table.ref for table in iquitos_tables] == ["A2:H3", "A6:H7"]
+            assert [table.ref for table in iquitos_tables] == [
+                "A2:H3",
+                "A6:H7",
+                "A10:H11",
+            ]
             assert iquitos_sheet["A1"].value == "Departamento: Loreto"
             assert iquitos_sheet["B1"].value == "Provincia: Maynas"
             assert iquitos_sheet["C1"].value == "Distrito: Iquitos"
-            assert iquitos_sheet["D1"].value == "Nivel: Primaria"
+            assert iquitos_sheet["D1"].value == "Nivel: Secundaria"
+            assert iquitos_sheet["E1"].value == "Gestión: Pública"
             assert [cell.value for cell in iquitos_sheet[2]] == [
                 "#",
                 "Nombre del colegio",
@@ -110,7 +125,7 @@ def test_saves_one_excel_sheet_per_district_with_tables_per_level():
             ]
             assert iquitos_sheet.max_column == 8
             assert iquitos_sheet["A3"].value == 1
-            assert iquitos_sheet["B3"].value == "Colegio Ejemplo"
+            assert iquitos_sheet["B3"].value == "Colegio Secundario"
             assert iquitos_sheet["C3"].data_type == "s"
             assert iquitos_sheet["C3"].value.startswith("=HYPERLINK")
             assert iquitos_sheet["G3"].value == 10
@@ -119,17 +134,23 @@ def test_saves_one_excel_sheet_per_district_with_tables_per_level():
             assert iquitos_sheet.page_setup.fitToWidth == 1
             assert iquitos_sheet.page_setup.fitToHeight == 0
             assert iquitos_sheet.sheet_properties.pageSetUpPr.fitToPage
-            assert iquitos_sheet["D5"].value == "Nivel: Secundaria"
+            assert iquitos_sheet["D5"].value == "Nivel: Primaria"
+            assert iquitos_sheet["E5"].value == "Gestión: Pública"
             assert iquitos_sheet["A7"].value == 1
-            assert iquitos_sheet["B7"].value == "Colegio Secundario"
+            assert iquitos_sheet["B7"].value == "Colegio Ejemplo"
+            assert iquitos_sheet["D9"].value == "Nivel: Primaria"
+            assert iquitos_sheet["E9"].value == "Gestión: Particular"
+            assert iquitos_sheet["A11"].value == 1
+            assert iquitos_sheet["B11"].value == "Colegio Privado"
 
             nauta_sheet = workbook["Nauta - Maynas - Loreto"]
             nauta_tables = list(nauta_sheet.tables.values())
             assert [table.displayName for table in nauta_tables] == [
-                "DistrictTable0003",
+                "DistrictTable0004",
             ]
             assert [table.ref for table in nauta_tables] == ["A2:H3"]
             assert nauta_sheet["D1"].value == "Nivel: CETPRO"
+            assert nauta_sheet["E1"].value == "Gestión: Parroquial"
             assert nauta_sheet["A3"].value == 1
             assert nauta_sheet["B3"].value == "Colegio CETPRO"
         finally:
@@ -152,6 +173,7 @@ def test_saves_one_excel_sheet_per_district_with_tables_per_level():
                 "alumnos": 10,
                 "secciones": 1,
                 "gestion": "publica",
+                "gestion_dependencia": "A1",
                 "nivel": "primaria",
                 "codigo_local": "000123",
                 "longitud": -77.2,
@@ -169,7 +191,25 @@ def test_saves_one_excel_sheet_per_district_with_tables_per_level():
                 "alumnos": 10,
                 "secciones": 1,
                 "gestion": "publica",
+                "gestion_dependencia": "A1",
                 "nivel": "secundaria",
+                "codigo_local": "000123",
+                "longitud": -77.2,
+                "latitud": -12.1,
+            },
+            {
+                "departamento": "Loreto",
+                "provincia": "Maynas",
+                "distrito": "Iquitos",
+                "nombre": "Colegio Privado",
+                "direccion": '=HYPERLINK("https://example.invalid", "clic")',
+                "localidad": "Localidad",
+                "cp": "Centro Poblado",
+                "turno": "Mañana",
+                "alumnos": 10,
+                "secciones": 1,
+                "gestion": "privada",
+                "nivel": "primaria",
                 "codigo_local": "000123",
                 "longitud": -77.2,
                 "latitud": -12.1,
@@ -186,6 +226,7 @@ def test_saves_one_excel_sheet_per_district_with_tables_per_level():
                 "alumnos": 10,
                 "secciones": 1,
                 "gestion": "publica",
+                "gestion_dependencia": "A4",
                 "nivel": "cetpro",
                 "codigo_local": "000123",
                 "longitud": -77.2,

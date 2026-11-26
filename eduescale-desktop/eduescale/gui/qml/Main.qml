@@ -759,14 +759,14 @@ ApplicationWindow {
                                 StyledCheckBox {
                                     id: publicManagement
                                     objectName: "publicManagement"
-                                    text: "Pública de gestión directa"
+                                    text: "Pública"
                                     enabled: !viewModel.scrapeRunning
                                     onToggled: window.filterNotice = ""
                                 }
                                 StyledCheckBox {
                                     id: publicConventionManagement
                                     objectName: "publicConventionManagement"
-                                    text: "Pública de gestión privada"
+                                    text: "Parroquial"
                                     enabled: !viewModel.scrapeRunning
                                     onToggled: window.filterNotice = ""
                                 }
